@@ -75,7 +75,8 @@ After sending, output "Waiting for teammates." and end your turn. If idle notifi
 After all teammates confirm shutdown, call TeamDelete. If TeamDelete fails, wait 10 seconds and retry once. If second attempt also fails, clean up manually: `rm -rf ~/.claude/teams/<team-name> ~/.claude/tasks/<team-name>` (where `<team-name>` is the team name created in Phase 1) and proceed. Do not retry more than twice total.
 
 ### Phase 4: Tail Workflows
-Run `bash ~/.claude/skills/apex/scripts/detect-tail-mode.sh {files from modification list}`. Read the output for tail mode.
+**Placeholder runtime guard.** If the literal string `{session-id}` (including braces) appears in the bash command below, the placeholder was not replaced before ExitPlanMode. STOP: print `PHASE 4 GUARD: placeholder unreplaced -- aborting cleanup to avoid stale manifest`, skip the cleanup-session.sh call, and notify the user. Do not proceed to cleanup with an unreplaced placeholder.
+**Catalog-only override.** If ALL files from the modification list are under `.claude/audit-criteria/` or `~/.claude/audit-criteria/`, force `TAIL_MODE=economy` and skip detect-tail-mode.sh. Otherwise run `bash ~/.claude/skills/apex/scripts/detect-tail-mode.sh {files from modification list}`. Read the output for tail mode.
 Run `git diff --name-only` to compute the modified-files list. Pass to apex-tail.md: tail mode, session type, files modified list, and implementation summary from Phase 1 (apex-team.md) completion reports.
 Read and follow ~/.claude/skills/apex/apex-tail.md. Tail evaluates pre-flights and spawns only applicable agents.
 Session type: {task-type}. {If prd-implementation: PRD file: {prd-path}. If audit-remediation: Audit file: {audit-path}.}
@@ -216,13 +217,12 @@ Include all foreign key and reference ID fields that controllers need for entity
 - [ ] Cross-service wiring (service A calling service B) appears as explicit AC in the controller-owning teammate's goal, not only as a cross-boundary note
 - [ ] Content migration boundaries: when plan splits extract-and-trim across teammates (A extracts content, B trims source), both sides appear as explicit ACs -- not only the extraction side
 - [ ] Shared-state dependencies: if teammate A owns a state layer (hooks, context providers, stores) and teammate B owns consumers, the context/provider wiring between them appears as explicit AC in the provider-owning teammate's goal (e.g., "context exposes X from hook for consumer Y")
-- [ ] If plan has only 1 teammate, MUST downgrade to Path 1 (Path 2 adds coordination overhead with no parallelism benefit) unless teammate needs agent-team features (lead relay, cross-dependency messaging)
 - [ ] ACs within each goal are internally consistent (no AC hedges "keep X if Y" while a later AC resolves Y by removing it)
 - [ ] Infrastructure Commands section is populated (list all runtime activation commands) or explicitly states "None." -- do not omit the section
 - [ ] All {session-id} placeholders in Phase 4 replaced with actual manifest filename from SKILL.md Step 0
 - [ ] All {task-type}, {prd-path}, {audit-path} placeholders in Phase 4 replaced with actual values from Step 1 (or conditional sentence removed for standard tasks)
 
-**Conditional (check when trigger applies):**
+**Conditional (check when trigger applies -- new entries go above Pre-mortem, never below):**
 - [ ] IF total ACs across all goals exceeds 10: verify effort trigger was evaluated at Step 4.6
 - [ ] IF ACs reference external SDK/library method names (e.g., Stripe API calls, framework hooks): verify the method exists in the installed SDK version (check node_modules type definitions or package.json version). Stale method names from docs/lessons cause predictable build failures.
 - [ ] IF goals delete or rename i18n keys: grep for template-literal i18n calls (`t(`...`${...}`) and `t(prefix +`) in affected namespaces. Dynamic key interpolation hides deleted keys from static grep -- verify each computed key's possible values still exist in message files.
@@ -239,3 +239,12 @@ Include all foreign key and reference ID fields that controllers need for entity
 Call ExitPlanMode. Wait for user approval. If rejected, stop and wait for user direction -- do not retry. If a retry returns "not in plan mode", the plan was approved externally -- proceed to implementation.
 
 After approval, context clears. The embedded "Instructions" section is what gets executed.
+
+## Forbidden Actions
+
+Shared guardrails: read ~/.claude/skills/apex/shared-guardrails.md. Additionally:
+
+- Do not ExitPlanMode with any `{session-id}`, `{task-type}`, `{prd-path}`, or `{audit-path}` placeholders still literal in the plan body -- the Placeholder gate above MUST run
+- Do not add implementation steps to the plan (plans are goals + required reading, not step-by-step)
+- Do not embed full scout findings in Context; reference the scout findings file path and let teammates read it via Required Reading
+- Do not write the plan to an intermediate file before entering plan mode -- use only the plan-mode system's designated file path

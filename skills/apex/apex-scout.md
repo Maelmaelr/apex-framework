@@ -57,6 +57,8 @@ Include only lines relevant to the scout's assigned area.
 
 Use **downgrade** return with file_list. Skips Steps 2-6. Print: `SCOUT QUICK-SCOPE: recommend downgrade -- {file count} files, {package count} packages, {reason}`.
 
+**Loop-break override.** If caller passes `quick-scope-rejected: true` in the spawn prompt (from apex-apex.md Step 2.6 re-scout after a rejected downgrade), skip the Quick-scope return path entirely and proceed to Step 2 regardless of file count. This prevents infinite downgrade loops when the same small file list re-triggers the quick-scope threshold on re-entry.
+
 ### Step 2: Identify Exploration Areas
 
 Examples:

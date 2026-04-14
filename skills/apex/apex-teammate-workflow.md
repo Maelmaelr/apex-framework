@@ -14,7 +14,7 @@ Follow effort assessment procedure (`effort-trigger.txt`) against your assigned 
 
 ## Phase 2: Plan and Implement
 
-4. Create ALL implementation tasks upfront via TaskCreate (one per logical unit) BEFORE any implementation begins. Also create a tail task ("Verify and reflect") with addBlockedBy on all implementation task IDs. Do not create tasks incrementally during implementation -- the full task list must exist before step 5. Set in_progress/completed as you work. **HARD GATE: Do not proceed to step 5 until all tasks are created and verified with TaskList.**
+4. Create ALL implementation tasks upfront via TaskCreate (one per logical unit) BEFORE any implementation begins. Also create a per-teammate completion task ("Verify and reflect") with addBlockedBy on all implementation task IDs. This is a teammate-local task distinct from the lead's Path 1/Path 2 tail dispatch (SKILL.md Step 6A / apex-apex.md plan Phase 4) -- do not conflate. Do not create tasks incrementally during implementation -- the full task list must exist before step 5. Set in_progress/completed as you work. **HARD GATE: Do not proceed to step 5 until all tasks are created and verified with TaskList.**
 5. Follow pre-delegation checks (items 1-3) in `~/.claude/skills/apex/subagent-delegation.md`. Item 2 (dependency gate per shared-guardrails #9) determines parallel vs sequential execution -- do not skip.
 6. Implement per acceptance criteria:
 
@@ -69,7 +69,7 @@ Follow subagent delegation protocol (model: "sonnet") in `~/.claude/skills/apex/
 
 12. **Doc updates:** Apply minor updates to owned docs, flag others in report.
 
-TaskUpdate the "Verify and reflect" tail task to completed.
+TaskUpdate the "Verify and reflect" per-teammate completion task to completed.
 
 ## Phase 4: Report
 

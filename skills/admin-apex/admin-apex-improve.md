@@ -107,7 +107,7 @@ Run `audit-catalog-health.py` against catalog directories. Issues become finding
 
 Run `cd ~/.claude && git log --oneline -50` and `cd ~/.claude && git log --name-only --pretty=format: -50 | sort -u` (restore CWD per shared-guardrails #16). Cross-check findings against recent commits. Drop findings whose issue appears resolved (commit message references same guardrail/step/behavior). For survivors whose target file is in changed-files list, diff and Grep for specific target text -- drop if already modified. Print `STALE-STATE: {N} dropped ({M} message, {K} diff)` only if N > 0.
 
-**Concurrency check:** `find ~/.claude/.claude-tmp/apex-active -maxdepth 1 -name 'apex-*.json' -mmin -30 2>/dev/null | wc -l`. If count > 1 (another active improve session detected), print `CONCURRENCY WARNING: parallel improve session detected -- findings may overlap`. Record `CONCURRENCY_DETECTED=true` for Phase 3.6.
+**Concurrency check:** `find .claude-tmp/apex-active -maxdepth 1 -name 'apex-*.json' -mmin -30 2>/dev/null | wc -l`. If count > 1 (another active improve session detected in same project), print `CONCURRENCY WARNING: parallel improve session detected -- findings may overlap`. Record `CONCURRENCY_DETECTED=true` for Phase 3.6.
 
 ## Step 3: Identify Skill Execution (Transcript Only)
 
@@ -329,7 +329,7 @@ Both: ASCII only, no tables.
 ### Phase 3.6: Clean Up, Diff Summary, and Auto-Commit
 
 1. Check: `cd ~/.claude && git diff --name-only` + `git ls-files --others --exclude-standard`.
-1a. **Concurrency check:** `find ~/.claude/.claude-tmp/apex-active -maxdepth 1 -name 'apex-*.json' -mmin -30 2>/dev/null | wc -l` + check git status for modifications outside finding targets. If detected: `CONCURRENCY_DETECTED=true`, skip step 3 workflow-improvements clear only. Extract cleanup and step 5 auto-commit always run.
+1a. **Concurrency check:** `find .claude-tmp/apex-active -maxdepth 1 -name 'apex-*.json' -mmin -30 2>/dev/null | wc -l` + check git status for modifications outside finding targets. If detected: `CONCURRENCY_DETECTED=true`, skip step 3 workflow-improvements clear only. Extract cleanup and step 5 auto-commit always run.
 2. **Diff summary:** If files changed, generate RUN_ID (`apex-improve-$(date +%Y%m%d)-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)`), write `~/.claude/.claude-tmp/git-diff/git-diff-{RUN_ID}.md` with subject, files list, abbreviated diff.
 3. **Cleanup** (task in_progress): Delete extracts: `find ~/.claude/tmp -maxdepth 1 -name 'apex-improve-extract*.md' -delete 2>/dev/null; true`. Clear workflow-improvements if processed AND not `CONCURRENCY_DETECTED`: `echo -n > ~/.claude/tmp/apex-workflow-improvements.md`. Task completed.
 4. No files changed: "No skill files modified, skipping diff summary and auto-commit."

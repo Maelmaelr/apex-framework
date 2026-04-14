@@ -61,6 +61,8 @@ Print a brief summary (this gets surfaced to the user by the caller):
 
 ## Forbidden Actions
 
+Shared guardrails: read ~/.claude/skills/apex/shared-guardrails.md. Additionally:
+
 - Do not persist literal credentials, tokens, API keys, or secret values
 - Do not modify or write to files without reading them first
 - ASCII only -- no emojis, no unicode

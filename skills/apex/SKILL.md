@@ -175,7 +175,7 @@ Update manifest: `bash ~/.claude/skills/apex/scripts/update-manifest.sh {session
 
 Always TaskCreate for every change (overrides global 3+ threshold -- APEX needs per-change tracking).
 
-**Create implementation tasks upfront** before any implementation. Tail tasks created in Step 6A.
+**Create implementation tasks upfront** before any implementation. Lead tail-dispatch tasks (lessons, docs, reflect) are created in Step 6A. Teammates (Path 2) also create a per-teammate "Verify and reflect" completion task in apex-teammate-workflow.md Phase 2 -- that is distinct from lead tail dispatch.
 
 1. TaskCreate per change (subject, description, activeForm).
 2. **File health gate resolution.** For each flagged file:

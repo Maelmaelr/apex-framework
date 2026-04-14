@@ -140,7 +140,7 @@ Group unchecked/recheck cells by target file. This lets scouts read each file on
 1. Derive team-name from audit theme: `audit-{theme}-{session-id-prefix}` (e.g., `audit-security-a1b2c3`).
 2. Create the team via TeamCreate.
 3. Create shared tasks per batch (same batch sizing as subagent dispatch -- cells per task <= batch-size). Each task subject: `Audit batch {n}: {file-count} files, {cell-count} cells`.
-4. Each teammate receives: inline criterion definitions (from matrix JSON `criteria_definitions`), their assigned batch of file+criterion pairs, and the scout prompt template below.
+4. Each teammate receives: inline criterion definitions (from matrix JSON `criteria_definitions`), their assigned batch of file+criterion pairs, and the scout prompt template below. Spawn teammates with `subagent_type: "apex-scout"` and `model: "sonnet"` (read-only verification work -- per shared-guardrails #14). Escalate to `model: "opus"` only for batches composed entirely of cross-file behavioral cells per the Model escalation rule below.
 5. Collect verdicts via TaskList/TaskGet after all teammates complete. Parse verdict blocks from task output fields.
 6. **Fallback:** If TeamCreate fails, fall back to subagent dispatch (next paragraph) and log: `AGENT TEAMS UNAVAILABLE: falling back to subagent dispatch`.
 7. **Batch overflow (batches > 6):** Spawn min(batch-count, 6) scouts for the first N batches. When a scout completes its batch, mark the batch task as completed immediately, then reassign the scout to the next unstarted batch via SendMessage with the new batch payload. When no unstarted batches remain, shut down returning scouts via SendMessage with a completion signal. Never leave a batch task unmarked -- update status before reassignment.
@@ -227,7 +227,7 @@ Parse scout output. For each verdict block, update the corresponding cell in the
    ```
 
 4. If unchecked + recheck > 0 and coverage < 100%:
-   - If remaining cells <= batch-size: launch a single supplementary scout (same agent type and prompt template as Step 2) to complete coverage. Collect verdicts per Step 3, then recompute and persist. Print: `SUPPLEMENTARY: {remaining} cells -> 1 scout`.
+   - If remaining cells <= batch-size: launch a single supplementary scout (`subagent_type: "apex-scout"`, `model: "sonnet"` -- escalate to `opus` only if all remaining cells are cross-file behavioral per the Model escalation rule; same prompt template as Step 2) to complete coverage. Collect verdicts per Step 3, then recompute and persist. Print: `SUPPLEMENTARY: {remaining} cells -> 1 scout`.
    - If remaining cells > batch-size or supplementary scout also leaves cells unchecked: print `Run /apex-audit-matrix --resume {matrix-path} to continue verification.`
 
 5. If coverage == 100%:

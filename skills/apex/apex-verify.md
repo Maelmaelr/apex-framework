@@ -1,6 +1,6 @@
 # apex-verify - Lint and Build Verification
 
-<!-- Called by: SKILL.md Step 6A (Path 1), apex-apex.md plan Phase 2 (Path 2) -->
+<!-- Called by: SKILL.md Step 6A (Path 1). Path 2: invoked via apex-plan-template.md Phase 2 executed by plan-mode after ExitPlanMode -- not directly by apex-apex.md. -->
 
 This workflow runs lint and build to verify implementation correctness.
 

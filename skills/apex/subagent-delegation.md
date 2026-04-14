@@ -30,3 +30,13 @@ Shared protocol for spawning parallel implementation subagents.
 
 9. **Post-subagent follow-up.** After all agents return, review each completion message for reported needed changes (files the agent was scoped out of modifying). If <=5 lines: apply inline. If >5 lines or touches another agent's files: handle per caller protocol (SKILL.md: spawn sequential follow-up agent; teammate: report to lead via SendMessage for cross-boundary fixes).
 10. **Post-subagent scope check.** Run `git diff --name-only` and `git ls-files --others --exclude-standard`. Run `git diff --stat` and compare against `.claude-tmp/pre-agent-diff.stat` -- files whose diff line count increased were modified by agents even if already dirty. Compare against allowed file set. If unauthorized files changed or created: report -- do NOT automatically revert or delete (shared-guardrails #5). Clean up: `rm -f .claude-tmp/pre-agent-diff.stat`.
+
+## Forbidden Actions
+
+Shared guardrails: read ~/.claude/skills/apex/shared-guardrails.md. Additionally:
+
+- Do not spawn parallel Agent tool calls across multiple sequential responses -- all in one response (shared-guardrails #1)
+- Do not spawn subagents with overlapping file ownership -- same-file changes are dependent and must be sequential (item 8)
+- Do not skip the pre-spawn baseline capture (item 4) -- post-subagent scope check relies on it
+- Do not omit the explicit scope constraint from subagent prompts (item 7)
+- Do not auto-revert or delete files flagged by the post-subagent scope check -- report instead (shared-guardrails #5, item 10)
