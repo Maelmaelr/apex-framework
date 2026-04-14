@@ -1,6 +1,3 @@
-# Global Claude Code Rules
-
-<!-- APEX:BEGIN -->
 Be critical. Challenge assumptions, flag risks, push back when suboptimal. Correct answers over comfortable answers.
 
 ## Workflow
@@ -100,23 +97,3 @@ ASCII only. No unicode, no emojis, no smart quotes.
 ## Compaction Preservation
 
 When compacting, preserve: task description, session start time, current APEX path (1/2), active step number, file ownership claims (files), scout findings file path, tail mode, and user decisions. The PreCompact hook echoes these before compaction; the PostCompact hook re-injects them after.
-<!-- APEX:END -->
-
-## Chrome MCP (Claude in Chrome)
-
-Two MCP servers are registered for browser automation:
-- **`claude-in-chrome-local`** (preferred) -- connects directly to Chrome via local Unix socket. Reliable. Tools prefixed `mcp__claude-in-chrome-local__*`.
-- **`claude-in-chrome`** (built-in, fallback) -- uses cloud WebSocket relay (`bridge.claudeusercontent.com`). Unreliable, breaks on sleep/wake, VPN, multi-session conflicts. Tools prefixed `mcp__claude-in-chrome__*`.
-
-**Always prefer `mcp__claude-in-chrome-local__*` tools.** Fall back to `mcp__claude-in-chrome__*` only if the local server is unavailable.
-
-**Interaction discipline:**
-- Refs are per-snapshot -- after any navigation, click, or page state change, take a new snapshot before clicking. Never reuse refs from a prior snapshot.
-- Max 3 click attempts per target element. If none succeed, switch to `browser_js_eval` or ask the user.
-- After 2 consecutive failed browser interactions, run auto-recovery (steps 1-2 below), take a fresh snapshot, then retry once. If still failing, escalate to the user for step 3.
-
-**Recovery steps (if local browser tools stop working):**
-1. (Auto) Kill stale native host: `pkill -f chrome-native-host`
-2. (Auto) Remove stale sockets: `rm -f /tmp/claude-mcp-browser-bridge-$(whoami)/*.sock`
-3. (User) Click the Claude extension icon in Chrome to respawn the native host
-4. Retry -- the local MCP auto-discovers the new socket

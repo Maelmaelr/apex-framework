@@ -59,23 +59,30 @@ Some projects have project-specific slash commands in `.claude/commands/`. These
 
 ## Git Sync
 
-Repository: https://github.com/Maelmaelr/claude-code-apex (private)
-Git root: `~/.claude/` (tracks full Claude Code config, not just skills)
+Two repositories are kept in sync:
 
-Tracked content: skills/, settings, keybindings, statusline, project memories, plugin config, tmp/.
-Excluded (via .gitignore): sessions, debug, history, caches, telemetry, project session data.
+- **claude-code-apex** (private) -- https://github.com/Maelmaelr/claude-code-apex. Git root: `~/.claude/`. Full Claude Code config: skills/, settings, keybindings, statusline, project memories, plugin config, tmp/. Excluded via .gitignore: sessions, debug, history, caches, telemetry, project session data.
+- **apex-framework** (public) -- https://github.com/Maelmaelr/apex-framework. Git root: `~/dev/apex-framework/`. APEX-only mirror: skills/apex, skills/apex-*, skills/admin-apex, agents/{scout,verifier,evaluator}.md, CLAUDE.md, README, LICENSE. One-way mirror -- never edit here directly; edits always happen in `~/.claude/` and are synced out.
 
 When user requests git sync (e.g., "update git", "sync apex", "push changes"):
 
 1. Check for changes: `cd ~/.claude && git status`
-2. If changes exist, stage ALL changes and commit:
+2. If changes exist, stage ALL changes and commit the private repo:
    ```bash
    cd ~/.claude && git add . && git commit -m "Update Claude Code config" && git push
    ```
    `git add .` is safe -- `.gitignore` already excludes sessions, caches, credentials, and runtime data. Using selective staging misses untracked (new) files.
-3. Report what was committed
+3. Run the apex-framework sync, then commit + push the public mirror if anything changed:
+   ```bash
+   bash ~/.claude/skills/admin-apex/scripts/sync-apex-framework.sh
+   cd ~/dev/apex-framework && git add . && \
+     (git diff --cached --quiet && echo "apex-framework: already in sync") || \
+     (git commit -m "Sync from claude-code-apex" && git push)
+   ```
+   The `diff --cached --quiet` guard skips the commit when the mirror is already up to date (no APEX-visible changes since last sync).
+4. Report what was committed to each repo.
 
-To pull latest: `cd ~/.claude && git pull`
+To pull latest: `cd ~/.claude && git pull`. The public mirror is regenerated from source on every sync, so no pull is needed there.
 
 ## Architecture
 
@@ -90,6 +97,7 @@ Two paths based on task complexity. Full flow details in `apex/SKILL.md`.
 - **Skill quality audit flow:** `/apex-audit-matrix --catalog ~/.claude/audit-criteria/skill-quality.md --root ~/.claude/skills` audits skill structure, cross-references, and quality. 23 criteria across entry points, sub-workflows, cross-references, quality, and scripts. Health check: `python3 ~/.claude/skills/apex/scripts/audit-catalog-health.py --catalog-dir ~/.claude/audit-criteria/ --project-root ~/.claude/skills`.
 - **File health flow:** apex-verify Step 3.8 persists notes; apex-file-health remediates. See apex-file-health/SKILL.md.
 - **Context health flow:** `context-health-check.sh` enforces char budgets on CLAUDE.md, skill files, rules, and MEMORY.md. admin-apex-improve.md Phase 1.9 gates additions to over-budget files. Category 12 (context rot) spot-checks CLAUDE.md entries against codebase during improve cycles.
+- **README drift flow:** Category 13 in admin-apex-improve.md compares `~/dev/apex-framework/README.md` against on-disk skills/agents/hook state. Auto-updates + commits the README from within the improve run (separate commit outside `/apex-git` scope, which only covers `~/.claude`).
 - **Diff/Git flow:** Diff summaries written inline (SKILL.md Step 6A, apex-tail.md, admin-apex-improve.md Phase 3.6); `/apex-git` batch-commits. See apex-git/SKILL.md.
 - **PreCompact/PostCompact/StopFailure hooks:** `~/.claude/skills/apex/scripts/precompact-apex.sh` echoes active session state (task, path, step, files). PreCompact runs before compaction (helps summarizer preserve state); PostCompact runs after compaction (guarantees full-fidelity re-injection); StopFailure runs on API errors (rate limit, auth failure) to preserve state before session drops. Config in `~/.claude/settings.json` hooks.
 - **Lesson flow:** See apex-lessons-extract/SKILL.md for write/consolidate flow (includes tag format reference for all three lesson types). SKILL.md Step 3.5 for read/hit-tracking (canonical procedure, referenced by both paths).

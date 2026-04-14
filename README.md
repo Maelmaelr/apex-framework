@@ -20,27 +20,28 @@ Both paths include:
 ## Installation
 
 ```bash
-# Clone into your Claude Code config
-git clone https://github.com/Maelmaelr/apex-framework ~/apex-framework
+npx create-apex
+```
 
-# Symlink (or copy) skills and agents into ~/.claude
+The installer pulls the latest apex-framework tarball, copies skills + agents + starter audit-criteria into `~/.claude/`, merges APEX hooks into `~/.claude/settings.json` (preserving your existing hooks), and writes the APEX rules into `~/.claude/CLAUDE.md` (append / overwrite / separate-file modes). Re-run `npx create-apex upgrade` to refresh skills without touching your CLAUDE.md.
+
+To initialize APEX in a specific project, the installer offers to scaffold `.claude/lessons.md`, `.claude/lessons-index.md`, `.claude/audit-criteria/`, `.claude/audit-verdicts/`, `.claude/scout-findings/`, `.claude-tmp/`, and `docs/` stubs. You can also run `/apex-init` from within Claude Code to do the same later.
+
+### Manual install (fallback)
+
+```bash
+git clone https://github.com/Maelmaelr/apex-framework ~/apex-framework
 for s in apex apex-audit-matrix apex-brainstorm apex-eod apex-file-health \
          apex-fix apex-git apex-init apex-lessons-analyze apex-lessons-extract \
          apex-party admin-apex; do
   ln -s ~/apex-framework/skills/$s ~/.claude/skills/$s
 done
-
 for a in scout verifier evaluator; do
   ln -s ~/apex-framework/agents/$a.md ~/.claude/agents/$a.md
 done
-
-# Initialize a project
-cd your-project
-# In Claude Code:
-/apex-init
 ```
 
-`/apex-init` creates the per-project structure: `.claude/lessons.md`, `.claude/lessons-index.md`, `.claude-tmp/`, and stubs in `docs/`.
+You will still need to merge the hooks in `templates/hooks.json` into `~/.claude/settings.json` manually, and add the content of `templates/apex-rules.md` to your `~/.claude/CLAUDE.md`.
 
 ## Skills
 
@@ -85,7 +86,10 @@ Reusable Agent tool definitions in `agents/`:
 
 - `skills/` -- APEX slash commands
 - `agents/` -- reusable agent definitions
-- `CLAUDE.md` -- global workflow rules that live at `~/.claude/CLAUDE.md` and are loaded into every Claude Code session
+- `audit-criteria/` -- starter criteria catalogs (e.g., `skill-quality.md`) seeded into `~/.claude/audit-criteria/` by the installer
+- `templates/apex-rules.md` -- sanitized APEX block extracted from the maintainer's `~/.claude/CLAUDE.md` between `<!-- APEX:BEGIN -->` and `<!-- APEX:END -->` markers
+- `templates/hooks.json` -- canonical hook entries the installer merges into `~/.claude/settings.json`
+- `CLAUDE.md` -- full maintainer CLAUDE.md (reference only; installer uses `templates/apex-rules.md`)
 
 ## Status
 

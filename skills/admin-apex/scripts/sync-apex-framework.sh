@@ -63,9 +63,40 @@ for agent in "${AGENTS[@]}"; do
   fi
 done
 
-# CLAUDE.md
+# CLAUDE.md -- extract content between <!-- APEX:BEGIN --> and <!-- APEX:END -->
+# markers into templates/apex-rules.md so the public installer gets a sanitized
+# block (no personal sections like Chrome MCP). If markers are absent, fall back
+# to copying the whole file (legacy behavior).
 if [[ -f "$SRC_HOME/CLAUDE.md" ]]; then
+  mkdir -p "$DST/templates"
+  if grep -q '<!-- APEX:BEGIN -->' "$SRC_HOME/CLAUDE.md" && \
+     grep -q '<!-- APEX:END -->' "$SRC_HOME/CLAUDE.md"; then
+    awk '
+      /<!-- APEX:BEGIN -->/ { inside=1; next }
+      /<!-- APEX:END -->/   { inside=0; next }
+      inside
+    ' "$SRC_HOME/CLAUDE.md" > "$DST/templates/apex-rules.md"
+  else
+    echo "WARNING: APEX:BEGIN/END markers not found in CLAUDE.md; copying full file" >&2
+    rsync -a "$SRC_HOME/CLAUDE.md" "$DST/templates/apex-rules.md"
+  fi
+  # Keep CLAUDE.md at repo root for backwards-compat readers
   rsync -a "$SRC_HOME/CLAUDE.md" "$DST/CLAUDE.md"
 fi
+
+# Global audit-criteria catalogs -- bundle into apex-framework so create-apex
+# ships starter catalogs (skill-quality.md, etc.) into ~/.claude/audit-criteria/.
+if [[ -d "$SRC_HOME/audit-criteria" ]]; then
+  mkdir -p "$DST/audit-criteria"
+  rsync -a --delete "$SRC_HOME/audit-criteria/" "$DST/audit-criteria/"
+fi
+
+# hooks.json template (templates/hooks.json) is hand-maintained in apex-framework
+# as the canonical hook entries consumed by the create-apex installer. Not synced
+# from ~/.claude/settings.json (which mixes personal entries); edit it there.
+
+# Purge Python cache dirs (they regenerate and don't belong in the mirror)
+find "$DST/skills" -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+find "$DST/skills" -type f -name "*.pyc" -delete 2>/dev/null || true
 
 echo "Sync complete -> $DST"

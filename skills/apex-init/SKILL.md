@@ -40,7 +40,7 @@ Monorepo: {yes/no, with workspace list if yes}
 Existing: {list any APEX artifacts already present}
 ```
 
-If ALL artifacts exist (CLAUDE.md + .claude-tmp/ + docs/project-context.md), print "Project already initialized. Nothing to do." and stop.
+If ALL artifacts exist (CLAUDE.md + .claude-tmp/ + docs/project-context.md + .claude/audit-criteria/ + .claude/audit-verdicts/ + .claude/scout-findings/), print "Project already initialized. Nothing to do." and stop. Otherwise continue -- re-runs backfill missing dirs without overwriting existing files.
 
 ## Step 2: Gather Info
 
@@ -91,7 +91,10 @@ Create the project-level directory (skip any that exist):
   lessons.md
   lessons-index.md
   lessons-archive.md
-  commands/         (empty directory)
+  commands/           (empty directory)
+  audit-criteria/     (committed; project-level criteria catalogs)
+  audit-verdicts/     (gitignored; persistent verdict JSON)
+  scout-findings/     (gitignored; persistent scout finding store)
 ```
 
 **lessons.md** content:
@@ -105,6 +108,17 @@ Create the project-level directory (skip any that exist):
 ```markdown
 # Lessons Archive
 ```
+
+Place `.gitkeep` in `commands/` and `audit-criteria/` so empty committed dirs survive clone. `audit-verdicts/` and `scout-findings/` are gitignored -- no `.gitkeep` needed.
+
+**Gitignore entries:** Append the following to `.gitignore` (create the file if absent; skip any line already present):
+
+```
+.claude/audit-verdicts/
+.claude/scout-findings/
+```
+
+Dedupe before appending -- grep the target lines and only add missing ones.
 
 If `.claude/commands/` already contains files, scan them and note the existing commands for inclusion in CLAUDE.md (Step 6).
 

@@ -1,0 +1,85 @@
+{
+  "_comment": "Canonical APEX hook entries. Consumed by create-apex installer, which merges these into ~/.claude/settings.json under `hooks`. User-added hooks are preserved; APEX entries are deduped by matcher+command.",
+  "PreCompact": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/skills/apex/scripts/precompact-apex.sh"
+        }
+      ]
+    }
+  ],
+  "PostCompact": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/skills/apex/scripts/precompact-apex.sh"
+        }
+      ]
+    }
+  ],
+  "StopFailure": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/skills/apex/scripts/precompact-apex.sh"
+        }
+      ]
+    }
+  ],
+  "PreToolUse": [
+    {
+      "matcher": "Edit|Write",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/skills/apex/scripts/scope-check-hook.sh"
+        }
+      ]
+    },
+    {
+      "matcher": "Read|Edit|Write",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/skills/apex/scripts/protect-env-hook.sh"
+        }
+      ]
+    },
+    {
+      "matcher": "Bash",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/skills/apex/scripts/block-destructive-hook.sh"
+        }
+      ]
+    }
+  ],
+  "PostToolUse": [
+    {
+      "matcher": "Grep|Glob|Read",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/skills/apex/scripts/scan-budget-hook.sh"
+        }
+      ]
+    },
+    {
+      "matcher": "Read",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "bash ~/.claude/skills/apex/scripts/scout-context-truncate-hook.sh"
+        }
+      ]
+    }
+  ]
+}

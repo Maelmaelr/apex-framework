@@ -135,8 +135,14 @@ Note which skill(s) executed -> determines in-scope files. No skill execution AN
 10. **Model/effort optimization** - Opus where Sonnet suffices, missing effort spec, Explore agents without `model: "sonnet"`
 11. **Catalog drift** - stale targets, count mismatches, source drift, overlap, uncovered files (from Step 2.7)
 12. **Context rot** - CLAUDE.md/rules entries referencing functions, files, or patterns that no longer exist in the codebase. Pick 3-5 longest entries from CLAUDE.md and each rules file. For each, Grep the codebase for the specific function/file/pattern named. If the reference target is gone (renamed, deleted, refactored away), the entry is stale -- create a HIGH finding to remove or update it. Also flag entries that describe one-time incident workarounds where the code has since been permanently fixed. Print: `CONTEXT ROT: {N} entries checked, {M} stale`.
+13. **README drift** - `~/dev/apex-framework/README.md` diverged from current APEX state. Checks:
+    - Skill list: parse the "## Skills" section (core/auditing/knowledge/utilities subsections) for `` `/skill-name` `` entries. Compare to on-disk list from Step 0.5 (`find ~/.claude/skills -maxdepth 1 -type d -name 'apex*' -o -name 'admin-apex'`). Missing/extra/renamed -> HIGH finding on `~/dev/apex-framework/README.md`.
+    - Agent list: parse "## Agents" section for `scout.md`, `verifier.md`, `evaluator.md` mentions. Compare to `ls ~/.claude/agents/*.md`. Missing/extra -> HIGH finding.
+    - Installation instructions: if the installer shipped (file `~/dev/create-apex/package.json` exists) and README still shows manual `git clone` + `ln -s` loop, produce a HIGH finding to switch to `npx create-apex`. If installer absent, skip.
+    - Design principles / file structure: the "## Design principles" and "## Files" sections -- if admin-apex/SKILL.md Architecture section mentions a new mode, path, or hook not reflected in README narrative, produce a MEDIUM finding summarising the gap.
+    Print: `README DRIFT: {N} gaps found`.
 
-**Category gating:** Skip inapplicable based on Step 3 markers. No subagents: skip 7. No plan mode: skip 5. No parallel: skip 8. No catalog findings: skip 11. No project CLAUDE.md or rules: skip 12. Print: `CATEGORIES: {N}/12 applicable`.
+**Category gating:** Skip inapplicable based on Step 3 markers. No subagents: skip 7. No plan mode: skip 5. No parallel: skip 8. No catalog findings: skip 11. No project CLAUDE.md or rules: skip 12. No `~/dev/apex-framework/README.md`: skip 13. Print: `CATEGORIES: {N}/13 applicable`.
 
 **Staleness scan (version check only):** Cross-reference deprecated/renamed features against in-scope skill files.
 
@@ -202,9 +208,10 @@ Call EnterPlanMode. Failure: report and stop.
 ## Instructions (Execute After Approval)
 
 ### Constraints
-- Only modify: ~/.claude/skills/, ~/.claude/agents/, .claude/commands/, ~/.claude/CLAUDE.md, ~/.claude/audit-criteria/, .claude/audit-criteria/
+- Only modify: ~/.claude/skills/, ~/.claude/agents/, .claude/commands/, ~/.claude/CLAUDE.md, ~/.claude/audit-criteria/, .claude/audit-criteria/, ~/dev/apex-framework/README.md
 - No changes beyond findings. Preserve formatting (ASCII, ## Step N:, Forbidden Actions). AI-optimized per shared-guardrails #12, #15.
 - No tests -- these are instruction files
+- `~/dev/apex-framework/README.md` edits are permitted only for Category 13 (README drift) findings. Other apex-framework files must never be edited here -- the sync script regenerates them from `~/.claude/`.
 
 Batch-fetch: `ToolSearch select:TaskCreate,TaskUpdate,TaskList`. Grep `## Implementation Protocol` in this file, Read from there. **Execute ALL phases**: 1 -> 1.5 -> 1.8 -> 1.9 -> 2 -> 2.5 -> 3 -> 3.6 (mandatory apex-git) -> 3.7 -> 4. Stopping before Phase 4 is a violation.
 
@@ -327,6 +334,11 @@ Both: ASCII only, no tables.
 3. **Cleanup** (task in_progress): Delete extracts: `find ~/.claude/tmp -maxdepth 1 -name 'apex-improve-extract*.md' -delete 2>/dev/null; true`. Clear workflow-improvements if processed AND not `CONCURRENCY_DETECTED`: `echo -n > ~/.claude/tmp/apex-workflow-improvements.md`. Task completed.
 4. No files changed: "No skill files modified, skipping diff summary and auto-commit."
 5. **Auto-commit:** Files changed -> invoke `/apex-git` via Skill tool. Mandatory per admin-apex contract. Runs regardless of concurrency.
+6. **apex-framework README commit:** If `~/dev/apex-framework/README.md` was modified (check `cd ~/dev/apex-framework && git status --porcelain README.md`), commit + push inline since `/apex-git` only covers `~/.claude`:
+   ```bash
+   cd ~/dev/apex-framework && git add README.md && git commit -m "Update README (drift)" && git push
+   ```
+   Skip if README.md unchanged in that repo.
 
 ### Phase 3.7: Self-Reflection
 

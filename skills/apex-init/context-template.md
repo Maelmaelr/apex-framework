@@ -29,6 +29,12 @@
 
 - **All features** -> [features/index.md](./features/index.md)
 
+### Audit & Coverage
+
+- **Criteria catalogs** -> `.claude/audit-criteria/` (see `~/.claude/audit-criteria/skill-quality.md` for structure)
+- **Run a coverage-tracked audit** -> `/apex audit {subject}` (auto-routes when a catalog matches) or `/apex-audit-matrix --catalog <path>`
+- **Persistent state** -> `.claude/audit-verdicts/` (verdict JSON, gitignored), `.claude/scout-findings/` (finding store, gitignored)
+
 <!-- SECTION: modification-checklist -->
 ## Modification Checklist
 
