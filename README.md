@@ -15,7 +15,7 @@ Both paths include:
 
 - **Lessons system** -- project-local `.claude/lessons.md` + keyword index. Captured implementation lessons are grep'd on every run, bumped on hit, archived when stale.
 - **Audit matrix** -- deterministic `(target x criterion)` enumeration with persistent verdicts, file-hash change detection, and evaluator re-verification of PASS cells to catch false negatives.
-- **Session manifests + hooks** -- PreCompact/PostCompact/StopFailure hooks preserve state across compaction and API failures; scope-check and scan-budget hooks enforce discipline during delegated execution.
+- **Session manifests + hooks** -- PreCompact/PostCompact/StopFailure hooks preserve state across compaction and API failures. Per-tool hooks add guardrails: scope-check (blocks Edit/Write outside teammate scope), scan-budget (caps Grep/Glob/Read during scouting), scout-context-truncate (advisory truncation on large Reads), protect-env (blocks `.env*` and credential reads), and block-destructive (blocks destructive git commands, force push to main, and dangerous `rm`).
 
 ## Installation
 
@@ -86,7 +86,7 @@ Reusable Agent tool definitions in `agents/`:
 
 - `skills/` -- APEX slash commands
 - `agents/` -- reusable agent definitions
-- `audit-criteria/` -- starter criteria catalogs (e.g., `skill-quality.md`) seeded into `~/.claude/audit-criteria/` by the installer
+- `audit-criteria/` -- starter criteria catalogs (`apex.md`, `skill-quality.md`) seeded into `~/.claude/audit-criteria/` by the installer
 - `templates/apex-rules.md` -- sanitized APEX block extracted from the maintainer's `~/.claude/CLAUDE.md` between `<!-- APEX:BEGIN -->` and `<!-- APEX:END -->` markers
 - `templates/hooks.json` -- canonical hook entries the installer merges into `~/.claude/settings.json`
 - `CLAUDE.md` -- full maintainer CLAUDE.md (reference only; installer uses `templates/apex-rules.md`)
