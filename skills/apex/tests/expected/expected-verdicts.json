@@ -1,0 +1,32 @@
+[
+  {
+    "fixture": "auth-correct.ts",
+    "criterion_id": "AUTH-01",
+    "expected_verdict": "pass",
+    "rationale": "Both show() and update() queries include .where('userId', userId)"
+  },
+  {
+    "fixture": "auth-missing.ts",
+    "criterion_id": "AUTH-01",
+    "expected_verdict": "fail",
+    "rationale": "TiktokAccount query uses .where('id', params.accountId) without userId scoping"
+  },
+  {
+    "fixture": "rate-limit-correct.ts",
+    "criterion_id": "RATE-01",
+    "expected_verdict": "pass",
+    "rationale": "Both billing and canvas route groups use middleware.rateLimitFinancial()"
+  },
+  {
+    "fixture": "rate-limit-missing.ts",
+    "criterion_id": "RATE-01",
+    "expected_verdict": "fail",
+    "rationale": "Billing group uses rateLimit() instead of rateLimitFinancial(); credits group has no rate limiting"
+  },
+  {
+    "fixture": "validation-partial.ts",
+    "criterion_id": "INPUT-01",
+    "expected_verdict": "fail",
+    "rationale": "privacyLevel and notifySubscribers use .optional() without .nullable() but are clearable fields"
+  }
+]

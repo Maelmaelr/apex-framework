@@ -1,0 +1,14 @@
+Score complexity factors against the current task (1 point each):
+- Cross-layer changes (frontend + backend + shared types in same task)
+- Shared interface/type modifications with >2 downstream consumers
+- Security/auth-adjacent code changes
+- Unclear patterns (no existing example to follow in codebase)
+- Bug with unknown root cause requiring hypothesis testing
+- >5 files with non-mechanical changes (excludes rename/prop-thread/import-fix)
+- Circular or bidirectional dependencies between changes
+
+Score 0: skip (no effort keyword)
+Score 1-2: think
+Score 3+: ultrathink
+
+Print: `EFFORT: {score}/7 -- {keyword}` then output the keyword on its own line.
