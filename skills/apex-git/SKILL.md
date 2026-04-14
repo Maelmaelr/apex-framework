@@ -11,7 +11,7 @@ Reads diff summaries from `.claude-tmp/git-diff/` if available, otherwise falls 
 
 ## Step 0: Read Diffs + Standalone Verification Gate
 
-Glob for `.claude-tmp/git-diff/git-diff-*.md`. Also check for a VERSION file: look for `VERSION` at project root, then `apps/web/VERSION`. Use the first one found. If neither exists, initialize `VERSION` at the project root with content `0.1.0` and use that.
+Glob for `.claude-tmp/git-diff/git-diff-*.md` (CWD-relative) AND `~/.claude/.claude-tmp/git-diff/git-diff-*.md` (absolute). Merge matches from both locations and de-duplicate by path. admin-apex-improve always writes to `~/.claude/.claude-tmp/git-diff/`; project-rooted callers also have the CWD-relative path -- both are read so the summary is found regardless of CWD. Also check for a VERSION file: look for `VERSION` at project root, then `apps/web/VERSION`. Use the first one found. If neither exists, initialize `VERSION` at the project root with content `0.1.0` and use that.
 
 **Pre-flight cleanup.** Remove stale APEX session artifacts that would block the VERSION bump Edit or trigger budget hooks from unrelated sessions: `find .claude-tmp/apex-active -maxdepth 1 -type f \( -name "*-scope.json" -o -name "*-budget.json" \) -delete 2>/dev/null || true`. apex-git is a boundary operation -- any active APEX session state that reaches this point is stale by definition.
 
