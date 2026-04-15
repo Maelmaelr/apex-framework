@@ -2,7 +2,7 @@
 # cleanup-session.sh -- Remove .claude-tmp/ artifacts for a completed APEX session.
 # Usage: bash cleanup-session.sh <session-id> [project-root]
 # Called by: SKILL.md Step 6A, apex-apex.md Step 2.6/2.6a, apex-plan-template.md Phase 4
-# Version: v1.1 -- 2026-03-28
+# Version: v1.2 -- 2026-04-15 (stop deleting git-diff/*.md; /apex-git consumes them)
 # Arguments:
 #   session-id    APEX session ID to clean (e.g., "apex-33of2yzf")
 #   project-root  Optional path to project root (default: current directory)
@@ -25,10 +25,12 @@ Artifacts removed (all under {project-root}/.claude-tmp/):
   apex-active/{session-id}-scope.json
   apex-active/{session-id}-budget.json
   scout/  (scout-findings-*.md and audit-checklist-*.md)
-  git-diff/  (git-diff-*.md)
   apex-context/  (apex-context-*.md)
   apex-baseline-*.txt  (team scope baselines)
   pre-agent-diff.stat  (subagent delegation baseline)
+
+Artifacts NOT removed (consumed by /apex-git post-commit):
+  git-diff/  (git-diff-*.md -- persist across sessions for batch commit)
 
 Exit codes:
   0  Cleanup done (even if nothing was removed)
@@ -129,19 +131,11 @@ if [[ "$scout_found" == false ]]; then
   echo "CLEANUP: No scout artifacts found"
 fi
 
-# 3. Diff summaries (git-diff-*.md -- independent UIDs)
-diff_found=false
-if [[ -d "${TMP_DIR}/git-diff" ]]; then
-  while IFS= read -r -d '' f; do
-    rm -f "$f"
-    echo "CLEANUP: Removed git-diff/$(basename "$f")"
-    removed_count=$((removed_count + 1))
-    diff_found=true
-  done < <(find "${TMP_DIR}/git-diff" -maxdepth 1 -name "*.md" -print0 2>/dev/null)
-fi
-if [[ "$diff_found" == false ]]; then
-  echo "CLEANUP: No diff summaries found"
-fi
+# 3. Diff summaries (git-diff-*.md) -- intentionally NOT removed here.
+#    They persist across sessions so /apex-git can batch-commit accumulated
+#    diffs from multiple APEX runs. /apex-git Step 4 deletes them after a
+#    successful commit + push. Removing them per-session breaks that contract.
+echo "CLEANUP: Skipping git-diff/ (consumed by /apex-git)"
 
 # 4. Teammate context files (apex-context-*.md -- independent UIDs)
 context_found=false
