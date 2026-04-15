@@ -90,6 +90,8 @@ TaskUpdate the "Verify and reflect" per-teammate completion task to completed.
 14. Message teammates directly for dependencies or proactive alerts (shared interface changes, completed blockers).
 15. On shutdown_request: SendMessage (type "shutdown_response", approve: true, request_id from the request) after completing in-progress work.
 
+15b. **Post-completion idle discipline (HARD WAIT).** After sending the Phase 4 completion report, enter a strict waiting state. Do NOT re-enter Phase 2 implementation on idle wake-up or TaskList replay. Respond only to shutdown_request or direct lead questions via SendMessage. If new pending tasks appear in TaskList after your completion report, treat them as informational only -- the lead is responsible for explicit reassignment via SendMessage before you resume work. Replaying the task queue after declaring completion produces spurious "already done" reports and noise for the lead.
+
 ## Forbidden Actions
 
 Shared guardrails: read ~/.claude/skills/apex/shared-guardrails.md. Additionally:

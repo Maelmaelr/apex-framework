@@ -152,13 +152,13 @@ Work from extract. Need more context: Grep raw JSONL for specific line number.
 
 Per transcript issue, note: what happened (cite lines), responsible skill file, fix.
 
-**From workflow improvements:** Each item is pre-classified. Map to responsible file. No transcript evidence needed (source: "workflow-improvements").
+**From workflow improvements:** Each item is pre-classified. Map to responsible file. No transcript evidence needed (source: "workflow-improvements"). Do not anchor on the observation's category label -- categories (bias, token-waste, team-coordination, plan-quality) describe symptom/context, not the target file. Before mapping, ask whose concern the actual lever lives in (scan, scout, plan, team, verify, lessons, improve itself); the framing file named in the observation is often one stage downstream of the real fix point.
 
 Merge and deduplicate both sets.
 
 **Verify against current state.** Grep target file for anchor text (step number, rule name, heading) before finalizing each fix. ~10% token cost of full Read. Drop if already addressed. Adjust fix wording to match actual content. Verify occurrence counts in Fix field via Grep.
 
-**Disconfirmation check.** Per finding: (a) check if a related guardrail intentionally restricts the targeted behavior; (b) Grep `~/.claude/skills/` for current rule text (cross-references, shared-guardrails entries, caller comments). Batch greps: combine patterns as `pattern1|pattern2|pattern3` alternation. Group by target file. Only constraint-modifying findings need guardrail check. Print `DISCONFIRMATION finding-{N}: {reason}` only when counter-evidence found. Conclusive counter-evidence: drop. Partial: downgrade HIGH->MEDIUM, note in Fix. Guardrail relaxation: verify against shared-guardrails.md, escalate via AskUserQuestion if violated.
+**Disconfirmation check.** Per finding: (a) check if a related guardrail intentionally restricts the targeted behavior; (b) Grep `~/.claude/skills/` for current rule text AND adjacent-concept keywords (not just counter-evidence) -- if a sibling file already addresses the concept via different wording, drop or reframe the finding. Include synonyms and related mechanisms (e.g., finding about "pre-check" -> also grep "pre-flight", "guard", "verify before"). Batch greps: combine patterns as `pattern1|pattern2|pattern3` alternation. Group by target file. Only constraint-modifying findings need guardrail check. Print `DISCONFIRMATION finding-{N}: {reason}` when counter-evidence OR adjacent-concept coverage found. Conclusive: drop. Partial: downgrade HIGH->MEDIUM, note in Fix. Guardrail relaxation: verify against shared-guardrails.md, escalate via AskUserQuestion if violated.
 
 **Effort assessment:** Score 1 point each: (a) >8 findings, (b) 3+ target files, (c) modifies/relaxes guardrail, (d) structural changes (renumbering, moves, restructuring), (e) cross-file dependency chain. 0: skip. 1-2: think. 3+: ultrathink. Print: `EFFORT: {score}/5 -- {keyword}`.
 
@@ -212,6 +212,7 @@ Call EnterPlanMode. Failure: report and stop.
 - No changes beyond findings. Preserve formatting (ASCII, ## Step N:, Forbidden Actions). AI-optimized per shared-guardrails #12, #15.
 - No tests -- these are instruction files
 - `~/dev/apex-framework/README.md` edits are permitted only for Category 13 (README drift) findings. Other apex-framework files must never be edited here -- the sync script regenerates them from `~/.claude/`.
+- When writing verification steps that invoke `audit-catalog-health.py`, use explicit `--project-root` values (not placeholders): global catalogs use `--project-root ~/.claude/skills`; project catalogs use `--project-root .` (CWD = project root).
 
 Batch-fetch: `ToolSearch select:TaskCreate,TaskUpdate,TaskList`. Grep `## Implementation Protocol` in this file, Read from there. **Execute ALL phases**: 1 -> 1.5 -> 1.8 -> 1.9 -> 2 -> 2.5 -> 3 -> 3.6 (mandatory apex-git) -> 3.7 -> 4. Stopping before Phase 4 is a violation.
 
@@ -274,7 +275,9 @@ Print: `CONTEXT HEALTH: {blocks} blocks, {warnings} warnings, {gated} findings g
 ### Phase 2: Implementation
 **Context clearing reminder:** Re-read every target file before editing -- prior reads cleared after plan approval.
 
-**Pre-implementation stale-state re-check:** `cd ~/.claude && git log --oneline -3 -- {target-files}` (restore CWD). If any commit appeared since Step 2.5 ran, re-verify affected findings have not been resolved. Drop resolved findings before editing.
+**Pre-implementation stale-state re-check:** `cd ~/.claude && git log --oneline -3 -- {target-files}` (restore CWD). If any commit appeared since Step 2.5 ran, re-verify affected findings have not been resolved. Drop resolved findings before editing. For metadata-type findings (date bumps, count fields, catalog entries) where another session may have already applied the change without a commit, re-read the specific field before editing -- do not assume plan scope is current.
+
+**Pre-Edit duplicate-content check (per Edit):** Grep target file for a distinctive 5-10 word phrase from `new_string` before each Edit call. Present: skip Edit, mark task completed with reason "already applied (upstream or prior no-op)", continue to next finding. Catches duplicate-content injection when upstream commits land mid-session OR when `new_string` overlaps existing adjacent content. Cheaper than reverting a duplicated Edit after the fact.
 
 Print dependency gate per shared-guardrails #8. Same-file = dependent. Exception: `~/.claude/CLAUDE.md` different sections may be independent.
 

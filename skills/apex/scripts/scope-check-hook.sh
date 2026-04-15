@@ -87,6 +87,8 @@ fi
 
 # Check if file_path is in the allowed list (pass SCOPE_FILE via argv, not interpolation)
 # Supports both explicit paths and glob patterns (entries containing * or ?)
+# Output format: "yes:N" or "no:N" where N is allowed_count (0 if scope unreadable).
+PY_STDERR=$(mktemp 2>/dev/null || echo "/tmp/apex-scope-check-$$.err")
 ALLOWED=$(python3 -c "
 import fnmatch, json, os, sys
 scope_file = sys.argv[1]
@@ -94,14 +96,15 @@ target = sys.argv[2]
 with open(scope_file, encoding='utf-8') as f:
     data = json.load(f)
 files = data.get('files', [])
+count = len(files)
 for allowed in files:
     if target == allowed or target.endswith('/' + allowed) or allowed.endswith('/' + target):
-        print('yes')
+        print('yes:' + str(count))
         sys.exit(0)
     expanded_allowed = os.path.expanduser(allowed)
     expanded_target = os.path.expanduser(target)
     if expanded_target == expanded_allowed:
-        print('yes')
+        print('yes:' + str(count))
         sys.exit(0)
     if '*' in allowed or '?' in allowed:
         candidates = [allowed]
@@ -109,20 +112,36 @@ for allowed in files:
             candidates.append(allowed.replace('/**/', '/'))
         for cand in candidates:
             if fnmatch.fnmatch(target, cand) or fnmatch.fnmatch(target, '**/' + cand):
-                print('yes')
+                print('yes:' + str(count))
                 sys.exit(0)
             expanded_cand = os.path.expanduser(cand)
             if fnmatch.fnmatch(expanded_target, expanded_cand) or fnmatch.fnmatch(expanded_target, '**/' + expanded_cand):
-                print('yes')
+                print('yes:' + str(count))
                 sys.exit(0)
-print('no')
-" "$SCOPE_FILE" "$FILE_PATH" 2>/dev/null || echo "no")
+print('no:' + str(count))
+" "$SCOPE_FILE" "$FILE_PATH" 2>"$PY_STDERR" || echo "no:0")
+PY_ERR=$(tr '\n' ' ' < "$PY_STDERR" 2>/dev/null | head -c 120)
+rm -f "$PY_STDERR"
 
-if [[ "$ALLOWED" == "yes" ]]; then
+if [[ "$ALLOWED" == yes:* ]]; then
   echo "$ALLOW"
   exit 0
 fi
 
-# Block: file not in allowed scope
-deny "Scope violation: $FILE_PATH not in APEX allowed files. Pre-extend scope JSON before Write (see SKILL.md Step 5A Scope extension)."
+# Block: file not in allowed scope. Include scope_file basename, allowed_count,
+# and captured python stderr so the assistant can distinguish genuine misses
+# from transient scope-read failures without manual hook-invocation.
+ALLOWED_COUNT="${ALLOWED#no:}"
+SCOPE_BASENAME=$(basename "$SCOPE_FILE")
+DENY_MSG="Scope violation: $FILE_PATH not in APEX allowed files (scope_file=$SCOPE_BASENAME, allowed_count=$ALLOWED_COUNT). Pre-extend scope JSON before Write (see SKILL.md Step 5A Scope extension)."
+if [[ "$ALLOWED_COUNT" == "0" ]]; then
+  DENY_MSG="$DENY_MSG Hint: scope unreadable -- retry once."
+fi
+if [[ -n "$PY_ERR" ]]; then
+  # Escape backslashes and double quotes for JSON embedding
+  PY_ERR_ESC=${PY_ERR//\\/\\\\}
+  PY_ERR_ESC=${PY_ERR_ESC//\"/\\\"}
+  DENY_MSG="$DENY_MSG stderr=$PY_ERR_ESC"
+fi
+deny "$DENY_MSG"
 exit 0

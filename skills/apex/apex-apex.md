@@ -81,7 +81,7 @@ Follow SKILL.md Step 3.5 lesson loading procedure (uses `~/.claude/skills/apex/s
 
 1. **Select terms (6-8 total).** Sources: scan results, scout findings. Replace generic scan terms with specific scout-discovered terms (table names, service names, function names) -- do not stack all sources. Domain filter: when scout findings are clearly single-domain (backend service helpers, API controllers, DB migrations), omit terms that primarily surface lessons from the other domain (frontend hook patterns, component lifecycle, UI state) -- cross-domain lessons add context noise without aiding the fix.
 2. **Run grep-lessons.sh.** If output is useful (<150 lines, non-empty), proceed to hit-tracking (SKILL.md Step 3.5 sub-step 3).
-3. **If truncated or empty:** narrow terms and retry once. **Hard limit: 2 total attempts.** After the 2nd attempt, skip lesson loading regardless of result -- do not retry with `head`, alternate keywords, or any other workaround.
+3. **If truncated:** drop the most generic terms and retry once (do not add more specific symbols -- narrow terms tend to match nothing). **If empty:** do not retry. **Hard limit: 2 total attempts.** After the 2nd attempt, skip lesson loading regardless of result -- do not retry with `head`, alternate keywords, or any other workaround.
 
 Keep loaded lessons in context for plan writing (Path 2) or subagent prompts (downgrade to Path 1).
 

@@ -73,7 +73,7 @@ Examples:
   - **Extraction/split:** Grep tests for `vi.spyOn`/`jest.spyOn` targeting source class
   - **File-move / content change:** Grep tests for hardcoded path refs (`readFileSync`). Enumerate `./sibling` imports. For content changes, grep tests for `readFileSync`/`readComponent` referencing modified file
   - **Shared type additions:** Grep construction sites (object literals, factories, `as TypeName`) across ALL packages
-  - **Shared type removals:** Grep literal value across ALL packages (display, tests, i18n, admin constants)
+  - **Shared type removals:** Grep literal value across ALL packages (display, tests, i18n, admin constants). Also grep ALL ancestor `index.ts` barrel files up to the package root -- removed exports may be re-exported from parent-folder barrels that won't surface in package-wide consumer grep.
   - **Interface restructuring:** Distinguish surface prop renames from behavioral restructuring (data fetching removed, state relocated). Grep `<ComponentName` across full owning package for all JSX consumers (non-page consumers are primary source of incomplete ownership lists)
   - **Column additions:** Grep aggregate queries (`.count`, `.where`, `.whereNull`) on same table. Check migration archives
   - **Sequential resources:** Read directory listing for current highest sequence number
@@ -110,7 +110,7 @@ Examples:
 10. FAIL: Cite what found instead, or confirm absence after diversified search (rule 5). Never FAIL without targeted search.
 11. Flow/behavior claims ("X calls Y"): trace actual call chain -- function existence alone is insufficient.
 12. Existence claims: existence check sufficient. Framework-auto-generated elements (Next.js viewport meta, auto-routes) satisfy claims without explicit code. Check framework auto-generation before FAIL.
-13. Existence/export claims: check barrel files, re-exports, alias patterns before FAIL.
+13. Existence/export claims: check barrel files, re-exports, alias patterns before FAIL. When scouting for symbol removal/rename, grep ALL ancestor-folder barrel/index files (immediate parent, grandparent up to package root) for re-exports of the target, not only the defining folder's barrel -- parent-folder `export * from './subfolder'` and named re-exports are the dominant miss pattern.
 14. Before FAIL on behavioral/pattern claims, consider implicit mitigations (naming conventions, framework guarantees, architectural patterns). Uncertain: FAIL with caveat.
 15. Before FAIL, steel-man the current code: intentional simplification, framework handling, planned deprecation, performance trade-off, scope limitation. Plausible: FAIL with caveat noting steel-man.
 16. Findings touching Security-Sensitive files (per CLAUDE.md): flag implicit dependencies, fragile assumptions, security requirements.
@@ -149,7 +149,7 @@ Before launching scouts, assemble context:
 
 **Step A -- Collect scan artifacts.** Per scout area/batch, collect relevant grep results and file snippets from SKILL.md Step 2 scan. Serialize using Scan Data Reuse key-value format.
 
-**Step B -- Batch pre-flight Greps.** Identify key symbols/patterns each area needs. Run ALL anticipated Greps in a SINGLE response (parallel). Do not dispatch until done. Include in each scout's `<pre-loaded-context>`.
+**Step B -- Batch pre-flight Greps.** Identify key symbols/patterns each area needs. Run ALL anticipated Greps in a SINGLE response (parallel). Do not dispatch until done. Include in each scout's `<pre-loaded-context>`. Preferred format inside `<pre-loaded-context>`: `file_path:line_number: content` triples so scouts skip location-discovery Greps and go directly to behavioral verification. Sibling folders sharing a type via re-export (e.g. `image-generation/` re-exporting from `video-generation/`): pre-flight Grep for the primary implementation's exported symbol name across both folders to surface re-export shims before scout dispatch.
 
 **Step C -- Absence pre-screening.** For items where absence is expected, run multi-variant Grep (camelCase, snake_case, PascalCase, kebab-case) before dispatch. All variants empty: include `pre-screened absent: {symbol} -- all {N} variants empty` in scout's `<pre-loaded-context>`. Scouts verify with one additional approach only.
 

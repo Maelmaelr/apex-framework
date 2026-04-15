@@ -47,6 +47,8 @@ If the same error persists after 2 failed correction attempts, print `STUCK: {er
 
 Steps 3 (build), 3.5 (security scan), 3.6 (criterion re-verification), 3.7 (scoped tests), 3.8 (file health), and 3.9 (env var validation) are independent -- none consume each other's output. After lint completes (including any --fix rewrites), run all concurrently by issuing build, security scan, criterion re-verification, test commands, file health checks, and env var validation as parallel tool calls in a single response. Note: Step 3.6 runs after build/lint pass -- if build fails, skip 3.6 until build is fixed.
 
+**CWD discipline in parallel batch.** The Bash tool's working directory persists across calls within a response, so a parallel command that uses `cd <package>` (e.g., Step 3.7's `cd apps/api`) shifts CWD for peers running in the same batch and can cause sibling commands using project-root-relative paths (e.g., `wc -l apps/api/.../file.ts` in Step 3.8) to fail with "No such file or directory". Defense: each parallel command must either (a) use absolute paths end-to-end, or (b) prefix with its own `cd <project-root> && ...` to anchor CWD before operating.
+
 If lint --fix modified files, all steps still read the corrected source. Process each step's output per its own error-handling rules (retry limits, failure classification) independently.
 
 ## Step 3: Run Build
@@ -108,7 +110,7 @@ Detect if modified source files have corresponding test files. **Strict name mat
 
 **If test files found -- always run scoped, never full suite.** Construct the scoped command from the modification list. Common runner patterns:
 - Vitest/Jest: `pnpm --filter <package> test -- path/to/test1.spec.tsx path/to/test2.spec.tsx` (space-separated relative paths)
-- Japa (AdonisJS): `cd <api-dir> && node ace test -- --files=<comma-separated relative paths>`
+- Japa (AdonisJS): `cd <api-dir> && node ace test <suite> --files=<basename> --files=<basename> ...` (repeated `--files=<basename>` flags; one flag per file, basename only -- Japa does not accept comma-separated paths or space-separated quoted lists). Suite name (`unit`, `functional`) is required when the project defines multiple suites.
 - Mocha/other: consult the runner's `--file` or `--spec` flag syntax
 
 Do NOT fall back to the full test suite. If a scoped test command fails to execute (exit code from runner itself, not from test failures), fix the command syntax and retry -- do not widen to the full suite as a workaround. If the scoped command executes successfully but runs more tests than specified (project-specific runner behavior), do not retry with alternative scoping flags -- classify the results against the modification list using the pre-existing failure shortcut below.

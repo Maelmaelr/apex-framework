@@ -113,9 +113,9 @@ Collect: matching files, packages, obvious dependencies.
 
 **Question batching.** Multiple AskUserQuestion triggers: batch into single call (max 4).
 
-**Record decisions.** `bash ~/.claude/skills/apex/scripts/update-manifest.sh {session-id} decisions="{summary}"` (comma-separated, e.g. "blast-radius: modify shared, scope: full impl").
-
 **Write session manifest.** `.claude-tmp/apex-active/{session-id}.json`: `{"task": "...", "started": "<ISO>", "files": [...], "path": null, "current_step": "2", "tail_mode": null, "scout_findings": null, "decisions": ""}`. Check other manifests for overlapping file claims -> `FILE CONFLICT` + AskUserQuestion.
+
+**Record decisions.** `bash ~/.claude/skills/apex/scripts/update-manifest.sh {session-id} decisions="{summary}"` (comma-separated, e.g. "blast-radius: modify shared, scope: full impl"). Must run AFTER manifest write -- update-manifest.sh is best-effort and silently no-ops if the manifest file does not yet exist.
 
 **Write scope file.** `{session-id}-scope.json`: `{"files": [...]}`. Supports glob patterns for undetermined filenames. **Verify:** `cat` the file, confirm non-empty, rewrite once if wrong. Print `SCOPE WRITTEN: {N} files`.
 
@@ -161,7 +161,7 @@ Skip for Path 2 (apex-apex.md Step 3.5 calls this directly).
    - Max 8 terms. Prefer specific (function names, tables, components) over generic.
    - Blocklist (bare): `token`, `config`, `migration`, `email`, `auth`, `service`, `model`, `error` -- qualify them (e.g., `tiktok_token`).
    - Meta/workflow tasks: use specific skill/mechanism names.
-   - Max 2 attempts. >150 lines output: re-run with fewer, more specific terms -- do not Read tool result files or pipe through cat. Empty: skip.
+   - Max 2 attempts. >150 lines output: re-run after dropping the 1-2 most generic terms (preserve specific function/component/table names). Do not replace with highly specific symbols -- that tends to match nothing. Do not Read tool result files or pipe through cat. Empty: skip.
 2. `bash ~/.claude/skills/apex/scripts/grep-lessons.sh {project-root} {term1} {term2} ...` -- script missing or no output: skip.
 3. Output has `--- LINES {start}-{end} ---` markers. Update `[last-hit]` dates (skip if all within current ISO week):
    `bash ~/.claude/skills/apex/scripts/update-hit.sh {project-root}/.claude/lessons.md {line1} {line2} ...` (idempotent).
@@ -224,7 +224,14 @@ Otherwise: spawn sonnet subagent: "ASCII only. No tables, no diagrams. Read and 
    - After PASS: trust verdict, don't re-read files for stale diagnostics.
    - **Post-verify scope check.** `git diff --name-only`. Out-of-scope: AskUserQuestion "Revert / Keep / Review diff". No autonomous revert.
 
-3. **Tail dispatch.** Read and follow ~/.claude/skills/apex/apex-tail.md. Pass: tail mode, session type, implementation summary, files modified, tricky patterns, doc targets from CLAUDE.md Doc Quick Reference. Audit-remediation/prd-implementation: include doc path + completed IDs. For test-gaps source: note .claude-tmp/test-gaps.md origin.
+2b. **Inline diff write (MANDATORY, before tail dispatch).** Owned by the caller, not by apex-tail.md, so the Write tool call cannot be dropped into a parallel agent-spawn batch. Skip only for zero-implementation sessions (no changes committed). Steps:
+   1. Generate RUN_ID via Bash: `echo "$(date +%Y%m%d)-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)"`
+   2. `mkdir -p .claude-tmp/git-diff` (Bash)
+   3. Write a 1-3 sentence summary with a `Files: [list]` line (all modified file paths) to `.claude-tmp/git-diff/git-diff-{RUN_ID}.md` (Write tool, direct call by main agent -- no subagent).
+   4. Print `DIFF WRITTEN: .claude-tmp/git-diff/git-diff-{RUN_ID}.md` verbatim.
+   Do not batch this with Step 3 agent spawns -- execute it as its own sequential tool call, then proceed to Step 3.
+
+3. **Tail dispatch.** Read and follow ~/.claude/skills/apex/apex-tail.md. Pass: tail mode, session type, implementation summary, files modified, tricky patterns, doc targets from CLAUDE.md Doc Quick Reference. Audit-remediation/prd-implementation: include doc path + completed IDs. For test-gaps source: note .claude-tmp/test-gaps.md origin. Tail pre-flight will abort if `DIFF WRITTEN` was not printed in sub-step 2b.
 
    **Path 1 task tracking (full tail only).** Create TaskCreate per applicable tail agent before following apex-tail.md spawn protocol. Set in_progress, follow parallel spawn, mark completed after return. Economy: skip tracking.
 3b. **Post-tail scope advisory.** `git diff --name-only` -- print `TAIL TOUCHED: {extra files}` (informational).

@@ -3,7 +3,7 @@
 ## Metadata
 
 - created: 2026-03-31
-- updated: 2026-04-13
+- updated: 2026-04-15
 - criteria-count: 35
 - sources: skills/apex/SKILL.md, skills/apex/apex-apex.md, skills/apex/apex-scout.md, skills/apex/apex-tail.md, skills/apex/apex-verify.md, skills/apex/apex-learn.md, skills/apex/apex-reflect.md, skills/apex/apex-team.md, skills/apex/apex-teammate-workflow.md, skills/apex/subagent-delegation.md, skills/apex/apex-plan-template.md, skills/apex/apex-update.md, skills/apex/shared-guardrails.md, skills/apex/apex-doc-formats.md, skills/apex/scripts/, skills/admin-apex/SKILL.md, skills/apex-audit-matrix/SKILL.md, skills/apex-brainstorm/SKILL.md, skills/apex-eod/SKILL.md, skills/apex-file-health/SKILL.md, skills/apex-fix/SKILL.md, skills/apex-git/SKILL.md, skills/apex-init/SKILL.md, skills/apex-lessons-analyze/SKILL.md, skills/apex-lessons-extract/SKILL.md, skills/apex-party/SKILL.md, settings.json, CLAUDE.md
 - format: deterministic pre-filters for target-x-criterion matrix generation

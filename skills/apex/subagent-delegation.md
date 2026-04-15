@@ -24,6 +24,8 @@ Shared protocol for spawning parallel implementation subagents.
    - Related existing patterns from modification list (instruct agent to check interaction before adding new components)
    - For file move/rename tasks: instruct to grep moved file for ALL relative links (`../`, `./`, markdown relative paths) and update each one
    - When task adds new state atoms (useState, useRef, stores): instruct to grep for reset/cleanup/initialization functions in same file and update them
+   - When task involves files that re-export from sibling modules (index.ts re-export shims, `export { X } from './module'`): include the exact import path and export shape in the spawn prompt so the agent doesn't need file-discovery reads to find the source
+   - When task involves test files with vi.mock chains: note which module boundaries are mocked and warn that `importActual` on a consumer does not bypass mocks on its own dependencies -- test utilities should be tested directly when deep mock chains prevent consumer-level smoke testing
 8. **Disjoint file rule.** Each subagent edits a disjoint set of files -- same-file changes are dependent and must be sequential. Parallel edits to related files commonly leave orphaned declarations; verification catches these.
 
 ## Post-Delegation
