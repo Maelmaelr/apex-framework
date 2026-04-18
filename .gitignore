@@ -5,3 +5,6 @@
 .idea/
 __pycache__/
 *.pyc
+
+# Ephemeral APEX session artifacts (not part of the framework distribution)
+.claude-tmp/
