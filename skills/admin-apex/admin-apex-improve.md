@@ -70,6 +70,8 @@ If no conversation ID, skip to Step 1.5.
 
 ## Step 2: Load Workflow Improvements
 
+**Session manifest.** Write an improve session manifest so peer improve runs are detectable by the Step 2.5 / Phase 3.6 concurrency checks: `mkdir -p .claude-tmp/apex-active && ID="$(date +%s)-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 4)" && printf '{"started":"%s"}' "$(date -u +%FT%TZ)" > ".claude-tmp/apex-active/improve-$ID.json" && echo "IMPROVE_MANIFEST=.claude-tmp/apex-active/improve-$ID.json"`. Record the echoed path textually for Phase 3.6 cleanup -- shell vars do not persist across Bash calls.
+
 Read `~/.claude/tmp/apex-workflow-improvements.md`. Parse items if content exists.
 
 **Pre-filter rules:**
@@ -107,7 +109,9 @@ Run `audit-catalog-health.py` against catalog directories. Issues become finding
 
 Run `cd ~/.claude && git log --oneline -50` and `cd ~/.claude && git log --name-only --pretty=format: -50 | sort -u` (restore CWD per shared-guardrails #16). Cross-check findings against recent commits. Drop findings whose issue appears resolved (commit message references same guardrail/step/behavior). For survivors whose target file is in changed-files list, diff and Grep for specific target text -- drop if already modified. Print `STALE-STATE: {N} dropped ({M} message, {K} diff)` only if N > 0.
 
-**Concurrency check:** `find .claude-tmp/apex-active -maxdepth 1 -name 'apex-*.json' -mmin -30 2>/dev/null | wc -l`. If count > 1 (another active improve session detected in same project), print `CONCURRENCY WARNING: parallel improve session detected -- findings may overlap`. Record `CONCURRENCY_DETECTED=true` for Phase 3.6.
+**Semantic-duplicate diff check (workflow-improvements only).** For findings sourced from workflow-improvements whose target file appears in `cd ~/.claude && git log --oneline -5 -- {target}` (non-empty), also run `cd ~/.claude && git diff HEAD~3..HEAD -- {target}` and Grep each finding's distinctive 5-10 word phrase from the Fix field (not only the anchor text) against the recent additions. Drop if matched. Anchor-text grep catches literal overlap only; Fix-phrase grep catches synonymous restatements of rules added in the immediately prior improve commit. Print `STALE-STATE diff-check: {N} extra dropped` only if N > 0.
+
+**Concurrency check:** `find .claude-tmp/apex-active -maxdepth 1 -mmin -30 \( -name 'apex-*.json' -o -name 'improve-*.json' \) ! -name '*-scope.json' ! -name '*-budget.json' 2>/dev/null | wc -l`. Count includes own manifest from Step 2 so `> 1` = peer improve session or active APEX scope. If triggered, print `CONCURRENCY WARNING: parallel improve session detected -- findings may overlap`. Record `CONCURRENCY_DETECTED=true` for Phase 3.6.
 
 ## Step 3: Identify Skill Execution (Transcript Only)
 
@@ -152,7 +156,7 @@ Work from extract. Need more context: Grep raw JSONL for specific line number.
 
 Per transcript issue, note: what happened (cite lines), responsible skill file, fix.
 
-**From workflow improvements:** Each item is pre-classified. Map to responsible file. No transcript evidence needed (source: "workflow-improvements"). Do not anchor on the observation's category label -- categories (bias, token-waste, team-coordination, plan-quality) describe symptom/context, not the target file. Before mapping, ask whose concern the actual lever lives in (scan, scout, plan, team, verify, lessons, improve itself); the framing file named in the observation is often one stage downstream of the real fix point.
+**From workflow improvements:** Each item is pre-classified. Map to responsible file. No transcript evidence needed (source: "workflow-improvements"). Do not anchor on the observation's category label -- categories (bias, token-waste, team-coordination, plan-quality) describe symptom/context, not the target file. Before mapping, ask whose concern the actual lever lives in (scan, scout, plan, team, verify, lessons, improve itself); the framing file named in the observation is often one stage downstream of the real fix point. For reflect-source observations critiquing pipeline design (sequencing, filter permissiveness, ordering, dedup strategy), also apply an intent-vs-drift check -- Read the target file's design comments (`<!-- Design: -->`) and adjacent guardrails; if the behavior is documented as an intentional tradeoff, drop or reframe rather than promoting.
 
 Merge and deduplicate both sets.
 
@@ -164,7 +168,7 @@ Merge and deduplicate both sets.
 
 ## Step 4.5: Dependency and Cross-Reference Analysis
 
-Per finding's target file, grep `~/.claude/skills/**/*.md` for basename references. Note cross-ref sites for Fix field. Changed heading/step/path referenced elsewhere -> add note: "Cross-ref: {file} references {element}." Check admin-apex SKILL.md (Skills, Architecture, Runtime Files) and caller comments (`<!-- Called by: -->`) -- highest-density cross-ref sites.
+Per finding's target file, grep `~/.claude/skills/**/*.md` for basename references. Note cross-ref sites for Fix field. Changed heading/step/path referenced elsewhere -> add note: "Cross-ref: {file} references {element}." Check admin-apex SKILL.md (Skills, Architecture, Runtime Files) and caller comments (`<!-- Called by: -->`) -- highest-density cross-ref sites. Cross-ref notes must be derived FROM the Fix field (confirm what the fix does, then state cross-refs it requires) -- writing them independently risks contradicting the Fix (e.g., noting "renumbering needed" when the Fix inserts a bullet that needs no renumbering).
 
 Per HIGH/MEDIUM finding:
 
@@ -236,6 +240,8 @@ Outcome: {success/partial/failure or "n/a"}
 {count} findings ({h}H / {m}M / {l}L)
 ```
 
+**Fix-field phrasing.** When referencing a section or heading, disambiguate existing vs new -- e.g., `add under existing \`X\` heading` or `add new \`X\` subsection after \`Y\``. Bare `under X` risks wrong structural placement. Also mark edit count when a Fix spans two plausible locations -- `single Edit combining both clauses` vs `two Edits: step X and step Y` -- so executors do not guess. When a Fix prescribes numeric thresholds, env values, or JSON/config snippets that may also appear in a sibling finding's arm JSON, cross-check the values match before finalizing the plan -- inconsistent pairs between finding prose and arm JSON cost the implementer a verification round.
+
 ## Step 8: Exit Plan Mode
 
 Call ExitPlanMode. Wait for approval. Rejected: stop. Retry returns "not in plan mode": plan approved externally, proceed. After approval, context clears -- embedded Instructions execute.
@@ -264,10 +270,10 @@ Tail tasks (blocked by all implementation tasks):
 `bash ~/.claude/skills/apex/scripts/file-health-check.sh 400 {target files}`. Script outputs violations only (exits 0). `blocked` (>500L): AskUserQuestion for split approach (`SUBAGENT_MODE`: skip, warn). `split-first` (>400L) where finding adds >10 net lines: extract separable section first. Insert split task + update deps if needed.
 
 ### Phase 1.9: Context Health Gate
-Run `bash ~/.claude/skills/apex/scripts/context-health-check.sh --project-root {project-root}`. Parse output, record each file's current chars and limit.
+Run `bash ~/.claude/skills/apex/scripts/context-health-check.sh --project-root {project-root}`. Parse output, record each file's current chars and limit. Standalone Bash call (do not batch with parallel commands; exit codes 1/2 for warnings/blocks can cancel siblings).
 
 - **Blocked files** (over limit): findings adding content MUST include equal/greater char removal to offset. Add-only: flag `CONTEXT GATE: finding-{N} adds to blocked file {path} ({chars}c > {limit}c)`, downgrade to LOW, append offset requirement to Fix.
-- **Warned files** (approaching limit): estimate net char delta per finding (addition minus removal). If current + net delta would exceed block limit, apply same offset requirement as blocked.
+- **Warned files** (approaching limit): estimate net char delta per finding (addition minus removal). Sum deltas across ALL findings targeting the same warned file (cumulative, not per-finding independently) -- multiple findings each adding 200c can exceed a 27c headroom together while each passes individually. If cumulative sum would push the file over the block limit, apply offset requirement to the most add-heavy finding(s) until cumulative sum is neutral or negative. Prefer extending an existing rule in place over appending a new section when the finding has no planned offset -- minimizes net char delta. For findings adding content, draft `new_string` via `cat <<'HEREDOC' ... HEREDOC | wc -c` (Write to /tmp is scope-blocked) before the first Edit call. Estimate is cheap; measurement is authoritative. Draft lean from the start -- compress parallel-structure duplicates, drop gloss parentheticals -- rather than drafting freely and re-compressing. If draft bytes + current file bytes cross the block limit, compress BEFORE Edit.
 - **All targeted files**: record baseline chars for Phase 2.5 post-check.
 
 Print: `CONTEXT HEALTH: {blocks} blocks, {warnings} warnings, {gated} findings gated`.
@@ -275,13 +281,13 @@ Print: `CONTEXT HEALTH: {blocks} blocks, {warnings} warnings, {gated} findings g
 ### Phase 2: Implementation
 **Context clearing reminder:** Re-read every target file before editing -- prior reads cleared after plan approval.
 
-**Pre-implementation stale-state re-check:** `cd ~/.claude && git log --oneline -3 -- {target-files}` (restore CWD). If any commit appeared since Step 2.5 ran, re-verify affected findings have not been resolved. Drop resolved findings before editing. For metadata-type findings (date bumps, count fields, catalog entries) where another session may have already applied the change without a commit, re-read the specific field before editing -- do not assume plan scope is current.
+**Pre-implementation stale-state re-check:** `cd ~/.claude && git log --oneline -3 -- {target-files}` (restore CWD). If any commit appeared since Step 2.5 ran, re-verify affected findings have not been resolved. Drop resolved findings before editing. For metadata-type findings (date bumps, count fields, catalog entries) where another session may have already applied the change without a commit, re-read the specific field before editing -- do not assume plan scope is current. When a recent commit subject contains any keyword from a pending finding's title or anchor, do not rely on the subject alone -- Read the specific target section and diff the commit against the finding's Fix before keeping the finding; commit subjects often list only the headline change and omit sibling modifications in the same diff.
 
 **Pre-Edit duplicate-content check (per Edit):** Grep target file for a distinctive 5-10 word phrase from `new_string` before each Edit call. Present: skip Edit, mark task completed with reason "already applied (upstream or prior no-op)", continue to next finding. Catches duplicate-content injection when upstream commits land mid-session OR when `new_string` overlaps existing adjacent content. Cheaper than reverting a duplicated Edit after the fact.
 
 Print dependency gate per shared-guardrails #8. Same-file = dependent. Exception: `~/.claude/CLAUDE.md` different sections may be independent.
 
-- **Direct** (<10 lines/finding AND <30 total): inline sequential. TaskUpdate in_progress -> Read -> fix -> verify -> TaskUpdate completed. Per shared-guardrails #18, offset/limit for >250L files. Batch Grep + Read in same response when locating needed.
+- **Direct** (<10 lines/finding AND <30 total): inline sequential per task. TaskUpdate in_progress -> Read -> fix -> verify -> TaskUpdate completed. Per shared-guardrails #18, offset/limit for >250L files. Batch Grep + Read in same response when locating needed; when the Fix references a sibling pattern file (e.g., an existing hook/script whose format/schema is being mirrored), include that sibling in the initial parallel Read batch alongside the target file. Findings targeting different files are independent -- their Edit calls may issue in a single response (per shared-guardrails #1 principle) once each task is in_progress; only same-file findings must fully serialize the Read/Edit/verify cycle.
 - **Parallel** (3+ files AND (any >10 lines OR >=30 total)): per shared-guardrails #1, all agents in single response. Print `PARALLEL SPAWN: [finding-{N}, ...]`.
   Per subagent (foreground, shared-guardrails #1):
   - subagent_type: "general-purpose", mode: "bypassPermissions"
@@ -305,7 +311,7 @@ Deduplicate modified files, Read each once. Per shared-guardrails #18, offset/li
 - Each applied correctly, none missed, no regressions, no scope creep (revert excess)
 - >10 findings: spot-check via Grep. Minimums: ALL HIGH, >=50% MEDIUM, >=1 LOW per file.
 
-**Context health post-check:** Re-run `bash ~/.claude/skills/apex/scripts/context-health-check.sh --project-root {project-root}`. Compare modified files against Phase 1.9 baselines. If any file crossed from warn to block (or stayed blocked without offsetting removal), the implementation violated the context budget -- compress or revert the excess before proceeding. Print: `CONTEXT POST-CHECK: {pass|fail} -- {details}`.
+**Context health post-check:** Re-run `bash ~/.claude/skills/apex/scripts/context-health-check.sh --project-root {project-root}` as a standalone Bash call (do not batch with other commands -- non-zero exit on warnings cancels siblings). Compare modified files against Phase 1.9 baselines. If any file crossed from warn to block (or stayed blocked without offsetting removal), the implementation violated the context budget -- compress or revert the excess before proceeding. Print: `CONTEXT POST-CHECK: {pass|fail} -- {details}`.
 
 Fix failures before proceeding.
 
@@ -332,9 +338,9 @@ Both: ASCII only, no tables.
 ### Phase 3.6: Clean Up, Diff Summary, and Auto-Commit
 
 1. Check: `cd ~/.claude && git diff --name-only` + `git ls-files --others --exclude-standard`.
-1a. **Concurrency check:** `find .claude-tmp/apex-active -maxdepth 1 -name 'apex-*.json' -mmin -30 2>/dev/null | wc -l` + check git status for modifications outside finding targets. If detected: `CONCURRENCY_DETECTED=true`, skip step 3 workflow-improvements clear only. Extract cleanup and step 5 auto-commit always run.
+1a. **Concurrency check:** (from project-root CWD) `find .claude-tmp/apex-active -maxdepth 1 -mmin -30 \( -name 'apex-*.json' -o -name 'improve-*.json' \) ! -name '*-scope.json' ! -name '*-budget.json' 2>/dev/null | wc -l` + check git status for modifications outside finding targets. CWD must be the project root; if shell drift moved it, `cd` back before running. Own manifest counts, so `> 1` = peer improve session or APEX scope. If detected: `CONCURRENCY_DETECTED=true`, skip step 3 workflow-improvements clear only. Extract cleanup and step 5 auto-commit always run.
 2. **Diff summary:** If files changed, generate RUN_ID (`apex-improve-$(date +%Y%m%d)-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)`), write `~/.claude/.claude-tmp/git-diff/git-diff-{RUN_ID}.md` with subject, files list, abbreviated diff.
-3. **Cleanup** (task in_progress): Delete extracts: `find ~/.claude/tmp -maxdepth 1 -name 'apex-improve-extract*.md' -delete 2>/dev/null; true`. Clear workflow-improvements if processed AND not `CONCURRENCY_DETECTED`: `echo -n > ~/.claude/tmp/apex-workflow-improvements.md`. Task completed.
+3. **Cleanup** (task in_progress): Delete extracts: `find ~/.claude/tmp -maxdepth 1 -name 'apex-improve-extract*.md' -delete 2>/dev/null; true`. Delete improve session manifest (use the `IMPROVE_MANIFEST` path recorded in Step 2): `rm -f {IMPROVE_MANIFEST} 2>/dev/null; true`. Clear workflow-improvements if processed AND not `CONCURRENCY_DETECTED`: `echo -n > ~/.claude/tmp/apex-workflow-improvements.md`. Task completed.
 4. No files changed: "No skill files modified, skipping diff summary and auto-commit."
 5. **Auto-commit:** Files changed -> invoke `/apex-git` via Skill tool. Mandatory per admin-apex contract. Runs regardless of concurrency.
 6. **apex-framework README commit:** If `~/dev/apex-framework/README.md` was modified (check `cd ~/dev/apex-framework && git status --porcelain README.md`), commit + push inline since `/apex-git` only covers `~/.claude`:

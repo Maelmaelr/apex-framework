@@ -7,6 +7,9 @@
 
 set -euo pipefail
 
+# Self-anchor to git toplevel so `git diff --numstat` resolves file args regardless of caller CWD (shared-guardrails #16).
+cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null || true
+
 files=("$@")
 if [ ${#files[@]} -eq 0 ]; then
   echo "TAIL MODE: economy -- 0 files, 0 lines (threshold: <=5 files AND <=80 lines)"
@@ -16,16 +19,16 @@ fi
 total_files=0
 total_lines=0
 
-# Measure tracked file changes via git diff --stat
-diff_output=$(git diff --stat -- "${files[@]}" 2>/dev/null || true)
-if [ -n "$diff_output" ]; then
-  summary=$(echo "$diff_output" | tail -1)
-  file_count=$(echo "$summary" | grep -oE '[0-9]+ files? changed' | grep -oE '[0-9]+' || echo 0)
-  insertions=$(echo "$summary" | grep -oE '[0-9]+ insertions?' | grep -oE '[0-9]+' || echo 0)
-  deletions=$(echo "$summary" | grep -oE '[0-9]+ deletions?' | grep -oE '[0-9]+' || echo 0)
-  total_files=$((file_count))
-  total_lines=$((insertions + deletions))
-fi
+# Measure tracked file changes via git diff --numstat
+# Per-file lines (added + deleted); robust to large arg lists (no trailing summary line).
+while IFS=$'\t' read -r ins del _path; do
+  [ -z "${ins:-}" ] && continue
+  # --numstat emits "-" for binary files; treat as 0 lines
+  [ "$ins" = "-" ] && ins=0
+  [ "$del" = "-" ] && del=0
+  total_files=$((total_files + 1))
+  total_lines=$((total_lines + ins + del))
+done < <(git diff --numstat -- "${files[@]}" 2>/dev/null || true)
 
 # Add untracked files from the provided list
 untracked=$(git ls-files --others --exclude-standard 2>/dev/null || true)

@@ -1,3 +1,5 @@
+Opus 4.7 note: adaptive thinking (no fixed budget). Keywords below are harness-level effort signals, not thinking-budget directives.
+
 Score complexity factors against the current task (1 point each):
 - Cross-layer changes (frontend + backend + shared types in same task)
 - Shared interface/type modifications with >2 downstream consumers

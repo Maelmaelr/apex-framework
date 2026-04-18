@@ -68,16 +68,19 @@ Skip if: (a) batch-mode detected in Step 1, (b) audit-matrix-remediation detecte
 
 ## Step 2: Quick Scan
 
-Budget: max 5 Grep/Glob + 3 doc Read. Print after each: `SCAN BUDGET: {N}/5 search, {M}/3 doc-read`. project-context.md is mandatory and budget-exempt. At 5/5, stop searches and proceed to Step 3 -- exceptions (a)/(b) source reads and remaining doc reads may continue. Source file reads are forbidden during scan. If you need more searches, the task needs scouts -- proceed to Step 3. Audit tasks: resist deep-scanning; scouts handle discovery. No subagents during scan. Use Glob not Bash ls/find (per project conventions).
+Budget: warn at 5 Grep/Glob + 3 doc-read, block at 8 + 5 (plus source-read hard cap 3 -- see Exception (a)). Print after each: `SCAN BUDGET: {N}/8 search, {M}/5 doc-read`. project-context.md is mandatory and budget-exempt. Past warn, stop searches and proceed to Step 3 -- exceptions (a)/(b) source reads and remaining doc reads may continue. Source file reads are forbidden during scan (Exception (a) gated, Exception (b) opt-in). If you need more searches, the task needs scouts -- proceed to Step 3. Audit tasks: resist deep-scanning; scouts handle discovery. No subagents during scan. Use Glob not Bash ls/find (per project conventions).
 
 1. Read docs/project-context.md (mandatory, budget-exempt). For audit tasks, prioritize security/auth doc within 3-doc-read limit.
 
-**Arm scan budget.** `echo '{"grep_glob_count": 0, "max": 5, "doc_read_count": 0, "doc_read_max": 3}' > .claude-tmp/apex-active/{session-id}-budget.json`
+**Arm scan budget.** `echo '{"grep_glob_count": 0, "warn_threshold": 5, "max": 8, "doc_read_count": 0, "doc_read_warn": 3, "doc_read_max": 5, "source_read_count": 0, "source_read_warn": 2, "source_read_max": 3}' > .claude-tmp/apex-active/{session-id}-budget.json`
 
 2. Grep key terms. Tips:
    - Auto-save/callback tasks: also grep actual save/persist/write function names
    - Broad terms (`new Date`, `window\.`): combine with context (e.g., `useMemo.*new Date`)
    - New features: include synonyms/partial-name variants to surface existing implementations
+   - Duplicate / shared-component detection: Read the folder barrel `index.ts` first -- exports are the canonical inventory, avoiding per-file Globs
+   - **Plan parallel Grep batches.** For multi-concern scans (edge validation + UI parity + bug trace, etc.), enumerate all planned Greps upfront and batch them into a single parallel response before looking at results -- sequential Greps waste the 5-call budget on early hits.
+   - **Multi-line API calls:** Single-line patterns miss calls whose arguments span lines (e.g., `useStore(selector, shallow)` where `shallow` is on its own line). For hook/function calls with known second-arg patterns, add a `multiline: true` Grep variant alongside the single-line pattern.
 3. Glob likely file patterns (scope to `apps/`, `packages/`). Multiple globs or broader patterns for framework auxiliary files (page, layout, error, not-found, loading). Bracket dirs (`[id]`, `[locale]`): prefer `bash find` (e.g., `find apps/web/app -name 'page.tsx'`). Fallback: `*` wildcard in Glob to replace bracket segments (e.g., `apps/web/app/*/app/*/page.tsx`).
 
 **Specialized scan shortcuts:**
@@ -93,13 +96,15 @@ Collect: matching files, packages, obvious dependencies.
 - Use Grep/Glob + CLAUDE.md Doc Quick Reference for file enumeration
 - **Union type/interface additions:** LSP `findReferences` on type name (budget-free) to enumerate consumers. Include in modification list.
 - Read docs, not source files. Source reads in Step 5A.
-- **Exception (a) -- Architecture decisions:** Read minimal source for scope decisions. Cap: >3 source reads -> Path 2 recommendation.
-- **Exception (b) -- Bug investigation:** Source reading IS the scan. Prefer empirical validation (test scripts) over multi-round reading. Capture build/test output: `{cmd} 2>&1 | tee .claude-tmp/{type}-{target}.txt`. Parse from captured file -- do not re-run for different views. Stale cache: clean framework cache once, retry once.
+- **Exception (a) -- Architecture decisions:** Read minimal source for scope decisions. **Hard gate: 3 source reads max.** After the 3rd source read during scan (non-Exception-b), STOP -- print `PATH DECISION: Path 2` and proceed to Step 3. Continuing to read source files to avoid Path 2 escalation is non-compliance. Enforced by scan-budget-hook. **UI/design-consistency audits:** When the authoritative spec is a comprehensive doc file (e.g., a design-tokens or UI-standards doc), read ONE representative reference implementation file as Exception (a) to surface doc-vs-code drift before routing to scouts -- drifts found here avoid a full scout round-trip.
+- **Exception (b) -- Bug investigation:** Source reading IS the scan. Prefer empirical validation (test scripts) over multi-round reading. Capture build/test output: `{cmd} 2>&1 | tee .claude-tmp/{type}-{target}.txt`. Parse from captured file -- do not re-run for different views. Stale cache: clean framework cache once, retry once. Bug investigation: arm with `source_read_max: -1` to disable source-read enforcement for this phase. **Repro-scenario disambiguation:** If the bug description leaves >=2 plausible trigger interpretations (refresh vs navigation vs new-session, create-flow vs update-flow, cold-load vs warm-reload), AskUserQuestion to pin the scenario BEFORE arming the scan budget -- otherwise grep/source-read spend targets the wrong area.
 - **Infrastructure diagnostics:** Batch inspection commands into single Bash script.
 
 **Interface/type blast radius.** Grep all callers including tests. Required-field additions break constructors. Removals break readers (frontend consumers, not just API). Include in modification list.
 
-**Preliminary modification list.** Print numbered list (per shared-guardrails #15). Best-effort estimate -- scouts (Path 2) or implementation agents (Path 1) may discover additional files. Check symmetric structures (images-tab + videos-tab, en.json + fr.json, create + update route, API + frontend). Note `Related existing: [patterns]` for semantic overlaps with the task.
+**Preliminary modification list.** Print numbered list (per shared-guardrails #15). Best-effort estimate -- scouts (Path 2) or implementation agents (Path 1) may discover additional files. Dirty-state / mid-refactor scopes (extensive uncommitted changes across the task area) routinely expand 3-5x during scouting because drift items cluster; size the preliminary list conservatively when the base is clean, expect substantial scout expansion when dirty. Check symmetric structures (images-tab + videos-tab, en.json + fr.json, create + update route, API + frontend). Note `Related existing: [patterns]` for semantic overlaps with the task. Enforcement / validation / cap / quota tasks: include server-side validators and controllers in the preliminary list even when the request-surface is all frontend -- client-side constraints are UX only, server is the authoritative layer. **Module-scope constant heuristic:** When a file in the preliminary list imports module-scope configuration constants or prop defaults from another file, grep the import path to resolve the actual source file -- constants often live in a sibling `*-utils.ts` or `*-config.ts` not in the named registry; the sibling may also need changes.
+
+**Rename/remove exported-symbol check.** When the task renames or removes an exported symbol (function, hook, component, type), grep ancestor-folder `index.ts` barrels from the defining folder up to the package root for re-exports of the old name and include matching barrels in the mod list. Stale re-exports otherwise surface only at verification and force a scope extension + re-verify round.
 
 **Reorganization scope.** AskUserQuestion: top-level restructuring vs within-folder subgrouping.
 
@@ -117,7 +122,7 @@ Collect: matching files, packages, obvious dependencies.
 
 **Record decisions.** `bash ~/.claude/skills/apex/scripts/update-manifest.sh {session-id} decisions="{summary}"` (comma-separated, e.g. "blast-radius: modify shared, scope: full impl"). Must run AFTER manifest write -- update-manifest.sh is best-effort and silently no-ops if the manifest file does not yet exist.
 
-**Write scope file.** `{session-id}-scope.json`: `{"files": [...]}`. Supports glob patterns for undetermined filenames. **Verify:** `cat` the file, confirm non-empty, rewrite once if wrong. Print `SCOPE WRITTEN: {N} files`.
+**Write scope file.** `.claude-tmp/apex-active/{session-id}-scope.json`: `{"files": [...]}`. Supports glob patterns for undetermined filenames. **Verify:** `cat` the file, confirm non-empty, rewrite once if wrong. Print `SCOPE WRITTEN: {N} files`.
 
 **Disconfirmation.** (1) Re-evaluate scan data: alternative implementations, doc warnings, intentional behavior, audit file-attribution accuracy. (2) 1-2 counter-Greps (budget-exempt): alternative implementations, guard clauses codifying current behavior, test assertions expecting current behavior. No testable counter-hypothesis: skip phase 2. Contradicting evidence: note as "Counter-evidence: ..." for path decision. Print: `DISCONFIRMATION: {counter-evidence found | no contradicting evidence | no testable counter-hypothesis}`.
 
@@ -159,7 +164,7 @@ Skip for Path 2 (apex-apex.md Step 3.5 calls this directly).
 
 1. Extract key terms from task, file names, package names.
    - Max 8 terms. Prefer specific (function names, tables, components) over generic.
-   - Blocklist (bare): `token`, `config`, `migration`, `email`, `auth`, `service`, `model`, `error` -- qualify them (e.g., `tiktok_token`).
+   - Blocklist (bare): `token`, `config`, `migration`, `email`, `auth`, `service`, `model`, `error` -- qualify them (e.g., `tiktok_token`). Broad framework/domain tokens (e.g., `canvas`, `react`, `upload`, `connected`, `upstream`, `hook`, `indicator`) function as generically as blocklisted terms -- cap at 1 per query. Accept term count below Max 8 when only a few specific symbols are available; undersized queries beat padded ones.
    - Meta/workflow tasks: use specific skill/mechanism names.
    - Max 2 attempts. >150 lines output: re-run after dropping the 1-2 most generic terms (preserve specific function/component/table names). Do not replace with highly specific symbols -- that tends to match nothing. Do not Read tool result files or pipe through cat. Empty: skip.
 2. `bash ~/.claude/skills/apex/scripts/grep-lessons.sh {project-root} {term1} {term2} ...` -- script missing or no output: skip.
@@ -234,7 +239,7 @@ Otherwise: spawn sonnet subagent: "ASCII only. No tables, no diagrams. Read and 
 3. **Tail dispatch.** Read and follow ~/.claude/skills/apex/apex-tail.md. Pass: tail mode, session type, implementation summary, files modified, tricky patterns, doc targets from CLAUDE.md Doc Quick Reference. Audit-remediation/prd-implementation: include doc path + completed IDs. For test-gaps source: note .claude-tmp/test-gaps.md origin. Tail pre-flight will abort if `DIFF WRITTEN` was not printed in sub-step 2b.
 
    **Path 1 task tracking (full tail only).** Create TaskCreate per applicable tail agent before following apex-tail.md spawn protocol. Set in_progress, follow parallel spawn, mark completed after return. Economy: skip tracking.
-3b. **Post-tail scope advisory.** `git diff --name-only` -- print `TAIL TOUCHED: {extra files}` (informational).
+3b. **Post-tail scope advisory.** `git diff --name-only` -- print `TAIL TOUCHED: {extra files}` (informational). Files dirty at session start appear here too -- cross-reference the Step 2 dirty-state output before attributing changes to tail.
 3c. **Tail-discovered code gaps.** Tail agent reports code changes needed: extend scope, make edit, re-run verification on new files if build-affecting. Print `TAIL CODE FIX: {files}, reason: {report}`.
 4. **Reflect decision.** Print `REFLECT DECISION: {spawn|skip} -- {reason}`. Condition: session downgraded from Path 2 (manifest `path` == `'1-downgraded'` or apex-apex.md Step 2.6 executed). Economy + spawn: `REFLECT DECISION: skip -- economy gate supersedes downgrade`. Full + spawn: run reflect inline (mode: execution, economy: false, categories 1-6, 9-11, skip 7-8, 12). Not downgraded: skip (Path 1 lacks scout/plan/team phases).
 5. Cleanup: `bash ~/.claude/skills/apex/scripts/cleanup-session.sh {session-id}`
@@ -259,7 +264,7 @@ Shared guardrails: read ~/.claude/skills/apex/shared-guardrails.md. Additionally
 - Delegate independent tasks to parallel subagents (not direct parallel Edit/Write) unless small-change exception (Step 5A)
 - Per shared-guardrails #1: foreground agents for tail tasks -- main session blocks until all return before "APEX completed"
 - Defer source reads to Step 5A (Step 2 scan rule). Source reads in main context cause context rot.
-- Respect Step 2 scan budget (5 Grep/Glob, 3 doc Read). At 5/5: stop, proceed to Step 3. Exception (a)/(b) source reads and remaining doc reads may continue. Route to Path 2 if underexplored.
+- Respect Step 2 scan budget (warn 5 Grep/Glob, 3 doc-read; block 8 + 5). At warn: stop, proceed to Step 3. Exception (a)/(b) source reads and remaining doc reads may continue. Route to Path 2 if underexplored.
 - Direct Glob/Grep only during Quick Scan (Step 2). Subagents start in Step 5A or apex-apex.md Step 2.
 - Browser automation/interactive tools (Chrome MCP): inline in main session only
 - Always run concurrency check (Step 0)

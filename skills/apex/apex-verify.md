@@ -29,6 +29,8 @@ Run: pnpm lint --fix (timeout: 300000)
 
 For changes confined to a single package (either path), use `pnpm --filter <package> lint --fix` instead of the full monorepo lint. Package-scoped is the minimum granularity -- never run lint on individual files. For changes spanning multiple packages, use the default `pnpm lint --fix` (full monorepo). Do not run per-package lint in parallel -- packages may lack lint scripts, causing cascade failures.
 
+**Lint --fix silent revert risk.** When `--fix` runs across a package with pre-existing lint errors in OTHER files, those errors can cause the fixer to silently skip or partially revert changes made by the current task. If lint reports errors (not just warnings) after the fix pass, re-read the owned files to verify they still contain the expected changes before proceeding to build.
+
 If lint fails:
 1. Read the error output
 2. Run: `bash ~/.claude/skills/apex/scripts/grep-lessons.sh {project-root} {terms}` (terms: error-related rule names, error patterns). If output, read matched sections and update `[last-hit]` dates: `bash ~/.claude/skills/apex/scripts/update-hit.sh {project-root}/.claude/lessons.md {line numbers from markers}`.
@@ -164,6 +166,8 @@ Check modified files for size and structure. Run `wc -l` in a single batched Bas
 **Barrel check:** For any newly created files OR existing files that gained new exported symbols (check `git diff` for added `export` lines), check if the parent folder has an `index.ts`. If yes and the new/added exports are not re-exported through the barrel, flag: `BARREL: {path} -- update index.ts`.
 
 **Cleanup check:** For files that had code extracted or moved out during this session, verify no orphaned imports remain (lint catches most, but check for unused type-only imports that some lint configs miss).
+
+**Mock factory refresh check:** For shared modules that gained new exports during this session (compare `git diff HEAD` for added `^export` lines in shared barrels/hooks), grep `vi\.mock\("[^"]*{module-basename}` across test directories. For each match using the full-replacement form (`() => ({ ... })` without `importOriginal`), verify the factory includes entries for the new exports. Missing pass-through silently returns `undefined` and crashes consumer-tree tests at render. Fix inline if the test-owner teammate is already shut down; otherwise SendMessage for ownership.
 
 **Dependency audit.** If `pnpm-lock.yaml` is in the modification list (indicating dependency changes), run `pnpm audit --audit-level=high`. Flag critical/high vulnerabilities: `DEPS: {count} high/critical vulnerabilities found`. This is a warning, not a blocker. Skip if lockfile was not modified.
 

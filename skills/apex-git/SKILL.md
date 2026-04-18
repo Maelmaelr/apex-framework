@@ -11,9 +11,13 @@ Reads diff summaries from `.claude-tmp/git-diff/` if available, otherwise falls 
 
 ## Step 0: Read Diffs + Standalone Verification Gate
 
-Glob for `.claude-tmp/git-diff/git-diff-*.md` (CWD-relative) AND `~/.claude/.claude-tmp/git-diff/git-diff-*.md` (absolute). Merge matches from both locations and de-duplicate by path. admin-apex-improve always writes to `~/.claude/.claude-tmp/git-diff/`; project-rooted callers also have the CWD-relative path -- both are read so the summary is found regardless of CWD. Also check for a VERSION file: look for `VERSION` at project root, then `apps/web/VERSION`. Use the first one found. If neither exists, initialize `VERSION` at the project root with content `0.1.0` and use that.
+Glob for `.claude-tmp/git-diff/git-diff-*.md` (CWD-relative) AND `~/.claude/.claude-tmp/git-diff/git-diff-*.md` (absolute). Merge matches from both locations and de-duplicate by path.
 
-**Pre-flight cleanup.** Remove stale APEX session artifacts that would block the VERSION bump Edit or trigger budget hooks from unrelated sessions: `find .claude-tmp/apex-active -maxdepth 1 -type f \( -name "*-scope.json" -o -name "*-budget.json" \) -delete 2>/dev/null || true`. apex-git is a boundary operation -- any active APEX session state that reaches this point is stale by definition.
+**Improve-session scope detection (hard gate).** If ANY matched diff file has basename prefix `git-diff-apex-improve-` (lives in `~/.claude/.claude-tmp/git-diff/`), this is an improve session. Set `IMPROVE_REPO=~/.claude`. All subsequent git operations (pre-flight cleanup, VERSION read/write, staging, commit, push, cleanup) MUST run against `~/.claude` -- do NOT touch the CWD project repo. Ignore any project-repo changes entirely; the user commits project-scope work separately. Drop CWD-relative diff files from the merged list so they are not consumed as context for the ~/.claude commit. Non-improve sessions: use current CWD as the repo root (unchanged behavior).
+
+admin-apex-improve always writes to `~/.claude/.claude-tmp/git-diff/`; project-rooted callers also have the CWD-relative path -- both are read so the summary is found regardless of CWD. Also check for a VERSION file at `$REPO_ROOT`: look for `VERSION` at repo root, then `apps/web/VERSION`. Use the first one found. If neither exists, initialize `VERSION` at the repo root with content `0.1.0` and use that.
+
+**Pre-flight cleanup.** Remove stale APEX session artifacts that would block the VERSION bump Edit or trigger budget hooks from unrelated sessions: `find $REPO_ROOT/.claude-tmp/apex-active -maxdepth 1 -type f \( -name "*-scope.json" -o -name "*-budget.json" \) -delete 2>/dev/null || true`. apex-git is a boundary operation -- any active APEX session state that reaches this point is stale by definition.
 
 **If diff files found:** In a single message, Read all matched diff files AND Read the VERSION file (parallel Read calls). Collect their contents. The VERSION Read is mandatory -- Step 1's Edit on VERSION requires a prior Read.
 
@@ -48,11 +52,11 @@ Do not include "Co-Authored-By" or other trailers.
 
 **Staging:**
 
-Always stage all changes:
+Always stage all changes in `$REPO_ROOT` (set in Step 0 -- `~/.claude` for improve sessions, CWD otherwise):
 ```bash
-git add .
+cd $REPO_ROOT && git add .
 ```
-This overrides the global CLAUDE.md "prefer specific files" preference. `git add .` respects .gitignore, so secrets in `.env*` are excluded. `.claude-tmp/` is NOT gitignored -- its directory structure and persistent artifacts (audit/PRD docs, archives, lessons-tmp) are committed. Ephemeral session files are cleaned up in Step 3.
+This overrides the global CLAUDE.md "prefer specific files" preference. `git add .` respects .gitignore, so secrets in `.env*` are excluded. `.claude-tmp/` is NOT gitignored -- its directory structure and persistent artifacts (audit/PRD docs, archives, lessons-tmp) are committed. Ephemeral session files are cleaned up in Step 3. In improve sessions, project-repo changes (outside `~/.claude`) are intentionally left uncommitted -- the user commits project-scope work on their own cadence.
 
 **Post-stage verification:** Run `git diff --cached --stat`. If output is empty, print "Nothing staged after git add -- all changes may be in .gitignore'd paths." and stop. Otherwise, print the staged file summary as confirmation.
 
@@ -74,9 +78,10 @@ Delete diff summaries and scout findings. Archive treated party/brainstorm files
 
 If a session-id is available (from commit message or manifest), use the cleanup script: `bash ~/.claude/skills/apex/scripts/cleanup-session.sh {session-id} {project-root}`. This handles manifests, scout findings, diff summaries, and teammate context for the specific session.
 
-Then clean remaining shared artifacts:
+Then clean remaining shared artifacts inside `$REPO_ROOT` only:
 ```bash
 # Shared artifacts not scoped to a session-id
+cd $REPO_ROOT
 rm -f .claude-tmp/git-diff/git-diff-*.md
 rm -rf .claude-tmp/scout/
 rm -rf .claude-tmp/apex-context/
@@ -84,6 +89,7 @@ mkdir -p .claude-tmp/party/archives .claude-tmp/brainstorm/archives
 mv -f .claude-tmp/party/party-*.md .claude-tmp/party/archives/ 2>/dev/null || true
 mv -f .claude-tmp/brainstorm/brainstorm-*.md .claude-tmp/brainstorm/archives/ 2>/dev/null || true
 ```
+Improve sessions MUST NOT delete project-repo diff summaries (e.g., a pending canvas-refactor summary under CWD `.claude-tmp/git-diff/`) -- only `~/.claude/.claude-tmp/git-diff/` is cleaned.
 
 ## Step 5: Report
 

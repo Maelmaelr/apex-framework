@@ -104,7 +104,7 @@ Two paths based on task complexity. Full flow details in `apex/SKILL.md`.
 - **Agent types:** Subagents (Agent tool) are child processes within one session -- used in Path 1 parallel implementation, Path 2 scouts, tail workflows. Agent Teams (TeamCreate/SendMessage) are independent Claude Code instances for Path 2 implementation -- see apex-teammate-workflow.md for the 4-phase lifecycle.
 - **Agent definitions** (`~/.claude/agents/`): Reusable agent definitions with YAML frontmatter (name, description, tools, disallowedTools, model, effort, maxTurns). Three definitions: `scout.md` (read-only exploration/audit), `verifier.md` (build/lint/test validation), `evaluator.md` (independent PASS verdict re-verification). Invoked via Agent tool with agent definition reference.
 - **Scope enforcement hook** (PreToolUse, Edit|Write): `scope-check-hook.sh` reads `.claude-tmp/apex-active/{session}-scope.json` and blocks writes to files outside the allowed scope. Inactive when no scope file exists (non-APEX sessions). Always allows `.claude-tmp/` paths, `.claude/plans/` paths (system-generated plan files), and APEX infrastructure paths (`.claude/audit-criteria/`, `.claude/audit-verdicts/`, `.claude/scout-findings/`, `.claude/lessons*`).
-- **Scan budget hook** (PostToolUse, Grep|Glob): `scan-budget-hook.sh` reads/increments counter in `.claude-tmp/apex-active/{session}-budget.json` and blocks when count exceeds max. Inactive when no budget file exists.
+- **Scan budget hook** (PostToolUse, Grep|Glob|Read): `scan-budget-hook.sh` reads/increments counters in `.claude-tmp/apex-active/{session}-budget.json` (grep_glob_count, doc_read_count, source_read_count) and emits a warn-level advisory past warn_threshold, blocks past max. Also tracks source-read count (non-.md/docs Read calls) with default cap 3; bug investigation sets `source_read_max: -1` to opt out. Inactive when no budget file exists.
 - **Evaluator loop** (Phase 2.5 in audit-matrix): After scout verdicts (Phase 2), samples 20-30% of PASS cells weighted by severity, launches independent evaluator agent for re-verification. Overrides false PASS to FAIL. Cap at 2 rounds. Skipped when < 10 PASS cells. See apex-audit-matrix/SKILL.md Phase 2.5.
 - **Env/credential protection hook** (PreToolUse, Read|Edit|Write): `protect-env-hook.sh` blocks access to `.env*` files (except `.env.example/sample/template`) and known credential files (`credentials.json`, `secrets.yaml`, `.npmrc`, etc.). Always active.
 - **Destructive command hook** (PreToolUse, Bash): `block-destructive-hook.sh` blocks destructive git commands (`git checkout --`, `git restore`, `git reset --hard`, `git clean -f`), force push to main/master, `.env` reads via shell (`cat/grep .env`), and dangerous `rm` operations targeting `/`, `~`, or `.`. Always active.
@@ -123,7 +123,7 @@ Deterministic utility scripts in `~/.claude/skills/apex/scripts/`. Replace LLM-d
 - `update-hit.sh` -- Bump `[last-hit]` dates to today for specified lines in lessons.md. Called by: SKILL.md Step 3.5, apex-verify.md.
 - `cleanup-session.sh` -- Pattern-based .claude-tmp/ session artifact cleanup by session-id. Called by: apex-git Step 4.
 - `scope-check-hook.sh` -- APEX scope constraint hook (PreToolUse). Reads allowed files from `{session}-scope.json`, blocks Edit/Write to out-of-scope files. Called by: settings.json PreToolUse hook.
-- `scan-budget-hook.sh` -- APEX scan budget hook (PostToolUse). Tracks Grep/Glob call count in `{session}-budget.json`, blocks when budget exceeded. Called by: settings.json PostToolUse hook.
+- `scan-budget-hook.sh` -- APEX scan budget hook (PostToolUse, matcher: Grep|Glob|Read). Tracks Grep/Glob, doc-read, and source-read counts in `{session}-budget.json`, emits warn-level advisory past warn_threshold, blocks past max. Called by: settings.json PostToolUse hook.
 - `scout-context-truncate-hook.sh` -- APEX scout context advisory hook (PostToolUse, matcher: Read). If a Read result exceeds 300 lines and an active APEX session manifest exists, emits additionalContext suggesting offset/limit for targeted reads. Advisory only -- does not block. Called by: settings.json PostToolUse hook.
 - `security-scan.sh` -- Pattern-based security scan fallback (3-tier: FAIL/WARN/INFO, excludes test/fixture files). Called by: apex-verify.md (when Semgrep unavailable).
 - `protect-env-hook.sh` -- Guardrail hook (PreToolUse, Read|Edit|Write). Blocks .env* files (except .env.example/sample/template) and known credential files. Called by: settings.json PreToolUse hook.
@@ -183,8 +183,9 @@ Three-tier strategy for subagent spawn points. Rationale: most APEX subagents pe
 
 **Haiku:** Trivial single-command agents (e.g., test-gaps cleanup).
 
-**Effort levels (Opus 4.6):**
-- Main agent: high effort (global `settings.json`). Subagents/teammates: medium by default.
+**Effort levels:**
+- Main agent: `xhigh` default (Opus 4.7 default, set in `~/.claude/settings.json:effortLevel`). Subagents/teammates: medium by default -- read-only exploration and classification do not need xhigh cost.
+- Opus 4.7 uses adaptive thinking (no fixed thinking budget). The `think` / `ultrathink` keywords remain valid effort signals at the harness level.
 - Dynamic trigger: `~/.claude/skills/apex/effort-trigger.txt` contains the high-effort keyword. Indirection avoids static triggering (keyword in skill content would enable high effort for ALL invocations).
 - Trigger placement: skills with "Effort assessment" blocks evaluate complexity during scan/assessment and output the keyword if deep reasoning is needed. Scouts (apex-scout.md), plan writing (apex-apex.md Step 4.6), teammates (apex-teammate-workflow.md).
 - Exempt (no effort assessment): mechanical/orchestration skills (apex-git, apex-eod, apex-lessons-extract, apex-lessons-analyze, apex-init).

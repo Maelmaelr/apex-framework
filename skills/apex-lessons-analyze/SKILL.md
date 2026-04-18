@@ -145,14 +145,16 @@ In a single pass over the lessons, identify and apply both:
 
 1. **Small sections** (<3 entries): Find the most semantically related larger section and merge entries into it. Remove the empty section header.
 2. **Verbose entries** (>500 characters): Rewrite to preserve the core lesson in <=400 characters. Strip examples, redundant context, and verbose phrasing. Preserve `[verified]` and `[last-hit: ...]` markers.
+3. **Oversized sections** (>80 lines OR >12 entries): Split into sub-topic sections (e.g., "Canvas / Connection Rules", "Canvas / History", "Canvas / Media Inputs") when entries cleanly cluster; otherwise log `OVERSIZED: "{section}" ({N} entries / {M} lines) -- review for split`. Splitting requires updating `lessons-index.md` to route distinctive keywords to the new sub-sections in Step 8.
 
 Print each action:
 ```
 SECTION MERGE: "{small section}" (N entries) -> "{target section}"
 CONDENSE: {before_chars} -> {after_chars} chars: "condensed text snippet..."
+OVERSIZED SPLIT: "{section}" -> ["{sub1}", "{sub2}"]
 ```
 
-If no small sections and no verbose entries exist, skip this step.
+If no small sections, no verbose entries, and no oversized sections exist, skip this step.
 
 Mark Clean task completed.
 

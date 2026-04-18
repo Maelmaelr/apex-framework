@@ -1,10 +1,12 @@
-Be critical. Challenge assumptions, flag risks, push back when suboptimal. Correct answers over comfortable answers.
+
+Be critical. Challenge assumptions, flag risks, push back when suboptimal. Correct answers over comfortable answers. Always use a single dash "-" in place of double dashes "--".
 
 ## Workflow
 
 **Use `/apex`** when project CLAUDE.md's "Workflow Routing" section triggers it, or for any non-trivial task (verification, doc updates, lesson capture automatic).
 
 **All sessions (APEX or not):**
+
 - TaskCreate for 3+ distinct concerns (track progress, visibility) (APEX sessions override: see SKILL.md Step 5A). Count concerns, not files -- a single-concern change touching multiple files (e.g., component + barrel export) is one step.
 - Parallel Explore agents for multi-area investigation (single message, multiple Agent tool calls)
 - Parallel execution for independent changes (single message, multiple Agent tool calls)
@@ -16,6 +18,7 @@ Be critical. Challenge assumptions, flag risks, push back when suboptimal. Corre
 **Bug reports and CI failures:** When given a bug report, just fix it -- investigate, diagnose, resolve. No hand-holding, no "should I look into this?". For failing CI tests, go fix them without being told how. Zero context switching required from the user.
 
 **Non-APEX specifics:**
+
 - Complete all file mods before verification (no per-file builds)
 - After: Build + lint (skip for simple UI-only changes), note tricky patterns, check doc updates, verify env/infra changes
 - Before a bulk refactor (e.g., replacing a pattern across all files in a list), grep the target pattern in each file first. A prior session may have already converted some targets, and stale scope lists reference files that no longer have the pattern -- acting on them causes no-ops or incorrect diffs.
@@ -30,7 +33,7 @@ Be critical. Challenge assumptions, flag risks, push back when suboptimal. Corre
 - **Stale LSP diagnostics**: The TypeScript LSP can report imports as unused mid-session while they are consumed elsewhere in the same file -- the LSP index has not yet processed the dependent edit. Do not act on "unused import" LSP warnings during an active multi-file edit session; defer to the build step for ground truth. Removing imports based on stale LSP state causes build failures.
 - **Investigate**: Agent tool with Explore subagent_type (read-only research) (not during APEX Quick Scan -- direct Glob/Grep only)
 - **Track work**: TaskCreate/TaskList (3+ steps)
-- **Ask user**: AskUserQuestion (not inline questions)
+- **Ask user**: AskUserQuestion, never inline text questions. Treat phrases like "Want me to...", "Should I...", "Shall I...", "Which do you want?", or "Your call" as self-triggers -- stop and call the tool. Multi-option presentations (numbered "paths forward", alternative approaches) belong in AskUserQuestion with one option per path (preview for code/mockup comparisons). Applies to APEX, admin-apex, and plain direct sessions alike.
 - **Bulk JSON edits** (e.g., i18n files en.json/fr.json with many keys): use a Python script (`python3 -c "import json..."`) rather than multiple Edit calls -- Python's `json` module handles escaping correctly and avoids partial-write failures on large files.
 
 ## Code Quality
@@ -59,21 +62,25 @@ Be critical. Challenge assumptions, flag risks, push back when suboptimal. Corre
 ## Security (Non-Negotiable)
 
 **Never:**
+
 - Read/modify `.env*` files (use `env.example`)
 - Commit secrets
 - Skip auth/authz validation
 - Guess security values
 
 **Always:**
+
 - Validate inputs at boundaries
 - Preserve existing auth patterns
 - Ask if security unclear
 - Fail closed on missing secrets: `if (!secret) return true` in HMAC/signature verification silently disables security for all requests. Correct pattern: reject the request if the secret is not configured.
 
 **Always:**
+
 - Client-side input constraints (`maxlength`, `max`, `accept`) are not security controls -- any direct API call bypasses them. Server-side validation (e.g., VineJS `vine.string().maxLength(128)`, file-type checks) is the enforcement layer; client constraints are supplemental UX only.
 
 **Auditing:**
+
 - When auditing a feature doc against actual code, cross-check with recent git commits before concluding a documented feature is present. Docs go stale after feature removal; auditing a removed feature produces false findings.
 - When auditing security-sensitive flows documented as "inline" or "atomic" in docs, read the actual SQL/code directly -- prose descriptions can mask gaps where the check happens application-side post-query rather than in the DB operation. Security audit rules: trust the code, not the prose.
 
@@ -97,3 +104,4 @@ ASCII only. No unicode, no emojis, no smart quotes.
 ## Compaction Preservation
 
 When compacting, preserve: task description, session start time, current APEX path (1/2), active step number, file ownership claims (files), scout findings file path, tail mode, and user decisions. The PreCompact hook echoes these before compaction; the PostCompact hook re-injects them after.
+

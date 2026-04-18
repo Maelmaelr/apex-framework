@@ -75,9 +75,13 @@ Examples:
   - **Shared type additions:** Grep construction sites (object literals, factories, `as TypeName`) across ALL packages
   - **Shared type removals:** Grep literal value across ALL packages (display, tests, i18n, admin constants). Also grep ALL ancestor `index.ts` barrel files up to the package root -- removed exports may be re-exported from parent-folder barrels that won't surface in package-wide consumer grep.
   - **Interface restructuring:** Distinguish surface prop renames from behavioral restructuring (data fetching removed, state relocated). Grep `<ComponentName` across full owning package for all JSX consumers (non-page consumers are primary source of incomplete ownership lists)
+  - **i18n key consolidation/extraction:** compare translated VALUES across namespaces, not only key presence. Same key name with divergent values (`awaitingImage` meaning "Awaiting image..." in namespace A vs "Received after generation" in namespace B) is a consolidation hazard. Report namespace:value pairs, not just matched-key counts.
+  - **i18n labelKey/placeholderKey swap:** when a task swaps or renames a prop key used to look up i18n strings, verify the NEW key exists in the EXACT namespace used by the target component (e.g., `dashboard.canvas.{node}.settings`). The key may exist in a sibling namespace but be absent from the target one -- static grep on the key name alone produces a false-present result. Read the target namespace block in the messages file to confirm.
   - **Column additions:** Grep aggregate queries (`.count`, `.where`, `.whereNull`) on same table. Check migration archives
   - **Sequential resources:** Read directory listing for current highest sequence number
   - **Integration/event-handling:** Identify handler/state-setter component, not display component
+  - **Planned deletion / rename:** When a finding depends on a planned deletion/rename, caller must specify `state: current` or `state: post` in the scout's `<pre-loaded-context>`. Scouts evaluate only the specified state; contradictory verdicts across scouts signal ambiguous framing rather than real divergence.
+  - **Demote-to-non-exported:** Zero-external-consumer verdict requires grepping BOTH outside-folder references (`@/package/folder/`) AND within-folder relative imports (`./sibling`, `../sibling`, same-folder `@/package/folder/{sibling}`). Same-folder relative imports are not "external" but still break at build when the symbol is demoted. All greps must be empty before recommending demotion.
 
 **Reverse dependency search.** For every modification target, grep for what imports/calls/references it. Report both target and consumers. Missing consumers = primary source of missed blast radius.
 
@@ -87,9 +91,13 @@ Examples:
 
 **Area dedup.** Print numbered list with primary files and root directory per area. If two areas share >2 target files, merge into single scout area.
 
-**Hypothesis framing.** Per area: specific search hypothesis (expected finding + location). One hypothesis per scout to prevent convergent searches.
+**Dirty-state separation.** When heavy dirty state exists in scope dirs, segregate dirty-but-unrelated files from refactor-relevant files in the findings output (e.g., sidebar list `dirty-unrelated: [paths]`). Plan ownership must claim only refactor-relevant files; dirty-unrelated files stay with the session that modified them.
+
+**Hypothesis framing.** Per area: specific search hypothesis (expected finding + location). One hypothesis per scout to prevent convergent searches. **Aspect cap:** <=6 sub-aspects per DEEP scout -- more causes turn-budget exhaustion mid-investigation and forces SendMessage-resume to trigger write. Mirrors Audit Mode's ~15-claim cap. Split areas with >6 sub-questions into additional scouts.
 
 **Mandatory: test file enumeration.** For every source file in modification list: (a) `{filename}.test.ts`/`.spec.ts` same directory, (b) `__tests__/{filename}.test.ts`/`.spec.tsx` parent directory, (c) Grep `import.*from.*{filename}` scoped to test directories. Include all discovered test files. Not optional.
+
+**Helper/util coverage for gate/validation tasks.** When the task concerns validation behavior, canPlay logic, feature gating, or capability checks: also enumerate sibling `*-helpers.ts` and `*-utils.ts` files in scope directories -- gate logic frequently lives in helpers rather than the node/controller file itself. Missing them causes false-clean scout findings.
 
 ## Scout Methodology
 
@@ -110,7 +118,7 @@ Examples:
 10. FAIL: Cite what found instead, or confirm absence after diversified search (rule 5). Never FAIL without targeted search.
 11. Flow/behavior claims ("X calls Y"): trace actual call chain -- function existence alone is insufficient.
 12. Existence claims: existence check sufficient. Framework-auto-generated elements (Next.js viewport meta, auto-routes) satisfy claims without explicit code. Check framework auto-generation before FAIL.
-13. Existence/export claims: check barrel files, re-exports, alias patterns before FAIL. When scouting for symbol removal/rename, grep ALL ancestor-folder barrel/index files (immediate parent, grandparent up to package root) for re-exports of the target, not only the defining folder's barrel -- parent-folder `export * from './subfolder'` and named re-exports are the dominant miss pattern.
+13. Existence/export claims: check barrel files, re-exports, alias patterns before FAIL. When scouting for symbol removal/rename, grep ALL ancestor-folder barrel/index files (immediate parent, grandparent up to package root) for re-exports of the target, not only the defining folder's barrel -- parent-folder `export * from './subfolder'` and named re-exports are the dominant miss pattern. Also grep for non-index single-file shims (`export \{[^}]*\} from ['\"]\./`) whose exported name matches the target -- shim consumers are deletion blockers the same as barrel re-exports. When a shim file is scoped for deletion, also grep for the shim's FILE BASENAME (`from ['\"][^'\"]*{shim-basename}['\"]`) across the package -- type-only imports (`import type { X } from './shim'`) match the shim path but may be obscured by symbol-name grep when the symbol is re-exported from multiple sources.
 14. Before FAIL on behavioral/pattern claims, consider implicit mitigations (naming conventions, framework guarantees, architectural patterns). Uncertain: FAIL with caveat.
 15. Before FAIL, steel-man the current code: intentional simplification, framework handling, planned deprecation, performance trade-off, scope limitation. Plausible: FAIL with caveat noting steel-man.
 16. Findings touching Security-Sensitive files (per CLAUDE.md): flag implicit dependencies, fragile assumptions, security requirements.
@@ -151,7 +159,7 @@ Before launching scouts, assemble context:
 
 **Step B -- Batch pre-flight Greps.** Identify key symbols/patterns each area needs. Run ALL anticipated Greps in a SINGLE response (parallel). Do not dispatch until done. Include in each scout's `<pre-loaded-context>`. Preferred format inside `<pre-loaded-context>`: `file_path:line_number: content` triples so scouts skip location-discovery Greps and go directly to behavioral verification. Sibling folders sharing a type via re-export (e.g. `image-generation/` re-exporting from `video-generation/`): pre-flight Grep for the primary implementation's exported symbol name across both folders to surface re-export shims before scout dispatch.
 
-**Step C -- Absence pre-screening.** For items where absence is expected, run multi-variant Grep (camelCase, snake_case, PascalCase, kebab-case) before dispatch. All variants empty: include `pre-screened absent: {symbol} -- all {N} variants empty` in scout's `<pre-loaded-context>`. Scouts verify with one additional approach only.
+**Step C -- Absence pre-screening.** For items where absence is expected, run multi-variant Grep (camelCase, snake_case, PascalCase, kebab-case) before dispatch. All variants empty: include `pre-screened absent: {symbol} -- all {N} variants empty` in scout's `<pre-loaded-context>`. Scouts verify with one additional approach only. **Pattern-absence claims** (not just symbol absence, e.g., "this import source is never used"): read ONE canonical example file that would contain the pattern if present -- ~200 tokens to falsify the claim before propagating it to N scouts as pre-loaded context. A false-absence hypothesis embedded in `<pre-loaded-context>` biases all scouts dispatched with it.
 
 ### Step 3: Launch Parallel Scouts
 
@@ -197,12 +205,15 @@ Classify by evidence type:
 - **Existence/pattern claims**: SPOT-CHECK -- verify 2-3 random samples per scout.
 - **Absence claims, aggregate counts, dead-code claims, reasoning conclusions**: VERIFY -- independently re-Grep before accepting.
 - **Unused/missing binding FAIL verdicts** (ORM columns, type members, exports): grep all consumers. If all access via raw SQL/dynamic property/string keys: reclassify FAIL -> INFO (hygienic, not runtime-breaking).
+- **Claims depending on runtime defaults** (flag default, config fallback, env default, schema default): Read the default-defining file and include the observed default in the finding. Do not infer defaults from naming, usage pattern, or framework convention.
 
 Cite exact source file paths. Split large audits across parallel agents (3-4 files each).
 
 ### Step 4.3: Completeness Check
 
 Reconcile against Step 2 areas. Print: `COMPLETENESS (exploration): {covered}/{total} areas`. Missing <=2: investigate inline. Missing >2: single targeted re-scout. Max 1 round; remaining gaps marked "unscoped" with warning. (Audit mode uses different format -- see Audit Step 4.)
+
+**Finalize-and-return.** Once all area hypotheses have evidence-backed verdicts (confirmed/refuted/INCONCLUSIVE), proceed immediately to Step 5 and Step 6 -- write the findings file and return. Do not pause for caller clarification or self-dialog ("now let me verify...", "I also want to check..."). Unresolved ambiguity becomes INCONCLUSIVE with one-line reasoning. Pausing forces the caller to SendMessage-resume, wasting a round-trip. DEEP scouts with multi-aspect areas are the dominant stall pattern -- treat each aspect as a discrete hypothesis and close all of them before branching into speculative follow-ups.
 
 ### Step 4.4: Pattern Expansion
 
@@ -218,7 +229,7 @@ If findings reveal decision points needing user direction (conflicting patterns,
 
 ### Step 6: Persist Findings to Disk and Return
 
-**Not optional.** Generate UID: `echo "$(date +%Y%m%d)-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)"`. Write collated findings to `.claude-tmp/scout/scout-findings-{uid}.md` (create dir if needed). Format: flat per-item sections only. No tables, no summary grids, no passing items. Only actionable findings. File write BEFORE returning. Use **plan-input** return with absolute path ($PWD).
+**Not optional.** Generate UID: `echo "$(date +%Y%m%d)-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)"`. Write collated findings to `.claude-tmp/scout/scout-findings-{uid}.md` (create dir if needed). Format: flat per-item sections only. No tables, no summary grids, no passing items. Only actionable findings. **FINGERPRINT field required:** Each finding block must include the `- FINGERPRINT: {FILE}:{TYPE}:{slug}` field from the agent definition -- this field is what `scout-dedup.py` parses for cross-session dedup. Section headings (e.g., "F1.1", "## Finding") as block delimiters silently skip dedup. File write BEFORE returning. Use **plan-input** return with absolute path ($PWD).
 
 **Cross-session dedup.** After writing: `python3 ~/.claude/skills/apex/scripts/scout-dedup.py --theme {task-theme} --findings-file {path}`. Print delta. If converged (exit 1): `SCOUT CONVERGENCE: reached -- {pct}% new findings below 10% threshold.`
 
@@ -256,7 +267,7 @@ Follow shared Pre-Flight Context Assembly above (same Steps A/B/C, applied to ch
 
 **Scan data reuse:** Follow Scan Data Reuse Procedure (audit override applies). Verify scan-answered items inline with PASS/FAIL + evidence.
 
-Split remaining items across scouts (4-6 source docs per scout max). Single-source items: split by verification methodology (existence, content, pattern, cross-cutting) rather than file range. Distribute cross-cutting claims evenly across scouts (not concentrated in one). **WebFetch budget:** ~5 per scout -- source-doc limit undercounts when one source spans many pages.
+Split remaining items across scouts (4-6 source docs per scout max, ~15 claims per scout hard cap). Single-source items: split by verification methodology (existence, content, pattern, cross-cutting) rather than file range. Distribute cross-cutting claims evenly across scouts (not concentrated in one). When a single scout would carry >15 claims OR span 3+ distinct verification methodologies (e.g., hygiene + frontend-backend sync + security/gates), split along methodology lines into separate scouts -- overloaded cross-cutting scouts stall mid-turn and require SendMessage to resume. **WebFetch budget:** ~5 per scout -- source-doc limit undercounts when one source spans many pages.
 
 Launch parallel Explore agents per shared-guardrails #1 and #14 -- ALL in SINGLE response.
 
@@ -278,6 +289,8 @@ Read checklist at {path}. Verify items {N}-{M} from [doc], section [section]. Sc
 </known-findings>
 
 Check <pre-loaded-context> before searching. Skip known fingerprints. Report only new/changed findings. Scope Grep to relevant directories; repo-wide only if scoped returns 0.
+
+When all assigned checklist items have verdicts, write the findings file and return immediately. Do not pause to verify tangential aspects or await clarification -- unresolved ambiguity becomes INCONCLUSIVE.
 
 Follow rules, output format, examples in agent definition. Use audit rules (9-19).
 ```
@@ -309,6 +322,8 @@ Missing items:
 3. Max 1 re-scout round; remaining = INCONCLUSIVE
 
 Do not proceed to Step 4.5 until all items have verdicts.
+
+**Finalize-and-return.** When all checklist items have verdicts, proceed immediately to Steps 4-8 and write the findings file. Do not pause mid-audit to await caller clarification or self-dialog -- unresolved ambiguity becomes INCONCLUSIVE with one-line reasoning. Pausing forces the caller to SendMessage-resume, wasting a round-trip.
 
 **Cross-scout INCONCLUSIVE reconciliation.** Scan sibling scouts' evidence for resolving information. If sufficient: upgrade inline, note cross-scout source. Print: `RECONCILED: {N} INCONCLUSIVE upgraded`. Only persist remaining INCONCLUSIVE.
 

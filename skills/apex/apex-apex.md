@@ -79,16 +79,20 @@ Steps 3.5 and 4.6 do not apply for document output. Proceed with steps 6a-6b bel
 
 Follow SKILL.md Step 3.5 lesson loading procedure (uses `~/.claude/skills/apex/scripts/grep-lessons.sh`).
 
-1. **Select terms (6-8 total).** Sources: scan results, scout findings. Replace generic scan terms with specific scout-discovered terms (table names, service names, function names) -- do not stack all sources. Domain filter: when scout findings are clearly single-domain (backend service helpers, API controllers, DB migrations), omit terms that primarily surface lessons from the other domain (frontend hook patterns, component lifecycle, UI state) -- cross-domain lessons add context noise without aiding the fix.
+1. **Select terms (6-8 total).** Sources: scan results, scout findings. Replace generic scan terms with specific scout-discovered terms (table names, service names, function names) -- do not stack all sources. Domain filter: when scout findings are clearly single-domain (backend service helpers, API controllers, DB migrations), omit terms that primarily surface lessons from the other domain (frontend hook patterns, component lifecycle, UI state) -- cross-domain lessons add context noise without aiding the fix. Broad framework/domain tokens (e.g., `canvas`, `react`, `upload`, `connected`, `upstream`, `hook`, `indicator`) function as generically as blocklisted terms -- cap at 1 per query. Accept term count below 6-8 when only a few specific symbols are available; undersized queries beat padded ones.
 2. **Run grep-lessons.sh.** If output is useful (<150 lines, non-empty), proceed to hit-tracking (SKILL.md Step 3.5 sub-step 3).
-3. **If truncated:** drop the most generic terms and retry once (do not add more specific symbols -- narrow terms tend to match nothing). **If empty:** do not retry. **Hard limit: 2 total attempts.** After the 2nd attempt, skip lesson loading regardless of result -- do not retry with `head`, alternate keywords, or any other workaround.
+3. **Retry rules (scoped by output).**
+   - **Truncated (>150 lines):** drop the 1-2 most generic terms and retry once. Do not replace with more specific symbols -- narrow terms tend to match nothing. Skip after the retry regardless of output. **2 total attempts is the hard cap and applies only to this case.**
+   - **Empty (0 matches):** skip immediately after the first attempt. Do NOT retry with fewer/different terms. `grep-lessons.sh` uses case-insensitive OR matching, so fewer terms only narrows results -- retrying cannot widen an empty match set.
+   - Never retry with `head`, alternate keywords, or any other workaround outside the truncated-retry path above.
 
 Keep loaded lessons in context for plan writing (Path 2) or subagent prompts (downgrade to Path 1).
 
-## Step 4.5: Pre-Plan Reflection
+## Step 4.5: Pre-Plan Reflection (MANDATORY)
 
-Read and follow ~/.claude/skills/apex/apex-reflect.md with mode: `discovery`.
-This captures discovery-phase workflow observations before context clears at plan approval.
+**MANDATORY:** This is a distinct step from Step 4.6 -- do not conflate or label them together. Read and follow ~/.claude/skills/apex/apex-reflect.md with mode: `discovery`. This captures discovery-phase workflow observations before context clears at plan approval.
+
+**Gate:** Before proceeding to Step 4.6, one of reflect's Step 5 prints must appear in output: `Reflect: {count} workflow observations captured ({categories})` or `Reflect: No workflow observations`. Absence of that line means Step 4.5 was skipped -- return to it before moving on.
 
 ## Step 4.6: Effort Assessment
 

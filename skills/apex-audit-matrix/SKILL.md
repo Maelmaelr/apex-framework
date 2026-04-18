@@ -425,6 +425,10 @@ OPEN-01 is the catch-all. A catalog does not need to anticipate every possible i
 
 The `sources` field lists authoritative source files used to derive criteria. Keep it to the key source files (docs, core services), not an exhaustive list of every file mentioned in targets. Targets are discoverable from the criteria themselves.
 
+### Claim Phrasing
+
+Phrase criteria as the specific violation pattern, not broad absence claims. "Must re-export only from X" invites false FAIL when the target has legitimate non-violating re-exports. Prefer specific negatives ("Must not re-export Y"), pairwise constraints ("X must not appear as source alongside Z"), or specific positives ("Must export symbol N from file F"). Broad positives ("must re-export only", "must contain exactly") are catalog-author traps -- scouts cannot distinguish intended scope from oversight.
+
 ### What Catalogs Are NOT
 
 - Not a specification document (use feature docs for that)

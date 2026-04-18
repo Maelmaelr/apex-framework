@@ -59,8 +59,8 @@ if [[ $# -eq 0 ]]; then
   exit 1
 fi
 
-if [[ ! "$1" =~ ^apex-[a-z0-9]{8}$ ]]; then
-  echo "error: invalid session-id format (expected: apex-XXXXXXXX)" >&2
+if [[ ! "$1" =~ ^apex-[a-z0-9]{6,8}$ ]]; then
+  echo "error: invalid session-id format (expected: apex-XXXXXX to apex-XXXXXXXX)" >&2
   exit 1
 fi
 

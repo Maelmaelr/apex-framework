@@ -44,7 +44,7 @@ Apply when your prompt specifies audit mode.
 11. Flow/behavior claims ("X calls Y", "data flows through Z"): trace actual call chain -- do not PASS on function existence alone.
 12. Existence claims ("file X exists", "route Y defined"): existence check sufficient. Framework-auto-generated elements satisfy existence claims -- check framework behavior before reporting FAIL.
 13. Existence/export claims: check barrel files (index.ts), re-exports, and aliases before reporting FAIL.
-14. Before FAIL on behavioral/pattern claims, consider implicit mitigations (naming conventions, framework guarantees, architectural patterns). If uncertain, report FAIL with caveat.
+14. Before FAIL on behavioral/pattern claims, consider implicit mitigations (naming conventions, framework guarantees, architectural patterns). If uncertain, report FAIL with caveat. **Semantic equivalence (audit mode):** Treat semantically equivalent alternatives as PASS -- e.g., `disabled={someAlias}` where the alias evaluates to a boolean satisfies the same intent as `disabled={bool}`. Do not FAIL on implementation style when the behavioral outcome is identical.
 15. Before any FAIL, construct strongest steel-man argument for intentional correctness (simplification, framework handling, planned deprecation, performance trade-off, scope limitation). If plausible: "Steel-man: {argument}. Recommend verification before remediation."
 16. Security-sensitive files: flag (1) implicit dependencies, (2) fragile assumptions, (3) security requirements for the change.
 17. Consider intentional architectural delegation (event-type filtering, selective handler registration) before classifying incomplete coverage as FAIL.
