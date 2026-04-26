@@ -17,6 +17,7 @@ Determine agent set based on tail mode (passed by caller).
   - (a) verification had failures that required fixes? {yes|no}
   - (b) implementation involved retries, non-obvious solutions, or mid-implementation self-corrections (reverting own changes within the same file)? {yes|no}
   - (c) task was not mechanical (per shared-guardrails #14 mechanical definition)? {yes|no}
+  **Headroom check (before spawn):** `wc -l < .claude-tmp/lessons-tmp.md 2>/dev/null || echo 0`. If line count >= 45 (within 5 entries of the 50-entry cap), print `LEARN HEADROOM: {N}/50 -- spawn blocked, run /apex-lessons-extract first` and skip Agent 1. This avoids the abort-then-consolidate cycle that occurs when apex-learn hits the cap mid-run.
   Print: `LEARN PRE-FLIGHT: {spawn|skip} -- (a)={yes|no} (b)={yes|no} (c)={yes|no}`.
   Agent 1 (model: "sonnet"): Read and follow ~/.claude/skills/apex/apex-learn.md.
 - **UPDATE PRE-FLIGHT:** Only spawn Agent 2 if modified file paths match any doc path pattern from CLAUDE.md Doc Quick Reference. Print: `UPDATE PRE-FLIGHT: {spawn|skip} -- {reason}`.

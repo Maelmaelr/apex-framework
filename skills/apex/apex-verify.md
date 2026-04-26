@@ -159,7 +159,7 @@ This is a safety net -- primary prevention is enforced during implementation via
 
 Check modified files for size and structure. Run `wc -l` in a single batched Bash call: `wc -l file1 file2 file3 ...` (all modified files from `git diff --name-only HEAD` or the modification list). Handle bracket paths per shared-guardrails #20.
 
-**Size check:** Flag any file >400 lines. Thresholds: >400 lines = `split-first` (split before adding >10 lines), >500 lines = `blocked` (split first when the task adds >10 lines; trivial edits <=10 lines are allowed). Print: `FILE HEALTH: {path} ({lines} lines) -- {split-first|blocked}`. If changes in this session pushed a file past 500 (was under before, over now), print `FILE HEALTH WARNING: {path} grew to {lines} lines -- split recommended before next task`. This is a verification warning, not a blocker.
+**Size check:** Flag any file >400 lines. Thresholds: >400 lines = `split-first` (split before adding >10 lines), >500 lines = `blocked` (split first when the task adds >10 lines; trivial edits <=10 lines are allowed). Print: `FILE HEALTH: {path} ({lines} lines) -- {split-first|blocked}`. If changes in this session pushed a file past 500 (was under before, over now), print `FILE HEALTH WARNING: {path} grew to {lines} lines -- split recommended before next task`. This is a verification warning, not a blocker. **Pre-session line count:** Derive via `git diff --numstat HEAD {file}` (outputs `added removed filename`); pre-session lines = current - added + removed. Do NOT use `git show HEAD:{file} | wc -l` -- this is blocked by the git-safety guardrail hook.
 
 **Persist health notes:** For each flagged file (both already-over-500 and grew-past-500), write a health note to `.claude-tmp/file-health/file-health-<8char-uid>.md` (run `mkdir -p .claude-tmp/file-health` first). Format: `# File Health Note` header, then bulleted fields: `path` (file-path), `lines` (line-count), `type` (grew-past-500 | already-over-500), `detected` (YYYY-MM-DD), `session-task` (brief description). Skip writing if a health note already exists for the same path (grep `.claude-tmp/file-health/` for the path before writing).
 
@@ -221,6 +221,8 @@ Use quote-agnostic grep patterns for import/string checks (e.g., `from .@/lib/fo
 **User-field propagation check:** When the task adds fields to session/auth types (e.g., `SessionPayload`, `Session`, `User`), grep for session-shaped inline object literals (e.g., `{ user: {`, `session: {`, `as Session`) across the full codebase -- not just named providers and test fixtures. Inline construction sites outside the auth layer break silently at runtime when required fields are missing. Treat any object literal matching the session shape as a construction site requiring the new field.
 
 If parallel checks produce "Sibling tool call errored" results, re-run only the affected checks individually (one per tool call) to isolate real failures from cascading artifacts.
+
+**AC-pattern grep (false-completion guard).** After running plan-specified verification commands, grep each AC's concrete behavioral marker directly in the relevant source files -- build+lint passing does not imply AC is met when the change was never written. Pattern: for each AC that asserts a code change (e.g., "add X guard", "call Y before Z", "return W field"), grep the target file for the distinctive phrase or call site. A missing match means the fix was reported but not applied. This step catches false-completion claims that ship broken end-to-end chains and is not optional.
 
 ## Step 6: Doc Link Verification
 

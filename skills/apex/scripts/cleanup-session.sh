@@ -172,7 +172,21 @@ if [[ -f "${TMP_DIR}/pre-agent-diff.stat" ]]; then
   removed_count=$((removed_count + 1))
 fi
 
-# 7. test-gaps.md -- NOT removed here. test-gaps.md persists across sessions
+# 7. Team scope files (apex-active/{team-name}-scope.json -- keyed by team-name, not session-id)
+#    apex-team.md Step 0 writes {team-name}-scope.json, NOT {session-id}-scope.json.
+#    cleanup-session.sh section 1 only removes {session-id}-scope.json, leaving team scope files.
+#    Clean all remaining *-scope.json files NOT matching the session-id pattern.
+if [[ -d "${TMP_DIR}/apex-active" ]]; then
+  while IFS= read -r -d '' f; do
+    basename_f="$(basename "$f")"
+    [[ "$basename_f" == "${SESSION_ID}-scope.json" ]] && continue
+    rm -f "$f"
+    echo "CLEANUP: Removed team scope file $(basename "$f")"
+    removed_count=$((removed_count + 1))
+  done < <(find "${TMP_DIR}/apex-active" -maxdepth 1 -name "*-scope.json" -print0 2>/dev/null)
+fi
+
+# 8. test-gaps.md -- NOT removed here. test-gaps.md persists across sessions
 #    and is only removed by apex-tail.md when the session that consumed it completes.
 #    cleanup-session.sh cannot distinguish "consumed source" from "newly written by verify."
 

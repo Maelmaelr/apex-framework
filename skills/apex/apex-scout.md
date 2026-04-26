@@ -93,11 +93,15 @@ Examples:
 
 **Dirty-state separation.** When heavy dirty state exists in scope dirs, segregate dirty-but-unrelated files from refactor-relevant files in the findings output (e.g., sidebar list `dirty-unrelated: [paths]`). Plan ownership must claim only refactor-relevant files; dirty-unrelated files stay with the session that modified them.
 
-**Hypothesis framing.** Per area: specific search hypothesis (expected finding + location). One hypothesis per scout to prevent convergent searches. **Aspect cap:** <=6 sub-aspects per DEEP scout -- more causes turn-budget exhaustion mid-investigation and forces SendMessage-resume to trigger write. Mirrors Audit Mode's ~15-claim cap. Split areas with >6 sub-questions into additional scouts.
+**Hypothesis framing.** Per area: specific search hypothesis (expected finding + location). One hypothesis per scout to prevent convergent searches. **Aspect cap:** <=6 sub-aspects per DEEP scout -- more causes turn-budget exhaustion mid-investigation and forces SendMessage-resume to trigger write. Mirrors Audit Mode's ~15-claim cap. Split areas with >6 sub-questions into additional scouts. **Patch-task tighten:** When the task description frames a concrete patch (e.g., "fix X in Y" or "add guard to Z") rather than open discovery, cap aspects at 3 -- the narrower the task, the more a 400+ line findings file signals over-scoping rather than thoroughness. **Root-dir cap:** Assign at most 1-2 root directories per DEEP scout when the task has an "enumerate individual items" directive -- scouts assigned 3+ root directories with enumeration stall mid-turn before finishing all roots. Split by root dir into sibling scouts rather than expanding a single scout's scope.
 
-**Mandatory: test file enumeration.** For every source file in modification list: (a) `{filename}.test.ts`/`.spec.ts` same directory, (b) `__tests__/{filename}.test.ts`/`.spec.tsx` parent directory, (c) Grep `import.*from.*{filename}` scoped to test directories. Include all discovered test files. Not optional.
+**Mandatory: test file enumeration.** For every source file in modification list: (a) `{filename}.test.ts`/`.spec.ts` same directory, (b) `__tests__/{filename}.test.ts`/`.spec.tsx` parent directory, (c) Grep `import.*from.*{filename}` scoped to test directories. Include all discovered test files. Not optional. Audit-shaped scouts (verifying existing behavior rather than proposing changes) are not exempt -- include a per-scout directive to "enumerate test files under `__tests__/` matching the primary files you touch" even when the scout area is framed as read-only exploration.
 
-**Helper/util coverage for gate/validation tasks.** When the task concerns validation behavior, canPlay logic, feature gating, or capability checks: also enumerate sibling `*-helpers.ts` and `*-utils.ts` files in scope directories -- gate logic frequently lives in helpers rather than the node/controller file itself. Missing them causes false-clean scout findings.
+**Helper/util coverage for gate/validation tasks.** When the task concerns validation behavior, canPlay logic, feature gating, or capability checks: also enumerate sibling `*-helpers.ts` and `*-utils.ts` files in scope directories -- gate logic frequently lives in helpers rather than the node/controller file itself. Missing them causes false-clean scout findings. **Multi-source behavior bugs:** When the bug concerns a behavior "across multiple sources" (e.g., upload cap, library import cap, XHR connector cap), explicitly enumerate ALL per-source helper files in scope directories rather than scouting only the shared hook or canonical file -- each source often has independent helper code that re-implements the same check and must be found separately.
+
+**i18n/JSON structural audits.** When the task involves auditing JSON locale files (e.g., en.json vs fr.json parity, missing keys, value drift), prefer a single Python script (`python3 -c "import json,os; ..."` flatten-and-compare) over multiple Grep/Glob calls. One Bash call surfaces structural parity AND value drift without consuming scan-budget search counters.
+
+**Architectural-pattern discovery.** When the task involves designing a new opaque identifier, token surface, or ID-routing mechanism, include a scout step to surface the EXISTING project patterns for the same semantic role (DB-id lookup + redirect, signed JWT, opaque token) BEFORE the caller anchors on an approach. Scouts that surface precedents early prevent anchoring on over-engineered solutions (e.g., stateless crypto when a DB lookup is the project norm). Report found precedents as the first finding, before any implementation recommendations.
 
 ## Scout Methodology
 
@@ -111,6 +115,7 @@ Examples:
 6. **Convergent retry.** 0 or unexpected results: 2+ alternative terms before accepting. Empty = signal to broaden.
 7. **Multi-hop chain tracing.** Reference found: trace to source (imports, re-exports, barrels). Definition found: trace to consumers. Both directions in parallel. Monorepo: shared type -> API -> BFF -> frontend hook -> display. Use LSP `goToDefinition`/`findReferences`/`incomingCalls`/`outgoingCalls` for symbol chains; Grep for text patterns. Verify ALL claimed downstream effects independently. For helper-reuse recommendations, verify behavioral semantics match, not just existence.
 8. **Early stopping.** 3+ consistent results confirming a pattern: stop collecting evidence for that pattern, redirect to unexplored areas. Rule 3's exhaustive file coverage still applies.
+8a. **Dedup and UX-tradeoff proposals.** When a finding proposes a deduplication strategy, a UX behavior choice (e.g., "suppress X when Y exists"), or any decision that has a non-obvious alternative, mark it as a DECISION POINT rather than a recommendation: "DECISION: suppress run-log when posting exists vs. show both." Do not present one direction as the obvious fix -- the caller will surface it to the user. Recommendations are findings with a single correct answer; decisions are findings with valid alternatives.
 
 ### Audit Mode Only
 
@@ -125,6 +130,8 @@ Examples:
 17. Consider intentional architectural delegation before classifying incomplete coverage as FAIL. Trace full event/data flow.
 18. FAIL targeting validator: annotate "trace validated data through consuming controller" -- validator may be correct while controller post-validation logic has the issue.
 19. Framework-specific behavior assertions: verify against actual framework behavior in current major version. Use context7 MCP tools for authoritative docs.
+20. **Fix instruction precision:** When a finding proposes a remediation, specify whether the fix REPLACES the existing condition/check or is ANDed with it. "Add `newFlag` check" is ambiguous -- write "Replace `oldGate` with `newFlag`" or "Add `&& newFlag` to existing `oldGate` check". Ambiguous fix instructions force main-agent re-interpretation and produce incorrect implementations (e.g., combining old gate with new flag when only the new flag should remain).
+21. **Gate-input field semantics.** When a finding proposes changing a policy gate keyed on a specific field (e.g., a status flag, sentinel value, or enum), verify that ALL producers of that field use the same semantics. Gate policy changes fail silently when one producer returns the sentinel and another returns a non-sentinel for the same logical condition -- the gate passes for one code path and fails for another. Grep the field name across all source files (services, orchestrators, workers) before concluding the gate change is sufficient.
 
 ## Pattern Expansion Procedure
 
@@ -186,6 +193,8 @@ Root directories: {root paths from area dedup}
 </known-findings>
 
 Check <pre-loaded-context> before searching. Skip known fingerprints. Report only new findings or changed-file findings. Scope Grep to root directories; grep repo-wide only if scoped search returns 0.
+
+**MANDATORY FILE WRITE:** Before returning, write findings to `.claude-tmp/scout/scout-findings-{uid}.md` where `{uid}` is generated by the scout via `echo "$(date +%Y%m%d)-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)"` (Step 6 in apex-scout.md). Do NOT use the area description as the filename -- it produces non-unique names across concurrent scouts. Return with the absolute file path. Do NOT return findings inline without persisting to disk -- the caller cannot write on your behalf and inline-only returns break cross-session dedup.
 
 Follow rules, output format, and examples in agent definition.
 ```
