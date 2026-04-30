@@ -1,212 +1,118 @@
 ---
 name: admin-apex
-description: "APEX workflow administration, improvement, and skill management reference."
-triggers:
-  - admin-apex
+description: APEX expert / associate. Maintains the apex framework itself - syncs spec docs to real files, evolves the skill set (create/rename/split/merge/retire), validates apex-scoped scripts and schemas, bumps VERSION, commits ~/.claude (private), mirrors apex-framework files to /Users/mael/dev/apex-framework (public), pushes both. Manually triggerable. Reflector-log consolidation is out of scope (future /apex-improve).
 ---
 
-# admin-apex - APEX Workflow Administration
+# /admin-apex
 
-Reference for understanding, modifying, or extending APEX.
+Apex internals administrator. Out-of-band - not part of /apex hot path. No project app code, no project-wide build/lint.
 
-## Flags
+Two-repo model: `~/.claude` is the **private** working tree (personal config + apex framework). `/Users/mael/dev/apex-framework` is the **public** mirror (apex framework only). Every commit produced by this skill is replicated to the public mirror via task 10 (allowlisted paths only) and both repos are pushed alongside. Pushes happen ONLY via task 10.
 
-Parse arguments for flags before displaying reference:
-- `--improve [conversationId]`: Read and follow `~/.claude/skills/admin-apex/admin-apex-improve.md`. Checks for Claude Code version updates (analyzes release notes for new features), runs catalog health checks (`audit-catalog-health.py` on global `~/.claude/audit-criteria/` and project `.claude/audit-criteria/`), then analyzes conversation transcript (if conversationId provided) and/or accumulated workflow improvements from `~/.claude/tmp/apex-workflow-improvements.md`. Applies improvements to any global skill (see Skills section below), project-level skills (`.claude/commands/`), and audit criteria catalogs. Auto-commits and pushes global skill file changes to git after implementation. Project-level skill changes are left for the user to commit via `/apex-git`. Stop after (do not display reference below).
+Per-run artifacts live under `.claude-tmp/admin-apex-active/{run}-*` (mirrors apex-active). `{run}` token = `openssl rand -hex 4`, minted at task 1; cleaned by task 10 after successful push (or by task 9 if task 10 is skipped); left in place on abort.
 
-If no flags but freeform text follows (e.g., audit requests, health checks), first batch-fetch deferred tools: `ToolSearch select:TaskCreate,TaskUpdate,TaskList,AskUserQuestion`. Then use the reference below as context and act on the request. Follow CLAUDE.md workflow rules (TaskCreate for 3+ distinct concerns (APEX sessions override: see apex/SKILL.md Step 5A), parallel Explore agents for multi-area investigation, shared-guardrails.md). Follow the Forbidden Actions at the bottom of this file.
+Inputs: `skills/apex/**`, `agents/**`, `apex-core.md`, `apex-core-overview.md`, `README.md`, `settings.json`, repo-root `CLAUDE.md`, `VERSION`.
 
-For complex multi-concern freeform tasks (audits spanning 3+ skills, health checks across workflow areas), recommend `/apex` for structured scouting and planning. For single-concern queries (explanations, quick checks, single-file reviews), handle inline.
+## Step 0: TaskCreate the chain
 
-If no flags and no freeform text, display reference below.
+```
+TaskCreate "1. Mode select"          - inline AskUserQuestion
+TaskCreate "2. Inventory snapshot"   - blockedBy [1] - scripts/inventory-apex.sh
+TaskCreate "3. Audit drift"          - blockedBy [2] - audit.md
+TaskCreate "4. Audit gate"           - blockedBy [3] - inline AskUserQuestion per cluster
+TaskCreate "5. Evolve plan"          - blockedBy [4] - evolve.md (task 5)
+TaskCreate "6. Apply evolve"         - blockedBy [5] - evolve.md (task 6)
+TaskCreate "7. Sync docs"            - blockedBy [6] - sync-docs.md
+TaskCreate "8. Test apex scripts"    - blockedBy [7] - scripts/test-apex-scripts.sh
+TaskCreate "9. VERSION + commit"     - blockedBy [8] - scripts/_bump-version.sh + git
+TaskCreate "10. Mirror + push both"  - blockedBy [9] - scripts/mirror-to-dev.sh
+```
 
-## Skills
+Tasks 5-10 are conditional: skipped if task 4 selects audit-only outcome (see below). Task 10 is also skipped if task 9 produced no commit (no-op outcome).
 
-- `~/.claude/skills/apex/` - Main workflow (entry: SKILL.md)
-- `~/.claude/skills/apex-fix/` - Fix lint/build errors, then capture lessons
-- `~/.claude/skills/apex-git/` - Commit and push using accumulated diff summaries
-- `~/.claude/skills/apex-party/` - Multi-persona panel discussion
-- `~/.claude/skills/apex-brainstorm/` - Brainstorming facilitator (see brain-methods.md for technique catalog)
-- `~/.claude/skills/apex-lessons-extract/` - Consolidate temp lessons
-- `~/.claude/skills/apex-lessons-analyze/` - Deduplicate, freshness-check, merge, and route lessons
-- `~/.claude/skills/apex-eod/` - End of day (chains file-health, extract, improve, analyze, git sequentially)
-- `~/.claude/skills/apex-file-health/` - Remediate oversized files flagged by apex-verify
-- `~/.claude/skills/apex-init/` - Initialize new projects with APEX-compatible structure
-- `~/.claude/skills/apex-audit-matrix/` - Coverage-tracked audit with deterministic enumeration, persistent verdict storage (`.claude/audit-verdicts/`), file-hash-based change detection, and incremental re-verification. Uses criteria catalogs (project-level `.claude/audit-criteria/`), enumeration script (`scripts/enumerate-audit-matrix.py`), and findings-to-catalog pipeline (`scripts/findings-to-catalog.py`) for evolving catalogs from OPEN-01 findings
-- `~/.claude/skills/apex/apex-doc-formats.md` - Audit/PRD document schemas, Session Type Reference (path/ID prefix/completed-list key/priority order), and Document Mutation Protocol (inline markers, YAML update, completion gate). Referenced by SKILL.md Step 1 (batch-mode detection), apex-tail.md Agent 3 (document mutation), apex-apex.md Step 2.6 (document creation).
-- `~/.claude/skills/apex/apex-update.md` - Doc updates (called by apex-tail.md Agent 2, apex-file-health Step 6)
-- `~/.claude/skills/apex/apex-learn.md` - Captures implementation lessons. Called by apex-tail.md Agent 1, apex-fix Step 3, and apex-file-health Step 6.
-- `~/.claude/skills/apex/apex-reflect.md` - Captures workflow execution observations (scan accuracy, path decisions, token waste, bias, compliance). Called by apex-apex.md Step 4.5 (discovery), plan Phase 4 (execution), admin-apex-improve.md Phase 3.7 (execution), and SKILL.md Step 6A (Path 2 downgrade).
-- `~/.claude/skills/apex/apex-verify.md` - Build/lint/test verification. Called by SKILL.md Step 6A, apex-file-health Step 5.
-- `~/.claude/skills/apex/apex-tail.md` - Post-implementation tail dispatch (lessons, docs, audit/PRD updates). Called by SKILL.md Step 6A, apex-apex.md Phase 4. Diff-write responsibility lives in the caller (SKILL.md Step 6A sub-step 2b, apex-plan-template.md Phase 4, apex-file-health/SKILL.md Step 6) -- hoisted out of tail so the Write tool call cannot be dropped into a parallel agent-spawn batch. Tail aborts if caller did not print `DIFF WRITTEN` (lessons-only mode excepted).
-- `~/.claude/skills/apex/apex-apex.md` - Path 2 delegated flow orchestrator (scout, lessons, pre-plan reflect, plan, team execution, tail). Called by SKILL.md Step 6A when Path 2 is selected.
-- `~/.claude/skills/apex/apex-scout.md` - Scouting and discovery. Called by apex-apex.md Step 2.
-- `~/.claude/skills/apex/apex-team.md` - Team lifecycle management. Called by apex-apex.md Step 4.
-- `~/.claude/skills/apex/apex-teammate-workflow.md` - Teammate execution phases. Called by apex-team.md.
-- `~/.claude/skills/admin-apex/` - This reference
+## Task 1: Mode select
 
-## Project-Level Skills
+AskUserQuestion (header: "admin-apex mode"; options: `audit-only`, `audit+apply`; dismiss/cancel = abort). Then mint `{run}` and `mkdir -p .claude-tmp/admin-apex-active`.
 
-Some projects have project-specific slash commands in `.claude/commands/`. These are markdown files that become `/command-name` in Claude Code, committed with the project repo (not the global skills repo).
+## Task 2: Inventory snapshot
 
-**Tracking:** Projects should list their skills in the "Project Skills" section of their CLAUDE.md. apex-init creates this section during initialization.
+`bash skills/admin-apex/scripts/inventory-apex.sh --out .claude-tmp/admin-apex-active/{run}-inventory.json`. Non-zero exit -> abort with explicit error (state corruption; no fallback).
 
-**Improving:** `admin-apex --improve` covers both global skills (`~/.claude/skills/`) and project-level skills (`.claude/commands/`). Changes are written as diff summaries for `/apex-git` to commit and push (no inline git operations). In the eod chain, `/apex-git` runs after improve and picks up the summaries automatically.
+## Task 3: Audit drift
 
-**Creating:** apex-init creates the `.claude/commands/` directory. Users add skill files manually as needed and document them in CLAUDE.md.
+Read and follow `skills/admin-apex/audit.md`. Produces `{run}-drift-report.json`.
 
-**Overriding:** Project CLAUDE.md entries can override APEX behavior per-project without modifying global skill files. Since CLAUDE.md is loaded into context alongside skill instructions, it can redirect behavior (e.g., file path resolution, phase routing). Use this when a project needs different defaults from the global APEX workflow.
+## Task 4: Audit gate
 
-## Git Sync
+Read drift report. Audit-only outcome (skip 5-10, exit 0, no commit) when ANY of:
+- `clusters: []` (clean)
+- mode == `audit-only`
+- every cluster decision is `keep`/`defer`
+- any cluster has `kind == stale-spec` (hard-stop; state is racing)
 
-Two repositories are kept in sync:
+Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | apply | defer`; dismiss = `keep`). At least one `apply` -> proceed to task 5.
 
-- **claude-code-apex** (private) -- https://github.com/Maelmaelr/claude-code-apex. Git root: `~/.claude/`. Full Claude Code config: skills/, settings, keybindings, statusline, project memories, plugin config, tmp/. Excluded via .gitignore: sessions, debug, history, caches, telemetry, project session data.
-- **apex-framework** (public) -- https://github.com/Maelmaelr/apex-framework. Git root: `~/dev/apex-framework/`. APEX-only mirror: skills/apex, skills/apex-*, skills/admin-apex, agents/{scout,verifier,evaluator}.md, CLAUDE.md, README, LICENSE. One-way mirror -- never edit here directly; edits always happen in `~/.claude/` and are synced out.
+## Task 5 / 6: Evolve
 
-When user requests git sync (e.g., "update git", "sync apex", "push changes"):
+Read and follow `skills/admin-apex/evolve.md`. Task 5 composes `{run}-evolve-plan.json`; task 6 applies ops, producing `{run}-applied-ops.json` + `{run}-dirty-paths.txt`.
 
-1. Check for changes: `cd ~/.claude && git status`
-2. If changes exist, stage ALL changes and commit the private repo:
-   ```bash
-   cd ~/.claude && git add . && git commit -m "Update Claude Code config" && git push
-   ```
-   `git add .` is safe -- `.gitignore` already excludes sessions, caches, credentials, and runtime data. Using selective staging misses untracked (new) files.
-3. Run the apex-framework sync, then commit + push the public mirror if anything changed:
-   ```bash
-   bash ~/.claude/skills/admin-apex/scripts/sync-apex-framework.sh
-   cd ~/dev/apex-framework && git add . && \
-     (git diff --cached --quiet && echo "apex-framework: already in sync") || \
-     (git commit -m "Sync from claude-code-apex" && git push)
-   ```
-   The `diff --cached --quiet` guard skips the commit when the mirror is already up to date (no APEX-visible changes since last sync).
-4. Report what was committed to each repo.
+Mid-flight drift surfaces AskUserQuestion (`restart | commit-partial | rollback`) per evolve.md:
+- `restart` -> abort current run (user re-invokes `/admin-apex`)
+- `commit-partial` -> proceed to task 7 with ops-so-far
+- `rollback` -> `git restore` on `{run}-dirty-paths.txt`, exit cleanly (only admin-apex codepath that runs `git restore`; explicit user gate)
 
-To pull latest: `cd ~/.claude && git pull`. The public mirror is regenerated from source on every sync, so no pull is needed there.
+## Task 7: Sync docs
 
-## Architecture
+Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.txt`.
 
-Two paths based on task complexity. Full flow details in `apex/SKILL.md`.
+## Task 8: Test apex scripts
 
-- **Concurrency detection** (Step 0): Session manifests in `.claude-tmp/apex-active/`, advisory overlap warnings. See SKILL.md Step 0.
-- **Path 1 (Direct):** Scan -> path gate -> lessons -> implement -> verify -> conditional tail (pre-flight gated). See SKILL.md Steps 3-6A.
-- **Path 2 (Delegated):** Scan -> path gate -> scout -> re-evaluate (2.6) -> lessons -> pre-plan reflect -> effort assessment -> plan -> plan approval -> team execution -> verify -> team cleanup -> tail -> reflect. See apex-apex.md, apex-scout.md, apex-team.md, apex-teammate-workflow.md, apex-tail.md.
-- **Audit/PRD flows:** Scout auto-detects audit mode; apex-apex.md Step 2.6 routes to audit or PRD document output. Incremental remediation via subsequent `/apex .claude-tmp/{audit,prd}/<name>.md`. Session type mapping (path, ID prefix, completed-list key, priority order) and Document Mutation Protocol (inline markers, YAML update, completion gate) live in apex-doc-formats.md. See apex-scout.md, apex-apex.md Step 2.6, apex-tail.md Agent 4, apex-doc-formats.md.
-- **Audit catalog auto-routing (Step 1.5):** `/apex audit {subject}` auto-detects matching criteria catalogs in `.claude/audit-criteria/` (project) and `~/.claude/audit-criteria/` (global). Single match routes directly to audit-matrix (skips scan/scout/Path 2). Multiple matches or no match prompts user via AskUserQuestion. Falls through to scout audit mode when user selects "no catalog". See SKILL.md Step 1.5.
-- **Coverage-tracked audit flow:** `/apex-audit-matrix` generates a deterministic (target x criterion) matrix via enumeration script, distributes cells to scouts with inline criterion definitions (from matrix JSON `criteria_definitions` field -- scouts never read the catalog file), persists verdicts. Persistent verdict storage (`.claude/audit-verdicts/`) with file-hash change detection makes `--resume` optional for subsequent runs. OPEN-01 FAIL findings auto-generate candidate catalog entries via `findings-to-catalog.py`. Criteria catalogs live in project `.claude/audit-criteria/` (project-level) and `~/.claude/audit-criteria/` (global/skill-level). Catalog limits: max 60 criteria, max 600 lines per catalog file; larger domains must be split into thematic sub-catalogs. `/apex` auto-routes to this flow when a matching catalog is found (Step 1.5); `/apex-audit-matrix` remains available for direct invocation with explicit `--catalog`, `--resume`, `--scope`, `--verdicts-dir`, `--no-persist` flags. Large audits (>60 unchecked cells, >15 files) route to Agent Teams via TeamCreate for independent 1M-token context windows per worker (fallback to subagent dispatch if TeamCreate fails). See apex-audit-matrix/SKILL.md (Catalog Design section), SKILL.md Step 1.5, apex-audit-matrix/verdict-storage.md.
-- **Skill quality audit flow:** `/apex-audit-matrix --catalog ~/.claude/audit-criteria/skill-quality.md --root ~/.claude/skills` audits skill structure, cross-references, and quality. 23 criteria across entry points, sub-workflows, cross-references, quality, and scripts. Health check: `python3 ~/.claude/skills/apex/scripts/audit-catalog-health.py --catalog-dir ~/.claude/audit-criteria/ --project-root ~/.claude/skills`.
-- **File health flow:** apex-verify Step 3.8 persists notes; apex-file-health remediates. See apex-file-health/SKILL.md.
-- **Context health flow:** `context-health-check.sh` enforces char budgets on CLAUDE.md, skill files, rules, and MEMORY.md. admin-apex-improve.md Phase 1.9 gates additions to over-budget files. Category 12 (context rot) spot-checks CLAUDE.md entries against codebase during improve cycles.
-- **README drift flow:** Category 13 in admin-apex-improve.md compares `~/dev/apex-framework/README.md` against on-disk skills/agents/hook state. Auto-updates + commits the README from within the improve run (separate commit outside `/apex-git` scope, which only covers `~/.claude`).
-- **Diff/Git flow:** Diff summaries written inline by the caller before tail dispatch (SKILL.md Step 6A sub-step 2b, apex-plan-template.md Phase 4, apex-file-health/SKILL.md Step 6, admin-apex-improve.md Phase 3.6). Hoisted out of apex-tail.md to prevent the Write tool call from being batched into a parallel agent-spawn response. `/apex-git` batch-commits. See apex-git/SKILL.md.
-- **PreCompact/PostCompact/StopFailure hooks:** `~/.claude/skills/apex/scripts/precompact-apex.sh` echoes active session state (task, path, step, files). PreCompact runs before compaction (helps summarizer preserve state); PostCompact runs after compaction (guarantees full-fidelity re-injection); StopFailure runs on API errors (rate limit, auth failure) to preserve state before session drops. Config in `~/.claude/settings.json` hooks.
-- **Lesson flow:** See apex-lessons-extract/SKILL.md for write/consolidate flow (includes tag format reference for all three lesson types). SKILL.md Step 3.5 for read/hit-tracking (canonical procedure, referenced by both paths).
-- **Agent types:** Subagents (Agent tool) are child processes within one session -- used in Path 1 parallel implementation, Path 2 scouts, tail workflows. Agent Teams (TeamCreate/SendMessage) are independent Claude Code instances for Path 2 implementation -- see apex-teammate-workflow.md for the 4-phase lifecycle.
-- **Agent definitions** (`~/.claude/agents/`): Reusable agent definitions with YAML frontmatter (name, description, tools, disallowedTools, model, effort, maxTurns). Three definitions: `scout.md` (read-only exploration/audit), `verifier.md` (build/lint/test validation), `evaluator.md` (independent PASS verdict re-verification). Invoked via Agent tool with agent definition reference.
-- **Scope enforcement hook** (PreToolUse, Edit|Write): `scope-check-hook.sh` reads `.claude-tmp/apex-active/{session}-scope.json` and blocks writes to files outside the allowed scope. Inactive when no scope file exists (non-APEX sessions). Always allows `.claude-tmp/` paths, `.claude/plans/` paths (system-generated plan files), and APEX infrastructure paths (`.claude/audit-criteria/`, `.claude/audit-verdicts/`, `.claude/scout-findings/`, `.claude/lessons*`).
-- **Scan budget hook** (PostToolUse, Grep|Glob|Read): `scan-budget-hook.sh` reads/increments counters in `.claude-tmp/apex-active/{session}-budget.json` (grep_glob_count, doc_read_count, source_read_count) and emits a warn-level advisory past warn_threshold, blocks past max. Also tracks source-read count (non-.md/docs Read calls) with default cap 3; bug investigation sets `source_read_max: -1` to opt out. Inactive when no budget file exists.
-- **Evaluator loop** (Phase 2.5 in audit-matrix): After scout verdicts (Phase 2), samples 20-30% of PASS cells weighted by severity, launches independent evaluator agent for re-verification. Overrides false PASS to FAIL. Cap at 2 rounds. Skipped when < 10 PASS cells. See apex-audit-matrix/SKILL.md Phase 2.5.
-- **Env/credential protection hook** (PreToolUse, Read|Edit|Write): `protect-env-hook.sh` blocks access to `.env*` files (except `.env.example/sample/template`) and known credential files (`credentials.json`, `secrets.yaml`, `.npmrc`, etc.). Always active.
-- **Destructive command hook** (PreToolUse, Bash): `block-destructive-hook.sh` blocks destructive git commands (`git checkout --`, `git restore`, `git reset --hard`, `git clean -f`), force push to main/master, `.env` reads via shell (`cat/grep .env`), and dangerous `rm` operations targeting `/`, `~`, or `.`. Always active.
+`bash skills/admin-apex/scripts/test-apex-scripts.sh`. Non-zero -> AskUserQuestion (header: "Test failure"):
+- `auto-fix` -> re-enter evolve.md task 6 scoped to failing files
+- `rollback-evolve` -> `git restore` on `{run}-dirty-paths.txt`, exit cleanly
+- `abort` -> exit cleanly without rollback (preserve dirty state for inspection)
+- Dismiss / cancel = `abort`
 
-## Scripts
+## Task 9: VERSION + commit
 
-Deterministic utility scripts in `~/.claude/skills/apex/scripts/`. Replace LLM-driven mechanical tasks with reusable bash/python. All scripts support `--help`, use exit codes as signals, and are idempotent.
+Bump rule:
+- `patch` (0.2.1 -> 0.2.2): every applied op has `doc_only: true`
+- `minor` (0.2.1 -> 0.3.0): any structural mutation (file create/rename/split/merge/retire, schema add/remove, hook add/remove)
+- no bump: audit-only outcome OR no changes (no commit)
 
-**Workflow infrastructure (bash):**
-- `precompact-apex.sh` -- Echo active session state for compaction preservation. Called by: PreCompact/PostCompact/StopFailure hooks.
-- `detect-tail-mode.sh` -- Determine economy vs full tail from file change scope. Called by: SKILL.md Step 6A, apex-plan-template.md.
-- `grep-lessons.sh` -- Extract matching lesson blocks from lessons-index.md + lessons.md. Called by: SKILL.md Step 3.5, apex-verify.md, apex-fix.
-- `update-manifest.sh` -- Update APEX session manifest JSON fields. Called by: SKILL.md (3x), apex-apex.md (2x).
-- `file-health-check.sh` -- wc -l wrapper, outputs files exceeding threshold (blocked >500L, split-first >threshold). Called by: SKILL.md Step 2, admin-apex-improve.md Phase 1.8.
-- `context-health-check.sh` -- Char budget checker for CLAUDE.md, skill files, rules, and MEMORY.md. Thresholds: project CLAUDE.md warn 30k/block 40k, skill SKILL.md warn 35k/block 45k, skill sub-files warn 30k/block 40k, rules warn 6k/block 10k. Exit 0=clean, 1=warnings, 2=blocks. Called by: admin-apex-improve.md Phase 1.9.
-- `update-hit.sh` -- Bump `[last-hit]` dates to today for specified lines in lessons.md. Called by: SKILL.md Step 3.5, apex-verify.md.
-- `cleanup-session.sh` -- Pattern-based .claude-tmp/ session artifact cleanup by session-id. Called by: apex-git Step 4.
-- `scope-check-hook.sh` -- APEX scope constraint hook (PreToolUse). Reads allowed files from `{session}-scope.json`, blocks Edit/Write to out-of-scope files. Called by: settings.json PreToolUse hook.
-- `scan-budget-hook.sh` -- APEX scan budget hook (PostToolUse, matcher: Grep|Glob|Read). Tracks Grep/Glob, doc-read, and source-read counts in `{session}-budget.json`, emits warn-level advisory past warn_threshold, blocks past max. Called by: settings.json PostToolUse hook.
-- `scout-context-truncate-hook.sh` -- APEX scout context advisory hook (PostToolUse, matcher: Read). If a Read result exceeds 300 lines and an active APEX session manifest exists, emits additionalContext suggesting offset/limit for targeted reads. Advisory only -- does not block. Called by: settings.json PostToolUse hook.
-- `security-scan.sh` -- Pattern-based security scan fallback (3-tier: FAIL/WARN/INFO, excludes test/fixture files). Called by: apex-verify.md (when Semgrep unavailable).
-- `protect-env-hook.sh` -- Guardrail hook (PreToolUse, Read|Edit|Write). Blocks .env* files (except .env.example/sample/template) and known credential files. Called by: settings.json PreToolUse hook.
-- `block-destructive-hook.sh` -- Guardrail hook (PreToolUse, Bash). Blocks destructive git commands, force push to main/master, shell .env reads, dangerous rm. Called by: settings.json PreToolUse hook.
+```
+new=$(bash skills/admin-apex/scripts/_bump-version.sh patch)   # or minor
+echo VERSION >> .claude-tmp/admin-apex-active/{run}-dirty-paths.txt
+xargs git add -- < .claude-tmp/admin-apex-active/{run}-dirty-paths.txt
+[[ -s .claude-tmp/admin-apex-active/{run}-docs-changed.txt ]] && \
+  xargs git add -- < .claude-tmp/admin-apex-active/{run}-docs-changed.txt
+git commit -m "admin-apex: <one-line summary>" -m "- <op>: <target> [-> <rename_to>]"
+```
 
-**Audit infrastructure (python, stdlib only):**
-- `enumerate-audit-matrix.py` -- Parse criteria catalog, expand target globs, pre-filter via grep, output coverage matrix JSON. Called by: apex-audit-matrix/SKILL.md Phase 1. Supports --resume for incremental re-audit, --verdicts-dir/--no-persist for persistent verdict storage with file-hash change detection.
-- `audit-catalog-health.py` -- Validate catalogs against codebase state: stale targets, size limit violations, criteria-count mismatches, source drift. Called by: apex-audit-matrix/SKILL.md Phase 0, admin-apex --improve. Supports --json for CI output. v3.0.
-- `audit_matrix_lib.py` -- Shared library for audit scripts. Functions: parse_catalog, parse_catalog_with_metadata, expand_targets, pre_filter_applicable, is_scope_all, compute_summary, compute_file_hash. Imported by: enumerate-audit-matrix.py, findings-to-catalog.py, audit-catalog-health.py, mechanical-audit.py. v2.0.
-- `findings-to-catalog.py` -- Extract OPEN-01 FAIL cells from matrix JSON, generate candidate catalog entries for human review. Called by: apex-audit-matrix/SKILL.md Phase 3 (auto-run after OPEN-01 failures). Output: `{catalog-dir}/candidates-{date}.md`.
-- `evaluator-sample.py` -- Sample PASS cells from audit matrix for evaluator re-verification. Weights by criterion severity (CRITICAL 3x, HIGH 2x, MEDIUM 1x, LOW 0.5x), verifies file hashes current. Called by: apex-audit-matrix/SKILL.md Phase 2.5. Supports --matrix, --sample-pct, --min-sample.
-- `mechanical-audit.py` -- Deterministic shell checks for mechanical audit cells (file existence, grep, count). Called by: apex-audit-matrix/SKILL.md Phase 1.5. Supports --matrix, --catalog.
-- `mark-cells-remediated.py` -- Mark specific audit matrix cells as remediated after code fixes. Updates cell status, recomputes summary stats, writes back matrix JSON. Called by: apex-audit-matrix/SKILL.md Marking Cells section. Args: matrix-path + one or more "target:CRITERION_ID" pairs.
-- `validate-document.py` -- Structural validation for audit/PRD documents. Called by: apex-apex.md Step 2.6.
-- `audit-baselines.py` -- Audit improvement baseline metrics (token-proxy, finding-delta, coverage-gap subcommands). Utility, no .md caller.
+VERSION is appended to `{run}-dirty-paths.txt` (not staged separately) so task 10's mirror sees it without a special-case. `xargs ... < file` (input redirection) used instead of `xargs -a file` for macOS BSD-xargs portability.
 
-**Analysis (python, stdlib only):**
-- `stale-lessons.py` -- Identify lessons with stale `[last-hit]` dates (>N days, default 90). Called by: apex-lessons-analyze Step 3.5.
-- `lesson-dedup.py` -- Fuzzy-match lesson blocks via difflib SequenceMatcher, output candidate pairs. Called by: apex-lessons-analyze Step 2.
-- `scout-dedup.py` -- Scout finding deduplication and convergence detection. Reads findings with FINGERPRINT fields, deduplicates against persistent store keyed by theme, reports delta + convergence metrics (exit 0=new findings, exit 1=converged <10% new). Called by: apex-scout.md after findings write (both single and multi-scout paths). Supports --theme, --findings-file, --no-persist.
-- `rebuild-memory-index.py` -- Parse memory/*.md frontmatter, regenerate MEMORY.md index. Manual invocation.
+NO push here (task 10 owns pushes). On commit failure: leave artifacts; surface to user. Cleanup of `.claude-tmp/admin-apex-active/{run}-*` defers to task 10 (after successful mirror+push) so the mirror script can read the run's dirty-paths/docs-changed files.
 
-**Extraction (python, standalone):**
-- `apex-extract.py` -- Extract compact summary from Claude Code JSONL transcript. Called by: admin-apex-improve.md Step 1.
-- `apex-changelog-extract.py` -- Extract changelog sections between semver versions. Called by: admin-apex-improve.md Step 1.5.
+If task 9 produced no commit (audit-only outcome OR no changes), skip task 10 and clean up artifacts here instead.
 
-## Runtime Files
+## Task 10: Mirror + push both
 
-**Persistent (project knowledge):** .claude/lessons.md, .claude/lessons-index.md, .claude/lessons-archive.md -- master lessons with hit-tracking, keyword index, and stale lesson archive. Use Glob/Grep to discover specific files.
+Replicates this run's allowlisted changes from `~/.claude` into the public mirror at `/Users/mael/dev/apex-framework`, commits there with the same message as the task 9 commit, then pushes the public repo first and `~/.claude` second.
 
-**Global (cross-project):** ~/.claude/tmp/ -- workflow observations (apex-workflow-improvements.md) and version tracking (apex-claude-code-version.txt).
+```
+bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"
+```
 
-**Project audit infrastructure:** .claude/audit-criteria/ -- criteria catalog markdown files (security.md, etc.) defining verifiable properties with target globs, pre-filter patterns, and severity. Max 60 criteria / 600 lines per catalog; split larger domains into thematic sub-catalogs. Committed with the project repo. .claude/audit-verdicts/ -- persistent verdict JSON files ({theme}-verdicts.json) with file-hash change detection, auto-created by audit-matrix runs. .claude/scout-findings/ -- persistent scout finding store JSON files ({theme}.json) with file-hash-based staleness detection, written by scout-dedup.py after each scout run for cross-session deduplication and convergence tracking.
+The script applies an allowlist (see header docstring): `skills/apex/**`, `skills/admin-apex/**`, `agents/**`, `VERSION`, `apex-core.md`, `apex-core-overview.md`. Anything else (including `settings.json`, `CLAUDE.md`, `skills/README.md`, and the private orchestration skills `skills/apex-eod/**`, `skills/apex-fix/**`, `skills/apex-init/**`, `skills/apex-file-health/**`, `skills/apex-lessons-analyze/**`, `skills/apex-lessons-extract/**`) is private to `~/.claude` and silently skipped.
 
-**Session (ephemeral):** .claude-tmp/ -- pending lessons, concurrency manifests, scout findings, audit checklists, diff summaries, teammate context, party/brainstorm transcripts, test gaps, file health notes, audit/PRD documents, audit-matrix JSON (coverage state). Cleaned by apex-git or per-session.
+Path mapping is identity (`~/.claude/<path>` -> `/Users/mael/dev/apex-framework/<path>`). Deletions in `~/.claude` propagate as deletions in the public mirror. Untouched files in the public mirror are left alone (per-run mirror, NOT a full reconciliation - one-time reconciliations happen out-of-band).
 
-**Infrastructure (team execution):** ~/.claude/tasks/{team-name}/ and ~/.claude/teams/{team-name}/ -- shared task lists and team configs managed by TeamCreate/TeamDelete.
+On script success: `rm -rf .claude-tmp/admin-apex-active/{run}-*`. On script failure: leave artifacts; surface to user with the script's exit code (3 = mirror dir missing, 4 = git add failed in public, 5 = git commit failed in public, 6 = push failed in public, 7 = push failed in private).
 
-## Key Design Decisions
-1. Mandatory project-context.md read -- SKILL.md Step 2, apex-apex.md plan Context
-2. Context clearing via plan -- apex-apex.md EnterPlanMode
-3. Conditional scouting -- apex-scout.md Mode Selection
-4. Path re-evaluation gate -- apex-apex.md Step 2.6
-5. All tasks created upfront -- SKILL.md Step 5A, apex-teammate-workflow.md Phase 2
-6. Parallel where independent -- scout agents, teammates, subagents, tail workflows
-7. Economy tail -- SKILL.md Step 6A (<=5 files, <=80 lines triggers reduced tail)
+To inspect without pushing during development: `APEX_MIRROR_NO_PUSH=1 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"`.
 
-Additional design decisions are documented as `<!-- Design: ... -->` HTML comments in SKILL.md, apex-apex.md, apex-team.md, apex-teammate-workflow.md.
+## Out of scope
 
-## Model Selection
+Reflector log consolidation (future `/apex-improve`); project app code/build/lint/tests; major version bumps; scheduled runs; full reconciliation between private and public repos (task 10 mirrors only this run's dirty paths, not the whole tree).
 
-Three-tier strategy for subagent spawn points. Rationale: most APEX subagents perform read-only exploration, classification, or lightweight file operations where Sonnet is sufficient. Reserving Opus for deep reasoning tasks saves tokens without sacrificing quality.
-
-**Opus (default/inherited):** Deep reasoning -- plan writing, teammate spawns, file splitting, complex multi-file fixes. Path 1 subagents default Opus but downgrade to Sonnet for mechanical single-file tasks.
-
-**Sonnet:** Read-only exploration, classification, lightweight writes, verification, mechanical implementation -- scouts, tail agents, lesson/doc operations, inline lint, eod orchestration, file-health scouts, mechanical lint fixes, skill edits.
-
-**Haiku:** Trivial single-command agents (e.g., test-gaps cleanup).
-
-**Effort levels:**
-- Main agent: `xhigh` default (Opus 4.7 default, set in `~/.claude/settings.json:effortLevel`). Subagents/teammates: medium by default -- read-only exploration and classification do not need xhigh cost.
-- Opus 4.7 uses adaptive thinking (no fixed thinking budget). The `think` / `ultrathink` keywords remain valid effort signals at the harness level.
-- Dynamic trigger: `~/.claude/skills/apex/effort-trigger.txt` contains the high-effort keyword. Indirection avoids static triggering (keyword in skill content would enable high effort for ALL invocations).
-- Trigger placement: skills with "Effort assessment" blocks evaluate complexity during scan/assessment and output the keyword if deep reasoning is needed. Scouts (apex-scout.md), plan writing (apex-apex.md Step 4.6), teammates (apex-teammate-workflow.md).
-- Exempt (no effort assessment): mechanical/orchestration skills (apex-git, apex-eod, apex-lessons-extract, apex-lessons-analyze, apex-init).
-
-## Token Budget
-
-`SLASH_COMMAND_TOOL_CHAR_BUDGET` env var controls skill description text in system-reminder (default: unset/~16K chars). Current skill count (12) is well within limits. Dynamic validation: admin-apex-improve.md Step 0.5. Revisit if total system-reminder skills exceed ~30.
-
-## Semantic Rules
-
-All APEX output follows CLAUDE.md Output rules (ASCII only, concise) plus:
-- Step numbering: `## Step N:` format
-- Every workflow ends with "Forbidden Actions" section
-- Callers noted in HTML comment at top of sub-workflows
-- No tables or diagrams. Numbered lists when they improve clarity.
-- AI-optimized output: no decorative markdown in generated text, no narrative fluff. Structured data over prose.
-- Script extraction threshold: when a verification or analysis step exceeds ~20 lines of procedural logic embedded in skill prose, extract it to a standalone script in `~/.claude/skills/apex/scripts/`. Standalone scripts are independently testable, reusable, and keep skill docs focused on workflow control flow.
-
-## Forbidden Actions
-
-Shared guardrails: read ~/.claude/skills/apex/shared-guardrails.md. Additionally:
-
-- Do not modify skill files from freeform requests without user confirmation. Freeform requests (non-flag) are for auditing, reviewing, and reporting -- not auto-applying fixes. Present findings and ask before editing.
-- Do not skip reading shared-guardrails.md when acting on freeform requests. The reference sections above are context; the guardrails are constraints.
+See `audit.md`, `evolve.md`, `sync-docs.md` for per-task contracts; `schemas/inventory.schema.json` + `schemas/evolve-plan.schema.json` for artifact shapes; `skills/apex/shared-guardrails.md` for the broader apex conventions admin-apex follows.
