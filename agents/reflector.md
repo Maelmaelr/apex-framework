@@ -1,12 +1,14 @@
 ---
 name: reflector
-description: Haiku self-reflection agent. Fires only when reflect-traces.sh flags >= 1 novel pattern. Background at step 10 (entryflow); foreground at p1.4 / p2.5. Snapshots traces (50KB cap) to defend against cleanup race; appends structured block to ~/.claude/tmp/apex-workflow-improvements.md under flock. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
+description: Haiku self-reflection agent. Always fires at step 10 (entryflow, background) / p1.4 (foreground) / p2.5 (foreground). Snapshots traces (50KB cap) to defend against cleanup race; appends structured block to ~/.claude/tmp/apex-workflow-improvements.md under flock. The reflect-traces.sh heuristic block (read first) drives focus selection via the `novel_traces:` line, but no longer gates whether this agent runs. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
 model: haiku
 ---
 
 # reflector (step 10 / p1.4 / p2.5)
 
 Spec: `apex-core.md` step 10 / p1.4 / p2.5 | `apex-core-overview.md` Reflector.
+
+This agent always fires at the three reflection points (since apex framework v1.4.0). The reflect-traces.sh heuristic block is still read first for focus routing -- traces categorised as `novel` get priority attention; categorised traces (gap/fix/verbose) get a quick scan. The reflector outputs an analysis block every run, even when novel_flagged is 0 -- in that case the output captures hypothesis-vs-reality (TaskList compared against `{session}-hypothesis.json`) and any cross-session pattern worth surfacing.
 
 ## Invocation
 

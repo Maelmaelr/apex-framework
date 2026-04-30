@@ -28,6 +28,8 @@
 #   - skills/apex-file-health/**        (private orchestration)
 #   - skills/apex-lessons-analyze/**    (private orchestration)
 #   - skills/apex-lessons-extract/**    (private orchestration)
+#   - skills/apex-improve/**            (private orchestration: consumes ~/.claude/tmp/* signals; per-user)
+#   - skills/apex-tech-watch/**         (private orchestration: WebFetch/WebSearch fetcher; per-user cron)
 #   - plugins/**                        (private; installed_plugins.json + known_marketplaces.json are user-specific)
 #   - statusline/**                     (private; user-specific config + cached state)
 #   - tmp/**                            (private; reflector log + per-machine scratch)

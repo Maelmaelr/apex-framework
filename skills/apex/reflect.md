@@ -1,6 +1,6 @@
 ---
 name: reflect
-description: step 10 / p1.4 / p2.5 self-reflect orchestrator. Runs scripts/reflect-traces.sh to append a heuristics block, parses novel_flagged from that block, then conditionally spawns agents/reflector.md (Haiku) - background at step 10 (entryflow), foreground at p1.4 (entryflow+p1) / p2.5 (p2). Silent on novel_flagged == 0; reflector self-silences on errors.
+description: step 10 / p1.4 / p2.5 self-reflect orchestrator. Runs scripts/reflect-traces.sh to append a heuristics block (focus-routing input), then unconditionally spawns agents/reflector.md (Haiku) - background at step 10 (entryflow), foreground at p1.4 (entryflow+p1) / p2.5 (p2). The novel_traces line in the heuristics block drives where the reflector focuses, but no longer gates whether it runs. Reflector self-silences on errors.
 ---
 
 # reflect (step 10 / p1.4 / p2.5)
@@ -23,7 +23,7 @@ Teammate mode (`p1.md --teammate`) skips this skill entirely - central p2.5 owns
 
 ## Step 1: Run the heuristics script
 
-`reflect-traces.sh` is the script-first heuristic pass. It always exits 0 (best-effort contract per spec) and always appends a block - even when every count is zero - so step 2 can read `novel_flagged` unconditionally.
+`reflect-traces.sh` is the script-first heuristic pass. It always exits 0 (best-effort contract per spec) and always appends a block - even when every count is zero - so step 2 can locate the `novel_traces:` line for focus routing. The `novel_flagged` count itself is now informational only (no longer a gate).
 
 ```
 case "$PHASE" in
@@ -46,37 +46,23 @@ The script appends one block to `~/.claude/tmp/apex-workflow-improvements.md` un
 - novel_traces: <comma-separated trace paths, max 5>
 ```
 
-## Step 2: Parse novel_flagged from the latest block
+## Step 2: Locate the heuristics block for focus routing
 
-The reflector agent fires only when `novel_flagged >= 1`. Read the LAST block matching this session + phase (a previous re-run on exit-2 may have appended an older block) and pull the count.
+The reflector agent always fires (since v1.4.0); this step no longer gates -- it only locates the latest heuristics block so the spawn prompt in step 3 can point the reflector at the right `novel_traces` paths.
 
-The block header is matched as a LITERAL STRING (not a regex) - the `+` in `entryflow+p1-heuristics` is a regex metacharacter and `awk $0 ~ hdr` would mis-match it. Use `index($0, hdr) == 1` and pass the header via `ENVIRON` so awk treats it as plain text.
+Read the LAST block matching this session + phase (a previous re-run on exit-2 may have appended an older block). The block header is matched as a LITERAL STRING (not a regex) - the `+` in `entryflow+p1-heuristics` is a regex metacharacter and `awk $0 ~ hdr` would mis-match it. Use `index($0, hdr) == 1` and pass the header via `ENVIRON` so awk treats it as plain text.
 
 ```
 target="$HOME/.claude/tmp/apex-workflow-improvements.md"
-[[ -f "$target" ]] || { echo "reflect: heuristics file missing; skipping reflector" >&2 ; exit 0 ; }
-
-# Last matching block for {session}+{phase}. nf reset implicitly on each new
-# matching header so the END picks up the latest. Header line is consumed by
-# `next` to avoid the closing branch firing on the same record.
-novel=$(SESSION={session} PHASE="$PHASE" awk '
-  BEGIN { hdr = "## " ENVIRON["SESSION"] " - " ENVIRON["PHASE"] "-heuristics"; nf = 0 }
-  index($0, hdr) == 1 { in_block = 1; next }
-  in_block && /^- novel_flagged:/ { nf = $3 }
-  in_block && /^## / { in_block = 0 }
-  END { print nf+0 }
-' "$target")
-
-if (( novel < 1 )); then
-  # Gate closed: heuristics covered everything (or nothing matched). Silent
-  # skip per spec - this is the common case.
-  exit 0
-fi
+# If the heuristics file is missing, the reflector still runs; the spawn
+# prompt simply points at the live trace globs without a focus list. The
+# reflector tolerates an absent novel_traces line (it falls through to
+# scanning the snapshot directly).
 ```
 
-If `novel_flagged >= 1`, proceed to step 3.
+The `novel_flagged` count is no longer parsed for gating purposes; the heuristics block is now an advisory input rather than a control input. Proceed unconditionally to step 3.
 
-## Step 3: Conditionally spawn agents/reflector.md (Haiku)
+## Step 3: Spawn agents/reflector.md (Haiku)
 
 Foreground vs background is per the table above; choose the spawn modality at orchestrator level (`run_in_background: true` for `--phase entryflow`, default foreground for `entryflow+p1` and `p2`). One Agent tool call, model = haiku, no parallel sibling spawns - this is a single-agent gate.
 
@@ -140,8 +126,7 @@ Shut down silently (no main-session output).
 ## Fail-silent contract (whole step)
 
 - `reflect-traces.sh` failure -> already best-effort (exits 0 with stderr); orchestrator proceeds to step 2 unconditionally.
-- Heuristics file unreadable / missing block / parse failure -> silent skip (gate closed).
-- `novel_flagged == 0` -> silent skip (this is the common case).
+- Heuristics file unreadable / missing block / parse failure -> reflector still spawns; spawn prompt simply omits the `novel_traces` focus list and points the agent at the live trace globs.
 - Reflector agent failure -> agent itself fail-silents to `~/.claude/tmp/reflector-errors.log` per `agents/reflector.md` contract; returns success to the orchestrator so the chain (p1.5 / p2.6) is NOT blocked.
 
 This is intentional: reflection is a workflow-improvement signal, not a correctness gate. Hard-failing here would block cleanup and the inline summary for cosmetic gains.
