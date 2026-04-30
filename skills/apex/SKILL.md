@@ -54,8 +54,8 @@ Then read `<project-root>/docs/project-context.md` if it exists (best-effort; ab
 
 ## Step 2: Create session manifest
 
-Call `scripts/create-session.sh --cc-session-id <session_id>`. Exit codes:
-- `0` - manifest written, `{session}` token printed to stdout. Capture and use throughout.
+Resolve the current Claude Code session id via `scripts/get-cc-session-id.sh` (canonical: env-var fast path, latest-jsonl fallback - single source of truth). Then call `scripts/create-session.sh --cc-session-id "$(bash scripts/get-cc-session-id.sh)"`. Exit codes:
+- `0` - manifest written + producer-validated against `manifest.schema.json`, `{session}` token printed to stdout. Capture and use throughout.
 - `10` - overlap detected. Script writes detected state to stderr (active manifests / stale manifests). Orchestrator surfaces:
 
 ```
@@ -83,7 +83,7 @@ Carefully read the prompt - prompt phrasing may bias / narrow actual scope. Emit
   - kept: "validation rules in all auth-related forms" (broader; reason: "shared validator likely")
   - rejected: "rebuild the auth subsystem" (broadest; reason: "explicit 'fix' verb scopes to existing rules")
 
-Write `.claude-tmp/apex-active/{session}-hypothesis.json` via the `Write` tool, conforming to `schemas/hypothesis.schema.json` (producer-validates before write per shared-guardrails). The artifact is preserved across p1.5 / p2.6 cleanup and consumed by step 4 keyword extraction, 6.b shard, 8 verify error-surfacing, both reflectors, and `summary.md` at p1.6 / p2.7 (which removes it on success; `session-end-hook.sh` is the idempotent fallback).
+Write `.claude-tmp/apex-active/{session}-hypothesis.json` via the `Write` tool, conforming to `schemas/hypothesis.schema.json`. Then enforce producer-validates-before-write per shared-guardrails: `bash scripts/validate-json.sh hypothesis.schema.json .claude-tmp/apex-active/{session}-hypothesis.json` - exit-1 means malformed; abort with explicit error. The artifact is preserved across p1.5 / p2.6 cleanup and consumed by step 4 keyword extraction, 6.b shard, 8 verify error-surfacing, both reflectors, and `summary.md` at p1.6 / p2.7 (which removes it on success; `session-end-hook.sh` is the idempotent fallback).
 
 ## Step 4: Load lessons
 

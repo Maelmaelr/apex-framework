@@ -14,15 +14,18 @@
 # Args (positional):
 #   $1  -- {session} 8-hex token (required)
 #
-# Env (required):
-#   CC_SESSION_ID -- current Claude Code session id (used for scope pointer name).
+# Env (optional):
+#   CC_SESSION_ID -- current Claude Code session id. If unset, falls back to
+#                    get-cc-session-id.sh resolver (latest jsonl in projects dir).
 #
 # Exit codes:
 #   0   -- scope written + pointer written
-#   1   -- bad args, missing env, missing hypothesis, jq missing
+#   1   -- bad args, cc_session_id unresolvable, missing hypothesis, jq missing
 #   10  -- zero validated paths (orchestrator runs verify-exit-1 abort)
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SESSION="${1:-}"
 
@@ -36,8 +39,13 @@ if ! [[ "$SESSION" =~ ^[0-9a-f]{8}$ ]]; then
   exit 1
 fi
 
+# Resolve cc_session_id: env first, then shared resolver.
 if [[ -z "${CC_SESSION_ID:-}" ]]; then
-  echo "zero-layer-extract.sh: CC_SESSION_ID env var is required" >&2
+  CC_SESSION_ID="$(bash "$SCRIPT_DIR/get-cc-session-id.sh" 2>/dev/null || true)"
+fi
+
+if [[ -z "$CC_SESSION_ID" ]]; then
+  echo "zero-layer-extract.sh: CC_SESSION_ID unresolvable (env unset and get-cc-session-id.sh failed)" >&2
   exit 1
 fi
 

@@ -50,6 +50,14 @@ if [[ -z "$CC_SESSION_ID" ]]; then
   exit 1
 fi
 
+# Defensive cc_session_id format check: Claude Code session ids are UUIDs
+# (hex + hyphens). Rejecting anything else closes the printf injection edge
+# below (we trust the bytes when writing JSON).
+if ! [[ "$CC_SESSION_ID" =~ ^[0-9a-fA-F-]+$ ]]; then
+  echo "create-session.sh: --cc-session-id has unexpected shape: $CC_SESSION_ID" >&2
+  exit 1
+fi
+
 if ! command -v openssl >/dev/null 2>&1; then
   echo "create-session.sh: openssl not found (required for session token generation)" >&2
   exit 1
@@ -60,37 +68,20 @@ mkdir -p "$APEX_ACTIVE"
 active_tokens=()
 stale_tokens=()
 
-shopt -s nullglob
-for manifest in "$APEX_ACTIVE"/*.json; do
-  base="$(basename "$manifest")"
-  # Only treat 8-hex.json as a session manifest; excludes -hypothesis.json,
-  # -baseline.json, -*-scope.json, -fix-attempts-*.json, -verify-rerun.json, etc.
-  [[ "$base" =~ ^[0-9a-f]{8}\.json$ ]] || continue
-
-  parsed=$(python3 -c "
-import json, sys
-try:
-    d = json.load(open(sys.argv[1], encoding='utf-8'))
-    print(f\"{d.get('session','')}\t{d.get('pid','')}\")
-except Exception:
-    pass
-" "$manifest" 2>/dev/null || true)
-
-  session_tok="${parsed%%$'\t'*}"
-  pid="${parsed#*$'\t'}"
-
-  # Malformed manifest (missing session or pid, or non-numeric pid) -> stale.
-  if [[ -z "$session_tok" || -z "$pid" || ! "$pid" =~ ^[0-9]+$ ]]; then
-    [[ -n "$session_tok" ]] && stale_tokens+=("$session_tok")
+# Single python pass extracts {session, pid} pairs from all 8-hex.json manifests
+# (skips parse-failed and session-less records silently, matching prior behavior).
+# Bash classifies each pair as active|stale via PID-alive + comm-match.
+while IFS=$'\t' read -r session_tok pid; do
+  [[ -z "$session_tok" ]] && continue
+  if [[ -z "$pid" || ! "$pid" =~ ^[0-9]+$ ]]; then
+    stale_tokens+=("$session_tok")
     continue
   fi
-
   # PID-rollover guard: alive PID is necessary but not sufficient; require
   # ps comm to match "claude" so a recycled PID (some other process) is stale.
   if kill -0 "$pid" 2>/dev/null; then
-    comm=$(ps -o comm= -p "$pid" 2>/dev/null || true)
     # On macOS BSD ps, comm can be a full path; basename normalises both forms.
-    comm_base="$(basename "${comm:-}" 2>/dev/null || true)"
+    comm_base="$(basename "$(ps -o comm= -p "$pid" 2>/dev/null || true)" 2>/dev/null || true)"
     if [[ "$comm_base" == "claude" ]]; then
       active_tokens+=("$session_tok")
     else
@@ -99,8 +90,25 @@ except Exception:
   else
     stale_tokens+=("$session_tok")
   fi
-done
-shopt -u nullglob
+done < <(python3 - "$APEX_ACTIVE" <<'PY'
+import json, os, re, sys
+active = sys.argv[1]
+pat = re.compile(r"^[0-9a-f]{8}\.json$")
+if not os.path.isdir(active):
+    sys.exit(0)
+for name in sorted(os.listdir(active)):
+    if not pat.match(name):
+        continue
+    try:
+        with open(os.path.join(active, name), encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        continue
+    sess = d.get("session", "")
+    if sess:
+        print(f"{sess}\t{d.get('pid', '')}")
+PY
+)
 
 if [[ ${#active_tokens[@]} -gt 0 || ${#stale_tokens[@]} -gt 0 ]]; then
   {
@@ -111,17 +119,24 @@ if [[ ${#active_tokens[@]} -gt 0 || ${#stale_tokens[@]} -gt 0 ]]; then
   exit 10
 fi
 
-# No overlap: issue token, write manifest, echo token to stdout.
+# No overlap: issue token, write manifest via printf (3-field record with shape-validated
+# inputs), validate via the shared producer-validate helper, echo token to stdout.
 SESSION="$(openssl rand -hex 4)"
 MANIFEST="$APEX_ACTIVE/$SESSION.json"
 
-python3 - "$MANIFEST" "$SESSION" "$PPID" "$CC_SESSION_ID" <<'PY'
-import json, sys
-manifest, session, pid, cc_id = sys.argv[1:5]
-data = {"session": session, "pid": int(pid), "cc_session_id": cc_id}
-with open(manifest, "w", encoding="utf-8") as f:
-    json.dump(data, f)
-PY
+printf '{"session":"%s","pid":%d,"cc_session_id":"%s"}\n' "$SESSION" "$PPID" "$CC_SESSION_ID" > "$MANIFEST"
+
+# Producer-validates-before-write: shells the manifest through validate-json.sh
+# (jsonschema-fallback is parse-only when the lib is missing, but the call
+# point uniformly enforces the rule across script + inline-LLM producers).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR/validate-json.sh" ]]; then
+  if ! "$SCRIPT_DIR/validate-json.sh" manifest.schema.json "$MANIFEST"; then
+    rm -f "$MANIFEST"
+    echo "create-session.sh: manifest failed schema validation; aborting" >&2
+    exit 1
+  fi
+fi
 
 echo "$SESSION"
 exit 0

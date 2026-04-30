@@ -41,11 +41,11 @@ except Exception:
   [[ -z "$session_id" ]] && return 1
 
   [[ -d "$APEX_ACTIVE" ]] || return 1
+  shopt -s nullglob
   for manifest in "$APEX_ACTIVE"/*.json; do
-    [[ -f "$manifest" ]] || continue
-    case "$(basename "$manifest")" in
-      *-hypothesis.json|*-baseline.json|*-fix-attempts-*.json|*-verify-rerun.json|*-scope.json|*-main-scope.json) continue ;;
-    esac
+    # Same positive 8-hex regex create-session.sh + precompact-state-hook.sh use;
+    # excludes -hypothesis.json, -baseline.json, -*-scope.json, etc. by shape.
+    [[ "$(basename "$manifest")" =~ ^[0-9a-f]{8}\.json$ ]] || continue
     local matched
     matched=$(python3 -c "
 import json, sys
@@ -59,9 +59,11 @@ if d.get('cc_session_id') == sid or d.get('p2_cc_session_id') == sid:
 " "$manifest" "$session_id" 2>/dev/null || true)
     if [[ -n "$matched" ]]; then
       printf '%s' "$matched"
+      shopt -u nullglob
       return 0
     fi
   done
+  shopt -u nullglob
   return 1
 }
 

@@ -23,17 +23,18 @@ Legend:
   - Reads `<project-root>/docs/project-context.md` if present (best-effort; absent = silent skip). Pre-biases hypothesis + propagates by inheritance to trivial / zero-layer; hybrid depth - downstream re-reads on demand at planner / executor / documentation. See "Cross-cutting infrastructure / Project context" below.
 
 - **2. Create session manifest (concurrency check)**
-  - Tool: manifest script
+  - Tool: `create-session.sh` (cc_session_id resolved via canonical `get-cc-session-id.sh` - env-var fast path or latest-jsonl fallback)
   - Routing on overlap: AskUserQuestion with options filtered to detected state
     - `abort` always present
     - `proceed alongside` only if active session detected
     - `cleanup-stale-and-proceed` only if stale manifest detected
     - dismiss/cancel = abort
-  - On no overlap: writes `{session}` token + manifest
+  - On no overlap: writes `{session}` token + manifest, then producer-validates against `manifest.schema.json` via `validate-json.sh`
 
 - **3. Hypothesis**
-  - Tool: inline
-  - Emits: `complexity_hint: low|medium|high`, `alternatives[]` (kept/rejected with reason)
+  - Tool: inline; producer-validated via `validate-json.sh hypothesis.schema.json` after Write
+  - Persists: `original_prompt` (verbatim user prompt - consumed by precompact-state-hook, reflectors, and p1.6/p2.7 summary)
+  - Emits: `complexity_hint: low|medium|high`, `alternatives[]` (1-3 kept/rejected with reason - structured anti-bias check, schema-required `minItems: 1`)
   - Writes: `{session}-hypothesis.json`
 
 - **4. Load lessons**

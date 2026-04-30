@@ -11,8 +11,9 @@
     "complexity_hint": { "enum": ["low", "medium", "high"] },
     "alternatives": {
       "type": "array",
-      "minItems": 0,
+      "minItems": 1,
       "maxItems": 3,
+      "description": "1-3 narrower/broader scope readings; the structured anti-bias check Step 3 cannot skip.",
       "items": {
         "type": "object",
         "required": ["interpretation", "status", "reason"],

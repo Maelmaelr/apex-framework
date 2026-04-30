@@ -39,6 +39,19 @@ Never includes `.env*` or `.git/`.
 
 8-char lowercase hex (`openssl rand -hex 4`). Tight enough that cleanup glob `*{session}*` cannot substring-match unrelated files.
 
+## cc_session_id resolution
+
+Claude Code does NOT export the active session id as a bash env var. To avoid LLM-side guessing, every apex script that needs `cc_session_id` resolves it through the canonical helper:
+
+`scripts/get-cc-session-id.sh` - echoes the resolved id to stdout (exit 0 on success, exit 1 + stderr message on failure). Resolution order:
+1. `$CC_SESSION_ID` env var if set + non-empty (callers who already have it can re-export to skip step 2).
+2. Most-recently-modified `.jsonl` in `~/.claude/projects/<encoded-cwd>/` where `<encoded-cwd>` = `pwd | tr '/.' '--'`.
+
+Producers and consumers:
+- Step 2 `create-session.sh --cc-session-id "$(bash scripts/get-cc-session-id.sh)"` (orchestrator-driven; placeholder `<session_id>` in skill prompts now resolves through the helper).
+- 6.a `zero-layer-extract.sh` falls back to the helper when `CC_SESSION_ID` env is unset.
+- Any future script that names `cc_session_id` MUST source the helper rather than re-implement the lookup.
+
 ## Session manifest schema
 
 `.claude-tmp/apex-active/{session}.json`:
@@ -84,6 +97,10 @@ Trace writers: `executor.md`, `screener.md`, `rescout.md`. Non-trace: shard, ver
 ## JSON Schema validation
 
 Schemas at `skills/apex/schemas/*.schema.json` (this dev repo) - canonical install path is `~/.claude/skills/apex/schemas/`. Producer validates before write; consumer validates before read.
+
+Helpers (uniform call sites for script + inline-LLM producers):
+- `scripts/_validate.py` - python module; `producer_validate(data, schema_name)` raises `ValidationError`, `consumer_load(path, schema_name)` returns `None` on missing/invalid. When `jsonschema` is not importable, both fall back to JSON-parse-only with a one-line stderr warning.
+- `scripts/validate-json.sh [--admin] <schema-name> <json-path>` - thin shell wrapper around `producer_validate`. Used by `create-session.sh` after manifest write and by orchestrator inline-LLM producers (Step 3 hypothesis) immediately after `Write` to enforce the rule across all producer types.
 
 Validation failure handling:
 - Producer: aborts with explicit error to stderr (catches malformed output at source)
