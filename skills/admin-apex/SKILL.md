@@ -13,6 +13,8 @@ Per-run artifacts live under `.claude-tmp/admin-apex-active/{run}-*` (mirrors ap
 
 Inputs: `skills/apex/**`, `agents/**`, `apex-core.md`, `apex-core-overview.md`, `README.md`, `settings.json`, repo-root `CLAUDE.md`, `VERSION`.
 
+Private-tracked roots (auto-staged by task 9 in addition to evolve dirty paths; private to `~/.claude`, NEVER mirrored to public): `plugins/`, `statusline/`, `tmp/`. The closed allowlist in `scripts/mirror-to-dev.sh` already excludes these from public; task 9 uses `git add` (which respects `.gitignore`) so transient files - flock targets, runtime caches - stay out.
+
 ## Step 0: TaskCreate the chain
 
 ```
@@ -28,7 +30,7 @@ TaskCreate "9. VERSION + commit"     - blockedBy [8] - scripts/_bump-version.sh 
 TaskCreate "10. Mirror + push both"  - blockedBy [9] - scripts/mirror-to-dev.sh
 ```
 
-Tasks 5-10 are conditional: skipped if task 4 selects audit-only outcome (see below). Task 10 is also skipped if task 9 produced no commit (no-op outcome).
+Tasks 5-8 are conditional on task 4's gate (skipped on audit-only outcome). Task 9 still runs to capture private-tracked-root deltas; if nothing ends up staged, task 9 produces no commit and task 10 is skipped.
 
 ## Task 1: Mode select
 
@@ -44,13 +46,15 @@ Read and follow `skills/admin-apex/audit.md`. Produces `{run}-drift-report.json`
 
 ## Task 4: Audit gate
 
-Read drift report. Audit-only outcome (skip 5-10, exit 0, no commit) when ANY of:
-- `clusters: []` (clean)
-- mode == `audit-only`
-- every cluster decision is `keep`/`defer`
-- any cluster has `kind == stale-spec` (hard-stop; state is racing)
+Read drift report. Hard-stops (skip 5-10, exit 0, no commit, even if private deltas exist):
+- mode == `audit-only` (user explicitly asked for inspection only)
+- any cluster has `kind == stale-spec` (state is racing; do not commit anything from this run)
 
-Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | apply | defer`; dismiss = `keep`). At least one `apply` -> proceed to task 5.
+Soft-skips (skip 5-8 only; task 9 still runs to capture private-tracked-root deltas):
+- `clusters: []` (clean)
+- every cluster decision is `keep`/`defer`
+
+Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | apply | defer`; dismiss = `keep`). At least one `apply` -> proceed to task 5. All `keep`/`defer` -> soft-skip to task 9.
 
 ## Task 5 / 6: Evolve
 
@@ -75,25 +79,38 @@ Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.t
 
 ## Task 9: VERSION + commit
 
-Bump rule:
+Bump rule (only applies when evolve ran in tasks 5-8 and produced applied ops):
 - `patch` (0.2.1 -> 0.2.2): every applied op has `doc_only: true`
 - `minor` (0.2.1 -> 0.3.0): any structural mutation (file create/rename/split/merge/retire, schema add/remove, hook add/remove)
-- no bump: audit-only outcome OR no changes (no commit)
+- no bump: soft-skip outcome (only private-tracked-root deltas, no evolve ops) OR nothing staged (no commit)
 
 ```
-new=$(bash skills/admin-apex/scripts/_bump-version.sh patch)   # or minor
-echo VERSION >> .claude-tmp/admin-apex-active/{run}-dirty-paths.txt
-xargs git add -- < .claude-tmp/admin-apex-active/{run}-dirty-paths.txt
+# Bump VERSION only if evolve ran and applied ops exist
+if [[ -s .claude-tmp/admin-apex-active/{run}-applied-ops.json ]]; then
+  new=$(bash skills/admin-apex/scripts/_bump-version.sh patch)   # or minor
+  echo VERSION >> .claude-tmp/admin-apex-active/{run}-dirty-paths.txt
+fi
+
+# Stage evolve dirty paths (if any)
+[[ -s .claude-tmp/admin-apex-active/{run}-dirty-paths.txt ]] && \
+  xargs git add -- < .claude-tmp/admin-apex-active/{run}-dirty-paths.txt
 [[ -s .claude-tmp/admin-apex-active/{run}-docs-changed.txt ]] && \
   xargs git add -- < .claude-tmp/admin-apex-active/{run}-docs-changed.txt
-git commit -m "admin-apex: <one-line summary>" -m "- <op>: <target> [-> <rename_to>]"
+
+# Stage private-tracked roots (always; respects .gitignore so transient files stay out)
+git add -- plugins/ statusline/ tmp/
+
+# Commit only if anything is staged
+if ! git diff --cached --quiet; then
+  git commit -m "admin-apex: <one-line summary>" -m "- <op>: <target> [-> <rename_to>]"
+fi
 ```
 
-VERSION is appended to `{run}-dirty-paths.txt` (not staged separately) so task 10's mirror sees it without a special-case. `xargs ... < file` (input redirection) used instead of `xargs -a file` for macOS BSD-xargs portability.
+VERSION is appended to `{run}-dirty-paths.txt` (not staged separately) so task 10's mirror sees it without a special-case. `xargs ... < file` (input redirection) used instead of `xargs -a file` for macOS BSD-xargs portability. The `git add -- plugins/ statusline/ tmp/` line covers both modified-tracked and untracked files; `.gitignore` keeps lock targets / runtime caches out.
 
 NO push here (task 10 owns pushes). On commit failure: leave artifacts; surface to user. Cleanup of `.claude-tmp/admin-apex-active/{run}-*` defers to task 10 (after successful mirror+push) so the mirror script can read the run's dirty-paths/docs-changed files.
 
-If task 9 produced no commit (audit-only outcome OR no changes), skip task 10 and clean up artifacts here instead.
+If task 9 produced no commit (nothing staged after both evolve + private-roots staging), skip task 10 and clean up artifacts here instead.
 
 ## Task 10: Mirror + push both
 

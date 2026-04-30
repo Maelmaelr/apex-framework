@@ -28,6 +28,9 @@
 #   - skills/apex-file-health/**        (private orchestration)
 #   - skills/apex-lessons-analyze/**    (private orchestration)
 #   - skills/apex-lessons-extract/**    (private orchestration)
+#   - plugins/**                        (private; installed_plugins.json + known_marketplaces.json are user-specific)
+#   - statusline/**                     (private; user-specific config + cached state)
+#   - tmp/**                            (private; reflector log + per-machine scratch)
 #   - everything else outside the allowlist
 #
 # Args:
