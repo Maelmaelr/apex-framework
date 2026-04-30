@@ -4,7 +4,7 @@
 
 An opinionated operating system for Claude Code. APEX replaces ad-hoc "just go fix it" prompting with a deliberate, self-improving pipeline: scout, plan, delegate, verify, learn.
 
-This repository is the public mirror of my personal configuration. Fork it, install it, or cherry-pick.
+This is the installed skills directory. Source / public mirror lives at `apex-framework-new-dev`.
 
 ---
 
@@ -94,37 +94,40 @@ Ten load-bearing ideas. Everything else in the repo is there to implement them.
 npx create-apex
 ```
 
-Re-run `npx create-apex upgrade` to refresh skills without touching your CLAUDE.md. For manual install, hook configuration, and the full skill reference, see [README.md](README.md).
+Re-run `npx create-apex upgrade` to refresh skills without touching your CLAUDE.md.
 
 ---
 
-## Vision
+## Skills
 
-- APEX to be used by AI agents ONLY (=skills and all instruction dont need to be understood by humans; they must be optimized for AI comprehension)
+- **apex/** - Main APEX workflow (entry: `apex/SKILL.md`)
+- **apex-fix/** - Fix lint/build errors, then capture lessons
+- **apex-lessons-extract/** - Consolidate temp lessons into master
+- **apex-lessons-analyze/** - Analyze lesson patterns
+- **apex-eod/** - End of day (chains file-health, lessons-extract, improve, lessons-analyze)
+- **apex-file-health/** - Remediate oversized files flagged by apex-verify
+- **apex-init/** - Initialize new projects with APEX structure
+- **admin-apex/** - APEX maintainer (audit / evolve / sync-docs / mirror-to-dev chain; commits ~/.claude, mirrors to public dev/apex-framework, pushes both)
 
-## Core Principles
+## Usage
 
-- "boring things that work", deterministic and undeterministic
+```
+/apex "task description"    # Auto-routes to Path 1 or Path 2
+```
 
-## Execution Model
-
-- use taskCreate to inject fresh steps: /apex = very small, only create the task and each task inject skill. depending on the difficulty, next tasks can be modified/aborted
-- dont reuse scout reports as they might be stale: usually what was scouted is what was modified
-
-## Self-Improvement
-
-- self-improvement: each session reflects on what it did (pipeline followed & task from session-end summary), compare what it should have done (pipeline & original tasks+hypothesis) (spot the gaps) and what it could have done better
-- it must also be up to date/aware of the latest best practices (set up weekly updates on latest tech)
-- improve sessions: focus first on semantic adjustements, it's usually enough. only add new lines if necessary. if a skill/subskill grows too much then we're not on the right track. adding more and more will just become more confusing and bloat the agent context
-
-## Codebase
-
-- must improve codebase architecture: best practices for easy maintanability/searching
+---
 
 ## Naming convention
 
-Layer | Location | Convention |
-Top-level skill (slash command) | skills/<name>/SKILL.md | apex-<verb> |
-Skill sub-file (internal) | skills/apex/<phase>.md | <phase>.md |
-Agent | ~/.claude/agents/<role>.md | <role>.md |
-Script | skills/apex/scripts/ | <verb>-<noun>.{sh,py}; <purpose>-hook.sh |
+| Layer | Location | Convention |
+|-------|----------|------------|
+| Top-level skill (slash command) | `skills/<name>/SKILL.md` | `apex-<verb>` |
+| Skill sub-file (internal) | `skills/apex/<phase>.md` | `<phase>.md` |
+| Agent | `~/.claude/agents/<role>.md` | `<role>.md` |
+| Script | `skills/apex/scripts/` | `<verb>-<noun>.{sh,py}`; `<purpose>-hook.sh` |
+
+---
+
+## Documentation
+
+See `admin-apex/SKILL.md` for full administration reference.
