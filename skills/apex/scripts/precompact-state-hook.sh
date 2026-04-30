@@ -23,6 +23,11 @@ set -euo pipefail
 
 APEX_ACTIVE=".claude-tmp/apex-active"
 
+# Fast-path: skip the python parse on every PreCompact/PostCompact/StopFailure
+# outside an apex session. No manifest can match without the dir; emit no
+# output (matches existing passthrough behaviour for non-matching events).
+[[ -d "$APEX_ACTIVE" ]] || exit 0
+
 INPUT=$(cat 2>/dev/null || true)
 
 # Parse hook event name + cc session_id in one Python pass.

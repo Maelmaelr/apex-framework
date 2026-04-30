@@ -75,25 +75,9 @@ Each kept entry preserves `reasons` + `confidence` forwarded VERBATIM from the s
 Orchestrator (NOT scout1) handles the AskUserQuestion. On "proceed-with-prompt-paths":
 
 ```
-# Regex-extract paths from original_prompt
-prompt=$(jq -r '.original_prompt' .claude-tmp/apex-active/{session}-hypothesis.json)
-# Two extraction patterns: (1) anything matching project tree, (2) quoted/backticked relative paths
-candidates=$(printf '%s' "$prompt" \
-  | grep -oE '(`[^`]+`|"[^"]+"|[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)' \
-  | tr -d '`"')
-validated=()
-for p in $candidates; do
-  [[ -f "$p" ]] && validated+=("$p")
-done
-[[ ${#validated[@]} -eq 0 ]] && abort_like_verify_exit_1
-
-# Write scope inline + pointer
-jq -n --argjson files "$(printf '%s\n' "${validated[@]}" | jq -R . | jq -s .)" \
-  '{session: "{session}", produced_by: "step6a_zero_layer", allowed_files: ($files + [".claude-tmp/", "~/.claude/tmp/", "docs/"])}' \
-  > .claude-tmp/apex-active/{session}-main-scope.json
-mkdir -p .claude-tmp/apex-active/{session}-scopes
-printf '%s\n' "$(realpath .claude-tmp/apex-active/{session}-main-scope.json)" \
-  > .claude-tmp/apex-active/{session}-scopes/$CC_SESSION_ID.txt
+bash $HOME/.claude/skills/apex/scripts/zero-layer-extract.sh {session}
 ```
+
+The script reads `original_prompt` from `{session}-hypothesis.json`, regex-extracts paths (project-tree-shaped + quoted/backticked tokens), validates each on disk, writes `{session}-main-scope.json` + the scope pointer at `{session}-scopes/$CC_SESSION_ID.txt`. Exit codes: `0` = scope written, `10` = zero validated paths -> abort like verify exit-1.
 
 Then SKIP 6.b / 6.c / 7 / 8 / 9 (mark TaskList completed as no-op) and call `p1.md` directly with NO preflight artifact written. p1.0 reads absent preflight as no-findings-consultation branch.

@@ -89,7 +89,6 @@ Wired in `settings.json` alongside the spec hooks. Layered on top of `scope-chec
 | `block-destructive-hook.sh` | PreToolUse Bash | Blocks `git checkout --`, `git show`/`cat-file > file`, `rm -rf`, shell credential reads (CLAUDE.md Git Safety enforcement). |
 | `protect-env-hook.sh` | PreToolUse Read/Edit/Write | Blocks `.env*`, `credentials.json`, service-account keys, `.npmrc`, `.pypirc`. Allows `.env.example` / `.sample` / `.template`. |
 | `file-health-hook.sh` | PreToolUse Edit/Write | Enforces 400-line/10-line threshold and 500-line hard block per CLAUDE.md file-health rule. |
-| `scout-context-truncate-hook.sh` | PreToolUse Agent | Advisory: when active APEX session reads >300-line file, suggests offset/limit. |
 | `precompact-state-hook.sh` | PreCompact / PostCompact / StopFailure | Preserves apex-critical fields across context compaction. |
 
 These are non-contradictory with v1.0 - `scope-check-hook.sh` remains the canonical scope guard; the project-specific hooks add orthogonal safety gates (destructive ops, secrets, file size, context preservation).

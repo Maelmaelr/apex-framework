@@ -117,6 +117,56 @@ check_bash skills/apex/scripts/*.sh skills/admin-apex/scripts/*.sh
 check_py   skills/apex/scripts/*.py
 check_schemas skills/apex/schemas/*.json skills/admin-apex/schemas/*.json
 
+# Fixture tests for the dispatcher-extracted scripts (apex-baseline, apex-
+# conflict-check, apex-p2-init, zero-layer-extract). One assertion per script
+# covers the critical exit code path the orchestrator reads.
+check_fixtures() {
+  local label="$1"
+  local expected="$2"
+  local got="$3"
+  if [[ "$got" == "$expected" ]]; then
+    echo "PASS fixture $label (exit=$got)"
+    pass=$((pass + 1))
+  else
+    {
+      echo "FAIL fixture $label"
+      echo "    expected exit=$expected, got exit=$got"
+    } >&2
+    failed=$((failed + 1))
+  fi
+}
+
+run_fixture() {
+  # $1 = label, $2 = expected exit, rest = command to run inside a temp dir
+  local label="$1" expected="$2" got
+  shift 2
+  local tmp; tmp=$(mktemp -d)
+  ( cd "$tmp" && "$@" >/dev/null 2>&1 )
+  got=$?
+  rm -rf "$tmp"
+  check_fixtures "$label" "$expected" "$got"
+}
+
+# 1. Each new script rejects missing/bad {session} arg.
+run_fixture "apex-baseline.sh missing-arg" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/apex-baseline.sh"
+run_fixture "apex-conflict-check.sh missing-arg" 2 \
+  bash "$REPO_ROOT/skills/apex/scripts/apex-conflict-check.sh"
+run_fixture "apex-p2-init.sh missing-arg" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/apex-p2-init.sh"
+run_fixture "zero-layer-extract.sh missing-arg" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/zero-layer-extract.sh"
+
+# 2. zero-layer-extract.sh exits 10 on zero validated paths (orchestrator runs
+#    verify-exit-1 abort surface).
+zero_paths_fixture() {
+  mkdir -p .claude-tmp/apex-active
+  echo '{"original_prompt": "no real paths here just plain words"}' \
+    > .claude-tmp/apex-active/aabbccdd-hypothesis.json
+  CC_SESSION_ID=test-cc bash "$REPO_ROOT/skills/apex/scripts/zero-layer-extract.sh" aabbccdd
+}
+run_fixture "zero-layer-extract.sh zero-validated-paths" 10 zero_paths_fixture
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

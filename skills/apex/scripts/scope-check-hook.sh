@@ -30,6 +30,11 @@ set -euo pipefail
 ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
 deny() { echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$1\"}}"; }
 
+# Fast-path: skip the python parse on every Edit/Write outside an apex session.
+# When .claude-tmp/apex-active/ does not exist, no scope pointer can match;
+# pass-through immediately. Cheaper than the existing pointer check at line ~80.
+[[ -d ".claude-tmp/apex-active" ]] || { echo "$ALLOW"; exit 0; }
+
 INPUT=$(cat)
 
 # Extract session_id and tool-specific file paths in one Python pass.
