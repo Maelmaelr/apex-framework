@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "findings.schema.json",
+  "title": "findings-{session}.json",
+  "description": "Step 6.a output. Deterministic-layer-merged findings list. See apex-core.md step 6.a.",
+  "type": "object",
+  "required": ["findings"],
+  "properties": {
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "reasons", "confidence"],
+        "properties": {
+          "file": { "type": "string", "description": "Canonicalized via realpath" },
+          "reasons": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "object",
+              "required": ["layer", "detail"],
+              "properties": {
+                "layer": { "enum": ["static-imports", "ast-grep", "lsp", "framework", "ripgrep", "rescout"] },
+                "detail": { "type": "string" },
+                "line_range": {
+                  "oneOf": [
+                    { "type": "null" },
+                    { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } }
+                  ]
+                }
+              }
+            }
+          },
+          "confidence": { "enum": ["high", "medium", "low"] }
+        }
+      }
+    },
+    "_meta": {
+      "type": "object",
+      "properties": {
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "shard-plan.schema.json",
+  "title": "shard-plan-{session}.json",
+  "description": "Step 6.b output. Mechanical sharding plan + screening prompt template. See apex-core.md step 6.b.",
+  "type": "object",
+  "required": ["shards", "screening_prompt"],
+  "properties": {
+    "shards": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["shard_id", "files"],
+        "properties": {
+          "shard_id": { "type": "string" },
+          "files": { "type": "array", "items": { "type": "string" } },
+          "boundary_kind": { "enum": ["top-level-dir", "file-type", "import-edge-cluster"] }
+        }
+      }
+    },
+    "screening_prompt": { "type": "string", "description": "Shared template with hypothesis injected verbatim" },
+    "_meta": {
+      "type": "object",
+      "properties": {
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

@@ -1,29 +1,114 @@
-<!-- Referenced by: all skill files' Forbidden Actions sections -->
+---
+name: shared-guardrails
+description: Cross-cutting rules referenced by every apex skill and agent. Single source of truth for safety paths, scope-check hook resolution, scope-write producers, manifest schema, trace path schema, JSON Schema validation, and mid-/apex abort cleanup.
+---
 
-# Shared Guardrails
+# Shared guardrails
 
-1. **Parallel spawn (foreground only)**: All parallel Agent tool calls in a SINGLE response -- never spawn across multiple sequential messages. Use foreground agents exclusively -- background agents cause polling/resume hallucination loops.
-2. **No credential persistence**: Persist authentication patterns only, never literal credentials, tokens, API keys, key structures, or secret values.
-3. Verification required: Run verification steps (build, lint, tests as applicable). Exception: purely UI changes with no logic may skip build per global CLAUDE.md.
-4. Scope constraint + check: Modify only files within your assigned ownership or scope. Flag out-of-scope issues in your report instead of fixing. Scope check procedure: (1) `git diff --name-only` and `git ls-files --others --exclude-standard`. (2) If a baseline file exists, subtract it: `comm -23 <(echo "$CURRENT" | sort) <(cat BASELINE_FILE)`. (3) Filter `.claude-tmp/` paths. (4) Compare remaining paths against the allowed file set. (5) Report violations -- refer to #5 for handling.
-5. **No automatic file rollback**: Never use destructive git commands (`git checkout --`, `git restore`, `git reset --hard`, `git clean -f`) or delete files (`rm`) to revert changes unless the user explicitly requests it via AskUserQuestion. **This extends to equivalent workarounds** -- `git show HEAD:<path> > file`, `git cat-file`, `git archive | tar -x`, or any command sequence that extracts committed file contents to overwrite working tree changes. The prohibition is on the destructive outcome, not the specific command syntax. This is a hard gate -- no exceptions, no "scope enforcement" bypass.
-6. Read before modify: Read files before modifying or writing to them.
-7. File path verification: Verify file paths with Glob/Grep before using them.
-8. Retry limit: Max 3 retries per failing step.
-9. Dependency gate: For multiple changes, assess and print independent vs dependent before executing. Print: `Independent: [task IDs] | Dependent chains: [chain1 -> chain2, ...]`
-10. Requirements cross-check: Before reporting completion, re-read the original task and verify every requirement was addressed.
-11. Selective lesson loading: Grep and load only sections matching task/file terms.
-12. ASCII only: ASCII characters only, no emojis.
-13. Challenge first-approach bias: At decision points, briefly consider at least one alternative before committing. If no alternative exists, state why.
-14. Model selection: Explore/read-only subagents (scouts, verification, classification): `model: "sonnet"`. Opus for deep reasoning (plan writing, complex multi-file implementation, file splitting). Haiku for trivial single-command agents. Mechanical subagents (<=1 file, rename/prop-thread/import-fix/i18n/simple-extraction): `model: "sonnet"`. Mechanical definition: deterministic changes requiring no judgment -- prop threading, find-and-replace, rename propagation, import fixes, i18n key additions, simple extractions. If the change requires choosing between approaches, it is not mechanical.
-15. Output formatting: Use flat sections with numbered lists. Structured data over paragraphs. Subagent prompts must include these constraints.
-16. CWD restoration: After any Bash `cd`, restore to project root before subsequent tool calls. CWD drift silently breaks relative-path operations. Parallel Bash calls emitted in a single response share CWD state -- each must use absolute-path `cd` (or no `cd` at all) because sibling-call CWD changes are not isolated.
-17. Large CLI JSON: Pipe large CLI JSON output through jq or summarizer in the first call. Avoids multi-round read-in-chunks and saves context.
-18. Targeted reads for large files: For files >250 lines, use `offset`/`limit` to read only the relevant section. Identify the target via Grep first.
-19. Stale LSP diagnostics: TS/LSP diagnostics during parallel agent edits are frequently stale -- defer to the formal build step rather than acting on diagnostic warnings during active multi-file edits. Session-start diagnostics can also be stale after a recent refactor (LSP cache predates file changes); verify flagged lines via direct Read before treating them as authoritative audit/scan signals.
-20. Bracket paths in wc -l/Glob: Paths with brackets (`[]`) are glob character classes. Use `find -name -exec` or escape with backslashes (`\[locale\]`).
-21. **Instruction ordering for cache efficiency.** Place stable, rarely-changing content (role declarations, output format, rules) at the prompt prefix. Place variable content (file lists, checklist items, area descriptions) at the end. This is aspirational until tooling supports `cache_control` directives in agent definitions -- structure prompts for future cache-friendliness now.
-22. **Context management strategy selection.** Use sub-agents (Agent tool) when: task is parallelizable, output is structured, source context is not needed after delegation. Use compaction when: single long-running session, intermediate results are superseded by final results, session state is captured in manifest/hooks. Use fresh context (new session) when: accumulated context carries incorrect reasoning from failed attempts (after 2+ retries on the same issue), or context window is >70% consumed with low-relevance historical content.
-23. **AskUserQuestion for all confirmations.** Never embed questions or confirmation prompts inline in response text. Always use the AskUserQuestion tool when needing user input, confirmation, or a decision -- in APEX skills, admin-apex, and plain sessions alike.
-24. **Sibling-pattern cross-check for validator/regex/parser values.** When introducing or modifying a validator, regex, or parser value (script hooks, input validators, pre-filter patterns), grep sibling files in the same directory for the same pattern and verify the new value matches the established convention. Prevents divergent implementations of the same constraint surfacing only at runtime.
-25. **Tool-availability check standalone.** Shell `<detect> && <action>` chains (e.g., `which semgrep && semgrep ...`) placed in a parallel Bash batch cancel sibling tool calls when the detect side returns non-zero. Run tool-availability checks as a standalone Bash call; make the conditional action a follow-up call, or let the action script handle tool absence internally.
+This file consolidates the cross-cutting rules from `apex-core.md` "Conventions" and "Failure handling". Every other skill / agent file in this repo should reference back here rather than duplicating these rules.
+
+## Standard safety paths (always allowed in any scope artifact)
+
+Closed set:
+- `.claude-tmp/`
+- `~/.claude/tmp/`
+- `/tmp/{session}-*`
+- project `docs/**`
+- any `README*` file at any depth
+
+Never includes `.env*` or `.git/`.
+
+## Session token format
+
+8-char lowercase hex (`openssl rand -hex 4`). Tight enough that cleanup glob `*{session}*` cannot substring-match unrelated files.
+
+## Session manifest schema
+
+`.claude-tmp/apex-active/{session}.json`:
+```
+{session, pid, cc_session_id, p2_cc_session_id?}
+```
+- `pid` and `cc_session_id` are NEVER overwritten
+- `p2_cc_session_id` appended by `p2.md` after the p2.0c context clear
+- Reflectors locate TaskList at `~/.claude/todos/{id}-agent-{id}.json` using `cc_session_id` (entry-flow / Path 1) or `p2_cc_session_id` (p2.5)
+
+## Scope write producers (single source of truth per artifact)
+
+`{session}-main-scope.json` - exactly one fires per session:
+- trivial path -> step 5 inline orchestrator `Write` tool
+- zero-layer proceed -> step 6.a inline orchestrator `Write` tool
+- normal path -> `verify-claims.sh` (default mode or `--apply-resolved`)
+
+`{session}-{teammate-id}-scope.json` - written only by `teammates.md` at p2.1.
+
+## scope-check hook resolution
+
+PreToolUse on `Edit` / `Write` / `MultiEdit` / `NotebookEdit`. Resolves active scope via on-disk pointer `.claude-tmp/apex-active/{session}-scopes/{session_id}.txt` (single line: absolute path to scope JSON). Hook globs `.claude-tmp/apex-active/*-scopes/{session_id}.txt` to find the matching pointer. Pass-through if no pointer matches.
+
+Pointer writers:
+- main orchestrator after each scope write -> `{session}-scopes/{cc_session_id}.txt`
+- p2 orchestrator at p2.0 -> `{session}-scopes/{p2_cc_session_id}.txt` (also points at main scope)
+- each teammate at its own p1.0 (under `--teammate`) -> `{session}-scopes/{teammate_cc_session_id}.txt`
+
+Bash file ops (`sed -i`, redirection, `tee`, `cp`, `mv`) NOT gated - prompt-layer convention only.
+
+## verify-claims.sh modes (exit-code priority 1 > 2 > 3 > 0)
+
+Default mode (no flag): runs the full claim verification pass and dispatches via exit code.
+
+| Exit | Meaning | abort_cause (stderr) |
+|------|---------|----------------------|
+| 0 | proceed - scope written as last action | - |
+| 1 | abort | `preflight_bad` OR `screened_unconverged` |
+| 2 | re-run 6c+7 (cap 1 via `{session}-verify-rerun.json`) | - |
+| 3 | inline review - orchestrator writes `claim-review-resolved-{session}.json`, re-invokes `--apply-resolved` | - |
+
+`--apply-resolved` mode: skips re-validation (claims already validated), re-reads `screened-{session}.json` + `claim-review-resolved-{session}.json`, re-adds `keep` claims to screened, and unconditionally writes `{session}-main-scope.json` as its last action (exits 0). Used by orchestrator after exit-3 inline review.
+
+## Trace path schema
+
+`.claude-tmp/apex-active/{session}-traces/{phase}/{agent}[-{disambiguator}].md`
+
+Phases: `entryflow` (screener, rescout) | `p1` (executor + main p1.2 fix-attempts) | `p2` (executor incl. teammate executors + central p2.3 fix-attempts).
+
+Disambiguator: shard-id, task-id, teammate-id, teammate-id-task-id, attempt-N (dash-joined).
+
+Screener and rescout always carry `attempt-N` (preserves both passes on exit-2 re-run).
+
+Trace writers: `executor.md`, `screener.md`, `rescout.md`. Non-trace: shard, verify, learn, documentation, git, reflector.
+
+## JSON Schema validation
+
+Schemas at `skills/apex/schemas/*.schema.json` (this dev repo) - canonical install path is `~/.claude/skills/apex/schemas/`. Producer validates before write; consumer validates before read.
+
+Validation failure handling:
+- Producer: aborts with explicit error to stderr (catches malformed output at source)
+- Consumer: treats invalid artifact as missing -> triggers the relevant gate-handling path (e.g., `verify-claims.sh` reading invalid `screened-{session}.json` -> exit-2 re-run; `p1.md` reading invalid `preflight-{session}.json` -> hard abort with state-corruption signal)
+
+Validated artifacts: see `apex-core.md` "Artifact validation" section for the full list.
+
+## Mid-/apex abort cleanup
+
+Any orchestrator exit bypassing p1.5/p2.6 runs `scripts/session-end-hook.sh {session}` inline. Triggers:
+- verify exit-1 abort (`preflight_bad` or `screened_unconverged`)
+- AskUserQuestion-abort at step 2 / 6.a zero-layer / 6.b / p1.0 / p2.0
+- zero-layer "no validated paths" abort
+- teammate-failure abort
+- plan-mode rejection at p2.0c
+
+`session-end-hook.sh` wraps `cleanup-session.sh` + removes `{session}-hypothesis.json` (belt-and-suspenders).
+
+## Project-specific hooks (additive to v1.0)
+
+Wired in `settings.json` alongside the spec hooks. Layered on top of `scope-check-hook.sh` (do not replace it). Listed here so future contributors reading the spec can discover them.
+
+| Hook | Matcher | Purpose |
+|------|---------|---------|
+| `block-destructive-hook.sh` | PreToolUse Bash | Blocks `git checkout --`, `git show`/`cat-file > file`, `rm -rf`, shell credential reads (CLAUDE.md Git Safety enforcement). |
+| `protect-env-hook.sh` | PreToolUse Read/Edit/Write | Blocks `.env*`, `credentials.json`, service-account keys, `.npmrc`, `.pypirc`. Allows `.env.example` / `.sample` / `.template`. |
+| `file-health-hook.sh` | PreToolUse Edit/Write | Enforces 400-line/10-line threshold and 500-line hard block per CLAUDE.md file-health rule. |
+| `scan-budget-hook.sh` | PreToolUse Bash | Per-session budget on `Grep`/`Glob`/`Read` (warn-then-block). |
+| `scout-context-truncate-hook.sh` | PreToolUse Agent | Advisory: when active APEX session reads >300-line file, suggests offset/limit. |
+| `precompact-state-hook.sh` | PreCompact / PostCompact / StopFailure | Preserves apex-critical fields across context compaction. |
+
+These are non-contradictory with v1.0 - `scope-check-hook.sh` remains the canonical scope guard; the project-specific hooks add orthogonal safety gates (destructive ops, secrets, file size, scan budget, context preservation).

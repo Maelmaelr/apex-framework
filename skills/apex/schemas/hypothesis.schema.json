@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "hypothesis.schema.json",
+  "title": "{session}-hypothesis.json",
+  "description": "Step 3 output. Persists original_prompt verbatim plus hypothesis, complexity_hint, and structured anti-bias alternatives. Consumed by 6.b shard, 8 verify error-surfacing, p1.6/p2.7 inline summary, reflectors. See apex-core.md step 3.",
+  "type": "object",
+  "required": ["original_prompt", "hypothesis", "complexity_hint", "alternatives"],
+  "properties": {
+    "original_prompt": { "type": "string", "description": "Verbatim user prompt" },
+    "hypothesis": { "type": "string" },
+    "complexity_hint": { "enum": ["low", "medium", "high"] },
+    "alternatives": {
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "required": ["interpretation", "status", "reason"],
+        "properties": {
+          "interpretation": { "type": "string" },
+          "status": { "enum": ["kept", "rejected"] },
+          "reason": { "type": "string", "description": "One-line" }
+        }
+      }
+    }
+  }
+}

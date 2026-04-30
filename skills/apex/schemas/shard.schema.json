@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "shard.schema.json",
+  "title": "shard-{shard-id}-{session}.json",
+  "description": "Step 6.c per-shard screener output. See apex-core.md step 6.c.",
+  "type": "object",
+  "required": ["kept", "dropped"],
+  "properties": {
+    "kept": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "screener_reason", "reasons", "confidence"],
+        "properties": {
+          "file": { "type": "string" },
+          "screener_reason": { "type": "string", "description": "Free-text keep justification" },
+          "reasons": { "type": "array", "description": "Forwarded verbatim from findings entry" },
+          "confidence": { "enum": ["high", "medium", "low"] }
+        }
+      }
+    },
+    "dropped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "screener_reason"],
+        "properties": {
+          "file": { "type": "string" },
+          "screener_reason": { "type": "string", "description": "Free-text drop justification" }
+        }
+      }
+    }
+  }
+}

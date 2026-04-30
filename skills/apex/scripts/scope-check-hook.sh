@@ -1,147 +1,168 @@
 #!/usr/bin/env bash
-# APEX scope constraint hook (PreToolUse, matcher: Edit|Write)
-# Reads allowed file list from .claude-tmp/apex-active/{session}-scope.json.
-# If no active session, exits 0 (allow). If file_path in allowed list or
-# in .claude-tmp/, exits 0. Otherwise blocks with JSON reason.
-# Exit 0 = always (hook protocol: blocks via JSON output, not exit code).
+# APEX scope-check hook (PreToolUse, matcher: Edit|Write|MultiEdit|NotebookEdit).
+# Spec: apex-core.md "Conventions" / scope-check hook + shared-guardrails.md.
+#
+# Resolution mechanism (on-disk pointer, NOT mtime):
+#   1. Extract session_id from hook stdin event JSON.
+#   2. Glob .claude-tmp/apex-active/*-scopes/{session_id}.txt (any apex {session}
+#      matches; in practice exactly one matches the calling session_id).
+#   3. The pointer file is single-line: absolute path to the active scope JSON.
+#   4. Read scope.allowed_files; deny if target path not in list and not a
+#      standard safety path.
+#
+# Pass-through (allow) when no pointer matches the calling session_id (entry-flow
+# phase before any pointer is written, or non-/apex Claude Code session).
+#
+# Standard safety paths (closed set, always allowed):
+#   - .claude-tmp/
+#   - ~/.claude/tmp/
+#   - /tmp/{session}-*  (any session token; the directory is shared)
+#   - project docs/**
+#   - any README* file at any depth
+#
+# Never includes .env* or .git/ regardless of scope contents (those are gated
+# by separate hooks / settings deny rules).
+#
+# Hook protocol: always exit 0. Block via JSON permissionDecision=deny on stdout.
+
 set -euo pipefail
 
 ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
 deny() { echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$1\"}}"; }
 
-# Read hook input from stdin
 INPUT=$(cat)
 
-# Extract file_path from tool_input
-FILE_PATH=$(echo "$INPUT" | python3 -c "
+# Extract session_id and tool-specific file paths in one Python pass.
+# - Edit/Write: tool_input.file_path
+# - MultiEdit:  tool_input.file_path (single target file; edits[] are within it)
+# - NotebookEdit: tool_input.notebook_path
+# Outputs (one per line): SESSION_ID, then each target path.
+PARSED=$(echo "$INPUT" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
-ti = data.get('tool_input', {})
-print(ti.get('file_path', ''))
+session_id = data.get('session_id', '')
+tool = data.get('tool_name', '')
+ti = data.get('tool_input', {}) or {}
+print(session_id)
+if tool == 'NotebookEdit':
+    p = ti.get('notebook_path', '')
+    if p:
+        print(p)
+elif tool in ('Edit', 'Write', 'MultiEdit'):
+    p = ti.get('file_path', '')
+    if p:
+        print(p)
 " 2>/dev/null || echo "")
 
-# No file_path means nothing to check -- allow
-if [[ -z "$FILE_PATH" ]]; then
+if [[ -z "$PARSED" ]]; then
   echo "$ALLOW"
   exit 0
 fi
 
-# Find active scope file
-SCOPE_DIR=".claude-tmp/apex-active"
-if [[ ! -d "$SCOPE_DIR" ]]; then
+SESSION_ID=$(printf '%s\n' "$PARSED" | sed -n '1p')
+TARGETS=()
+while IFS= read -r line; do
+  [[ -z "$line" ]] || TARGETS+=("$line")
+done < <(printf '%s\n' "$PARSED" | sed -n '2,$p')
+
+# No session_id or no target paths: nothing to check.
+if [[ -z "$SESSION_ID" || ${#TARGETS[@]} -eq 0 ]]; then
   echo "$ALLOW"
   exit 0
 fi
 
-# Match *-scope.json with session ID validation, select newest by mtime
-SCOPE_FILE=""
-NEWEST_MTIME=0
-for f in "$SCOPE_DIR"/*-scope.json; do
-  [[ -f "$f" ]] || continue
-  BASENAME=$(basename "$f")
-  # Validate format: apex-[a-z0-9]{6,8} (8-char session IDs + 6-char team names)
-  if [[ "$BASENAME" =~ ^apex-[a-z0-9]{6,8}-scope\.json$ ]]; then
-    MTIME=$(stat -f %m "$f" 2>/dev/null || echo "0")
-    if [[ "$MTIME" -gt "$NEWEST_MTIME" ]]; then
-      NEWEST_MTIME="$MTIME"
-      SCOPE_FILE="$f"
-    fi
+# Resolve scope via on-disk pointer.
+# .claude-tmp/apex-active/*-scopes/{session_id}.txt - the {session} prefix is any
+# apex session; exactly one should match the calling session_id (or zero, in
+# which case pass-through).
+APEX_ACTIVE=".claude-tmp/apex-active"
+POINTER=""
+if [[ -d "$APEX_ACTIVE" ]]; then
+  for p in "$APEX_ACTIVE"/*-scopes/"$SESSION_ID".txt; do
+    [[ -f "$p" ]] || continue
+    POINTER="$p"
+    break
+  done
+fi
+
+# No pointer for this session_id: pass-through (entry-flow before scope written,
+# or non-/apex session entirely).
+if [[ -z "$POINTER" ]]; then
+  echo "$ALLOW"
+  exit 0
+fi
+
+# Pointer file: single-line absolute path to scope JSON.
+SCOPE_FILE=$(head -n 1 "$POINTER" | tr -d '[:space:]')
+if [[ -z "$SCOPE_FILE" || ! -f "$SCOPE_FILE" ]]; then
+  # Pointer points at missing scope: hard fail (state corruption).
+  deny "Scope pointer at $POINTER references missing scope file ($SCOPE_FILE). Investigate apex session state."
+  exit 0
+fi
+
+is_safety_path() {
+  local target="$1"
+  # .claude-tmp/ anywhere in path
+  [[ "$target" == *".claude-tmp/"* ]] && return 0
+  [[ "$target" == ".claude-tmp/"* ]] && return 0
+  # ~/.claude/tmp/ - both literal $HOME and tilde-prefixed forms
+  [[ "$target" == "$HOME/.claude/tmp/"* ]] && return 0
+  [[ "$target" == "~/.claude/tmp/"* ]] && return 0
+  # /tmp/{session}-* - any session token; /tmp is shared
+  [[ "$target" == /tmp/*-* ]] && return 0
+  # project docs/**
+  [[ "$target" == "docs/"* ]] && return 0
+  [[ "$target" == */docs/* ]] && return 0
+  # any README* at any depth
+  local base
+  base=$(basename "$target")
+  [[ "$base" == README* ]] && return 0
+  return 1
+}
+
+# Check each target path against safety paths + scope.allowed_files.
+for TARGET in "${TARGETS[@]}"; do
+  if is_safety_path "$TARGET"; then
+    continue
   fi
-done
 
-# No valid scope file means no active APEX session -- allow
-if [[ -z "$SCOPE_FILE" ]]; then
-  echo "$ALLOW"
-  exit 0
-fi
-
-# Always allow .claude-tmp/ paths (session artifacts)
-if [[ "$FILE_PATH" == *".claude-tmp/"* ]]; then
-  echo "$ALLOW"
-  exit 0
-fi
-
-# Always allow .claude/plans/ paths (system-generated plan files)
-if [[ "$FILE_PATH" == *".claude/plans/"* ]]; then
-  echo "$ALLOW"
-  exit 0
-fi
-
-# Always allow .claude/ project infrastructure paths (audit criteria, verdicts,
-# scout findings, lessons). Security-sensitive files handled by protect-env hook.
-if [[ "$FILE_PATH" == *".claude/audit-criteria/"* ]] ||
-   [[ "$FILE_PATH" == *".claude/audit-verdicts/"* ]] ||
-   [[ "$FILE_PATH" == *".claude/scout-findings/"* ]] ||
-   [[ "$FILE_PATH" == *".claude/lessons"* ]]; then
-  echo "$ALLOW"
-  exit 0
-fi
-
-# Always allow $HOME/.claude/ home skill edits (skills, agents, CLAUDE.md,
-# audit-criteria). Covers improve sessions and admin-apex edits regardless of
-# the active project-scope session.
-if [[ "$FILE_PATH" == "$HOME/.claude/"* ]]; then
-  echo "$ALLOW"
-  exit 0
-fi
-
-# Check if file_path is in the allowed list (pass SCOPE_FILE via argv, not interpolation)
-# Supports both explicit paths and glob patterns (entries containing * or ?)
-# Output format: "yes:N" or "no:N" where N is allowed_count (0 if scope unreadable).
-PY_STDERR=$(mktemp 2>/dev/null || echo "/tmp/apex-scope-check-$$.err")
-ALLOWED=$(python3 -c "
-import fnmatch, json, os, sys
+  ALLOWED=$(python3 -c "
+import json, os, sys, fnmatch
 scope_file = sys.argv[1]
 target = sys.argv[2]
-with open(scope_file, encoding='utf-8') as f:
-    data = json.load(f)
-files = data.get('files', [])
-count = len(files)
+try:
+    with open(scope_file, encoding='utf-8') as f:
+        data = json.load(f)
+except Exception:
+    print('error')
+    sys.exit(0)
+files = data.get('allowed_files', [])
+target_abs = os.path.abspath(target)
 for allowed in files:
-    if target == allowed or target.endswith('/' + allowed) or allowed.endswith('/' + target):
-        print('yes:' + str(count))
+    allowed_abs = os.path.abspath(os.path.expanduser(allowed))
+    if target == allowed or target_abs == allowed_abs:
+        print('yes')
         sys.exit(0)
-    expanded_allowed = os.path.expanduser(allowed)
-    expanded_target = os.path.expanduser(target)
-    if expanded_target == expanded_allowed:
-        print('yes:' + str(count))
-        sys.exit(0)
+    # Glob support for entries with * or ?
     if '*' in allowed or '?' in allowed:
-        candidates = [allowed]
-        if '/**/' in allowed:
-            candidates.append(allowed.replace('/**/', '/'))
-        for cand in candidates:
-            if fnmatch.fnmatch(target, cand) or fnmatch.fnmatch(target, '**/' + cand):
-                print('yes:' + str(count))
-                sys.exit(0)
-            expanded_cand = os.path.expanduser(cand)
-            if fnmatch.fnmatch(expanded_target, expanded_cand) or fnmatch.fnmatch(expanded_target, '**/' + expanded_cand):
-                print('yes:' + str(count))
-                sys.exit(0)
-print('no:' + str(count))
-" "$SCOPE_FILE" "$FILE_PATH" 2>"$PY_STDERR" || echo "no:0")
-PY_ERR=$(tr '\n' ' ' < "$PY_STDERR" 2>/dev/null | head -c 120)
-rm -f "$PY_STDERR"
+        if fnmatch.fnmatch(target, allowed) or fnmatch.fnmatch(target_abs, allowed_abs):
+            print('yes')
+            sys.exit(0)
+print('no')
+" "$SCOPE_FILE" "$TARGET" 2>/dev/null || echo "error")
 
-if [[ "$ALLOWED" == yes:* ]]; then
-  echo "$ALLOW"
+  if [[ "$ALLOWED" == "yes" ]]; then
+    continue
+  fi
+
+  SCOPE_BASENAME=$(basename "$SCOPE_FILE")
+  if [[ "$ALLOWED" == "error" ]]; then
+    deny "Scope check failed: could not read $SCOPE_BASENAME for $TARGET. Investigate apex session state."
+    exit 0
+  fi
+  deny "Scope violation: $TARGET not in apex allowed_files (scope=$SCOPE_BASENAME). Extend scope before writing, or route via shared_files at p2.4."
   exit 0
-fi
+done
 
-# Block: file not in allowed scope. Include scope_file basename, allowed_count,
-# and captured python stderr so the assistant can distinguish genuine misses
-# from transient scope-read failures without manual hook-invocation.
-ALLOWED_COUNT="${ALLOWED#no:}"
-SCOPE_BASENAME=$(basename "$SCOPE_FILE")
-DENY_MSG="Scope violation: $FILE_PATH not in APEX allowed files (scope_file=$SCOPE_BASENAME, allowed_count=$ALLOWED_COUNT). Pre-extend scope JSON before Write (see SKILL.md Step 5A Scope extension)."
-if [[ "$ALLOWED_COUNT" == "0" ]]; then
-  DENY_MSG="$DENY_MSG Hint: scope unreadable -- retry once."
-fi
-if [[ -n "$PY_ERR" ]]; then
-  # Escape backslashes and double quotes for JSON embedding
-  PY_ERR_ESC=${PY_ERR//\\/\\\\}
-  PY_ERR_ESC=${PY_ERR_ESC//\"/\\\"}
-  DENY_MSG="$DENY_MSG stderr=$PY_ERR_ESC"
-fi
-deny "$DENY_MSG"
+echo "$ALLOW"
 exit 0

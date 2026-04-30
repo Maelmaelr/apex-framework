@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "main-scope.schema.json",
+  "title": "{session}-main-scope.json",
+  "description": "Main scope (allowed_files = scout-confirmed files + standard safety paths). Single source of truth; teammate scopes are subsets. Producers (exactly one fires per session): step 5 trivial inline, step 6.a zero-layer inline, verify-claims.sh (default or --apply-resolved). See apex-core.md Conventions / Scope write producers.",
+  "type": "object",
+  "required": ["session", "allowed_files"],
+  "properties": {
+    "session": { "type": "string", "pattern": "^[0-9a-f]{8}$" },
+    "allowed_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Absolute or repo-relative paths; standard safety paths always included"
+    },
+    "produced_by": { "enum": ["trivial-inline", "zero-layer-inline", "verify-claims.sh", "verify-claims.sh --apply-resolved"] },
+    "produced_at": { "type": "string", "format": "date-time" }
+  }
+}

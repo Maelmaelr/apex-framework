@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "evolve-plan.schema.json",
+  "title": "{run}-evolve-plan.json",
+  "description": "Output of evolve.md task 5 (proposal composition). Set of mutation ops chosen at the audit gate. Consumed by evolve.md task 6 (apply). See skills/admin-apex/SKILL.md task 5/6.",
+  "type": "object",
+  "required": ["run", "ops"],
+  "properties": {
+    "run": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "8-char lowercase hex run token (mints in SKILL task 1)." },
+    "ops": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "rationale"],
+        "properties": {
+          "kind": {
+            "enum": ["create", "rename", "split", "merge", "retire", "schema-add", "schema-remove", "hook-add", "hook-remove"],
+            "description": "create=new file (skill/agent/script/schema). rename=path change (mirror update of refs). split=one file -> N files. merge=N files -> one. retire=delete + ref removal. schema-add/remove=schemas/*.json add or delete. hook-add/remove=settings.json hook entry add/remove."
+          },
+          "target": { "type": "string", "description": "Primary path (existing for rename/split/merge/retire/schema-remove/hook-remove; new for create/schema-add/hook-add)." },
+          "rename_to": { "type": "string", "description": "Required for kind=rename." },
+          "split_into": {
+            "type": "array",
+            "description": "Required for kind=split: list of new files derived from target.",
+            "items": { "type": "string" }
+          },
+          "merge_sources": {
+            "type": "array",
+            "description": "Required for kind=merge: list of files merged into target.",
+            "items": { "type": "string" }
+          },
+          "rationale": { "type": "string", "description": "One-line audit-cluster reason this op was chosen." },
+          "doc_only": { "type": "boolean", "description": "True if op only edits spec docs (README/apex-core/overview/CLAUDE.md) without structural mutation. Drives task 9 patch-vs-minor bump." }
+        }
+      }
+    },
+    "_meta": {
+      "type": "object",
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "source_clusters": {
+          "type": "array",
+          "description": "Drift-report cluster ids that motivated each op (for audit trail).",
+          "items": { "type": "string" }
+        }
+      }
+    }
+  }
+}

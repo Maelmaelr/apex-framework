@@ -1,0 +1,143 @@
+---
+name: tail
+description: p1.3 / p2.4 tail-step orchestrator. Runs scripts/detect-tail-mode.sh to pick economy vs full, then spawns agents/{learn,documentation,git}.md in a single parallel batch. Teammate mode (under p1.md --teammate) skips detection and spawns documentation.md only - central p2.4 owns learn + git for the whole p2 session. Trace path is N/A (tail agents are non-trace per shared-guardrails).
+---
+
+# tail (p1.3 / p2.4)
+
+Spec: `apex-core.md` p1.3 / p2.4 | `apex-core-overview.md` p1.3 / p2.4.
+
+Single skill body, three invocation contexts. The caller passes `--phase p1` (main-mode p1.3), `--phase p2` (central Path 2 p2.4), or `--phase teammate` (teammate-mode p1.3); session token via `--session`.
+
+## Invocation contexts
+
+| Caller | Phase arg | Detection | Agents spawned (parallel batch) | Notes |
+|--------|-----------|-----------|---------------------------------|-------|
+| `p1.md` p1.3 (main mode) | `--phase p1` | yes | `economy` -> `git.md`; `full` -> `learn.md` + `documentation.md` + `git.md` | apex-driven change set is captured by `{session}-baseline.json` head_sha |
+| `p2.md` p2.4 (central) | `--phase p2` | yes | same as p1 by mode | `documentation.md` runs the integration pass: first-write on planner's `shared_files` list (read by the agent itself, not by tail.md) |
+| `p1.md --teammate` p1.3 | `--phase teammate` | NO | `documentation.md` only | learn + git centralised at p2.4; teammate `documentation.md` is scoped to that teammate's allowed-files |
+
+## Step 1: Resolve phase + detect mode
+
+```
+case "$PHASE" in
+  p1|p2)    DETECT=1 ;;
+  teammate) DETECT=0 ;;
+  *)        echo "tail: invalid --phase '$PHASE' (expected p1|p2|teammate)" >&2 ; exit 2 ;;
+esac
+
+if (( DETECT )); then
+  MODE=$(bash $HOME/.claude/skills/apex/scripts/detect-tail-mode.sh --session {session})
+  rc=$?
+  if (( rc != 0 )); then
+    # baseline missing/invalid (rc=1) or invocation error (rc=2). Fail-silent
+    # for the orchestrator: the tail step is best-effort - log and proceed.
+    # learn / documentation / git are all idempotent enough that skipping
+    # the whole step on a baseline read failure does not corrupt state.
+    echo "tail: detect-tail-mode.sh failed (rc=$rc); skipping tail step" >&2
+    exit 0
+  fi
+  case "$MODE" in
+    economy) AGENTS=(git) ;;
+    full)    AGENTS=(learn documentation git) ;;
+    *)       echo "tail: unexpected mode '$MODE' from detect-tail-mode.sh; defaulting to economy" >&2 ; AGENTS=(git) ;;
+  esac
+else
+  # teammate mode: skip detection, docs only
+  AGENTS=(documentation)
+fi
+```
+
+## Step 2: Single parallel spawn batch
+
+The orchestrator MUST issue ONE message containing the relevant Agent tool calls in parallel (per CLAUDE.md "Parallel execution for independent changes"). All agents are Sonnet, foreground, no traces (tail agents are non-trace per `shared-guardrails.md`).
+
+For each agent in `AGENTS`, use the spawn-prompt template below. Substitute `{session}` and `{phase}` (`p1` | `p2` - omit for teammate-mode docs spawn).
+
+### learn.md spawn prompt
+
+```
+You are agents/learn.md. Read it at $HOME/.claude/agents/learn.md and follow it.
+
+Session: {session}
+Baseline: .claude-tmp/apex-active/{session}-baseline.json (read head_sha here)
+
+Inputs:
+- git diff <head_sha>   (baseline-pinned; independent of git.md commit timing)
+- git ls-files --others --exclude-standard   (untracked apex-created files)
+
+Output:
+- Append novel patterns / lessons to .claude-tmp/lessons-tmp.md.
+- Curation into project lessons-index is OUT OF SCOPE for /apex.
+
+Skipped if `economy` mode or teammate phase (the orchestrator already gates this).
+Return one-line summary; NO trace.
+```
+
+### documentation.md spawn prompt
+
+```
+You are agents/documentation.md. Read it at $HOME/.claude/agents/documentation.md and follow it.
+
+Session: {session}
+Phase:   {phase}    # p1 | p2 | teammate
+Baseline: .claude-tmp/apex-active/{session}-baseline.json (read head_sha here)
+
+Inputs:
+- git diff <head_sha>   (baseline-pinned; independent of git.md commit timing)
+
+Behavior by phase:
+- p1 / teammate: update project docs / architecture notes when structural changes warrant; teammate scope is the teammate's allowed-files list.
+- p2 (central):  ALSO own first-write on the planner's `shared_files` list (cross-teammate docs / READMEs excluded from every teammate scope by the disjoint-scope rule at p2.0b). Per-teammate scope-internal doc edits already happened in each teammate's own p1.3.
+
+Scope: docs + architecture only. NOT security audits, NOT PRD generation.
+
+Hooks active:
+- scope-check (PreToolUse Edit/Write/MultiEdit/NotebookEdit) - safety paths include docs/** and any README* at any depth.
+
+Return one-line summary; NO trace.
+```
+
+### git.md spawn prompt
+
+```
+You are agents/git.md. Read it at $HOME/.claude/agents/git.md and follow it.
+
+Session: {session}
+Baseline: .claude-tmp/apex-active/{session}-baseline.json (read head_sha here)
+
+Behavior:
+1. Compute change set: (git diff --name-only <head_sha>; git ls-files --others --exclude-standard) | sort -u.
+2. Per-file pre-filter (closed sets, NOT globs):
+   - skip if basename in dotenv-secret set: {.env, .env.local, .env.production, .env.development}
+   - skip if `git check-ignore <path>` returns 0
+3. Per-file `git add` (NOT `git add -A`).
+4. Read `git diff --staged --stat` + `git diff --staged` for commit-message context.
+5. `git commit` with derived message. NO push.
+
+Fail-silent contract: errors -> ~/.claude/tmp/git-agent-errors.log; return success to orchestrator so the step does NOT fail.
+
+"Process as normal file" rule: pre-/apex dirty files surviving the p1.0 / p2.0 conflict check are staged alongside apex's edits.
+
+Return one-line summary; NO trace.
+```
+
+## Fail-silent contract (whole step)
+
+- `detect-tail-mode.sh` failure (rc != 0) -> log to stderr, skip the spawn batch, exit 0. The chain (p1.4 / p2.5) proceeds.
+- Individual agent failure -> agent itself fail-silents (`git.md` per spec; `learn.md` and `documentation.md` per their own contracts) and returns success. The orchestrator does NOT block on tail.
+- This is intentional: the tail step is best-effort (lessons, docs, git commit). Hard-failing here would block p1.4 / p1.5 / p1.6 (or p2.5 / p2.6 / p2.7) for cosmetic gains.
+
+## Cleanup
+
+Tail produces no session-keyed artifacts of its own. Lessons are appended to `.claude-tmp/lessons-tmp.md` (project-level, NOT session-scoped - cleanup is out of scope for /apex). Git commits are persistent. Doc writes are persistent. There is nothing for `cleanup-session.sh` to remove that is owned by tail.
+
+## What this skill does NOT do
+
+- Does NOT decide what to learn / what to document / what to commit - the agents do, with the baseline-pinned diff as input.
+- Does NOT consult `screened-{session}.json` / findings - tail is post-implementation, not implementation.
+- Does NOT push commits - `git.md` commits, never pushes (matches Git Safety policy in CLAUDE.md).
+- Does NOT extend scope - the agents inherit the orchestrator's scope-check pointer; cross-cutting writes are limited to the standard safety paths (docs/**, README* at any depth).
+- Does NOT write traces - tail agents are non-trace per `shared-guardrails.md`.
+
+See `agents/learn.md`, `agents/documentation.md`, `agents/git.md` for behavior contracts; `scripts/detect-tail-mode.sh` for the size-signal logic; `shared-guardrails.md` for safety paths and scope-check.

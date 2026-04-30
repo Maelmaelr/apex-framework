@@ -1,274 +1,258 @@
 ---
 name: apex
-description: Lean coding workflow. Quick scan, then direct implementation or plan-based execution.
-triggers:
-  - apex
+description: Main coding orchestrator. Entry point for /apex; runs the entry flow (analyze, manifest, hypothesis, lessons, trivial detection, scout, verify, path decision) then dispatches to Path 1 (medium/trivial) or Path 2 (complex).
 ---
 
-# APEX Workflow
+# /apex (main orchestrator)
+
+This skill is the entry point invoked by `/apex <prompt>`. It owns the entry flow (steps 0-10) and routes into either `p1.md` or the Path 2 plan-mode chain.
+
+Spec sources (canonical, do NOT duplicate here):
+- `apex-core.md` "Entry flow" (steps 0-10) - full behavioral contract
+- `apex-core-overview.md` "Entry flow" - lighter step-by-step routing summary
+
+## Step ownership
+
+| Step | Owner | Notes |
+|------|-------|-------|
+| 0    | this skill | TaskCreate entry tasks 1-5 |
+| 1    | inline prompt | AskUserQuestion if ambiguous |
+| 2    | `scripts/create-session.sh` | Manifest + concurrency check |
+| 3    | inline prompt | Writes `{session}-hypothesis.json` |
+| 4    | `scripts/grep-lessons.sh` + `scripts/update-hit.sh` | |
+| 5    | inline prompt | Trivial -> writes scope inline + scope pointer -> calls `p1.md` |
+| 6    | `scout1.md` | 6.a / 6.b / 6.c |
+| 7    | `scout2.md` | + 7.x targeted rescout if gated |
+| 8    | `scripts/verify-claims.sh` | Exit-code dispatch (priority 1>2>3>0) |
+| 9    | `scripts/decide-path.sh` | medium -> `p1.md`; complex -> p2.0a/b/c TaskCreate |
+| 10   | `reflect.md` (`--phase entryflow`) -> `scripts/reflect-traces.sh` + `agents/reflector.md` | Path 2 only; reflector spawned in background |
+| p2.0a | this skill (`EnterPlanMode` tool) | Path 2 only |
+| p2.0b | `planner.md` (+ `scripts/validate-disjoint-scopes.py`) | Composes plan body inside plan mode |
+| p2.0c | this skill (`ExitPlanMode` tool) | On reject -> `session-end-hook.sh {session}` inline |
+
+## Cross-cutting rules
+
+See `shared-guardrails.md` for: scope enforcement, safety paths, manifest schema, trace path schema, scope-write producers, mid-/apex abort cleanup, JSON Schema validation.
+
+## Step 0: TaskCreate entry tasks 1-5
+
+```
+TaskCreate "1. Analyze prompt" - inline analysis, AskUserQuestion if ambiguous
+TaskCreate "2. Create session manifest" - blockedBy [1] - scripts/create-session.sh
+TaskCreate "3. Hypothesis" - blockedBy [2] - emits {session}-hypothesis.json
+TaskCreate "4. Load lessons" - blockedBy [3] - grep-lessons.sh + update-hit.sh
+TaskCreate "5. Trivial detection" - blockedBy [4] - inline; routes to trivial/non-trivial
+```
+
+If step 5 returns non-trivial, append:
+```
+TaskCreate "6. Scout phase 1" - blockedBy [5] - scout1.md
+TaskCreate "7. Scout phase 2 preflight" - blockedBy [6] - scout2.md
+TaskCreate "8. Verify claims" - blockedBy [7] - verify-claims.sh
+TaskCreate "9. Decide path" - blockedBy [8] - decide-path.sh
+```
+
+If step 9 returns complex, append (per `apex-core-overview.md` Path 2):
+```
+TaskCreate "10. Self-reflect entry-flow" - blockedBy [9] - reflect.md --phase entryflow (-> reflect-traces.sh + reflector.md, background)
+TaskCreate "p2.0a Enter plan mode" - blockedBy [9] - EnterPlanMode
+TaskCreate "p2.0b Embed delegation plan" - blockedBy [p2.0a] - planner.md
+TaskCreate "p2.0c Exit plan mode" - blockedBy [p2.0b] - ExitPlanMode
+```
+
+## Step 1: Analyze (inline)
+
+Read the user's prompt. Identify the task type, files / modules implied, action verbs. If the prompt is ambiguous, surface via AskUserQuestion. **Assuming is forbidden** - prefer asking over guessing.
+
+## Step 2: Create session manifest
+
+Call `scripts/create-session.sh --cc-session-id <session_id>`. Exit codes:
+- `0` - manifest written, `{session}` token printed to stdout. Capture and use throughout.
+- `10` - overlap detected. Script writes detected state to stderr (active manifests / stale manifests). Orchestrator surfaces:
+
+```
+AskUserQuestion (matcher: filtered to detected state):
+  - "abort"              (always present)
+  - "proceed alongside"  (only if active session detected; new {session} token issued)
+  - "cleanup-stale-and-proceed" (only if stale manifest detected; for each stale,
+                          invoke session-end-hook.sh <stale-token>; then re-run create-session.sh)
+  Dismiss / cancel = abort
+```
+
+On abort: run `scripts/session-end-hook.sh` is NOT applicable (no manifest yet); just exit cleanly.
+
+## Step 3: Hypothesis (inline)
+
+Carefully read the prompt - prompt phrasing may bias / narrow actual scope. Emit:
+
+- `original_prompt: <verbatim user prompt>` (preserves the user's exact wording for downstream reflectors and the p1.6 / p2.7 inline summary; do NOT paraphrase)
+- `hypothesis: <string>` - the orchestrator's working interpretation in one or two sentences (not a plan, not a task list)
+- `complexity_hint: low|medium|high` - heuristic only, refined nowhere downstream:
+  - `low`  - single-file edit, no new abstractions (typo, one-liner, in-place rename of a local symbol)
+  - `medium` - multi-file but bounded module / package, no cross-cutting design choices
+  - `high` - cross-module, cross-package, new abstraction, ambiguous scope, or any "rewrite / rethink / migrate" verb. The planner uses this to fire high-effort keyword for Path 2 teammates (see `apex-core.md` "Effort levels")
+- `alternatives: [{interpretation, status: kept|rejected, reason}]` - 1-3 narrower / broader scope readings, each a structured anti-bias check (not vibes). Keep the readings the orchestrator finds plausible; reject the ones that would over- or under-shoot. Each entry carries a one-line `reason`. Example for prompt "fix the login form validation":
+  - kept: "validation rules in all auth-related forms" (broader; reason: "shared validator likely")
+  - rejected: "rebuild the auth subsystem" (broadest; reason: "explicit 'fix' verb scopes to existing rules")
+
+Write `.claude-tmp/apex-active/{session}-hypothesis.json` via the `Write` tool, conforming to `schemas/hypothesis.schema.json` (producer-validates before write per shared-guardrails). The artifact is preserved across p1.5 / p2.6 cleanup and consumed by step 4 keyword extraction, 6.b shard, 8 verify error-surfacing, both reflectors, and `summary.md` at p1.6 / p2.7 (which removes it on success; `session-end-hook.sh` is the idempotent fallback).
+
+## Step 4: Load lessons
+
+Best-effort consultation of curated project lessons. Skip silently when the project has none.
+
+1. **Derive keywords** from `{session}-hypothesis.json` (the `hypothesis` field plus any specific symbol / module names in `alternatives`). Cap at ~8; prefer specific tokens (function names, table names, component names) over generic ones (`config`, `error`, `auth` bare). The blocklist exists because generic terms over-match in the index.
 
-Two paths: direct tasks execute immediately, complex tasks go through planning with agent teams.
+2. **Run grep:**
+   ```
+   scripts/grep-lessons.sh <project-root> <term1> [<term2> ...]
+   ```
+   - `<project-root>` = the orchestrator's working directory (the project being apex'd, NOT the apex skill dir).
+   - Reads `<project-root>/.claude/lessons-index.md` and `.claude/lessons.md`. Both absent -> exit 0 with no output (project has no curated lessons; this is the common case for new projects). The orchestrator MUST tolerate empty output.
+   - On match, emits one or more blocks of the form:
+     ```
+     --- LINES <start>-<end> ---
+     ## Section Name
+     <lesson lines>
+     ```
+     `<start>`-`<end>` are absolute line numbers in `lessons.md`. Total output capped at 150 lines with a `TRUNCATED` footer; if truncated, narrow the keyword list and re-run.
 
-## Decision Points
+3. **Track hits** (only when grep emitted blocks):
+   ```
+   scripts/update-hit.sh <project-root>/.claude/lessons.md <line> [<line> ...]
+   ```
+   Pass every absolute line number in the emitted block ranges (expand each `--- LINES s-e ---` to the full integer range `s..e`). `update-hit.sh` is idempotent and silently skips lines without `[last-hit:...]` annotations, so over-passing is safe. Optional optimisation: skip step 3 entirely when every matched block already shows today's date.
 
-When any step needs user direction (multiple valid approaches, conflicting patterns, scope ambiguity), use AskUserQuestion with structured options. Applies to all steps and both paths.
+4. **Keep the matched lesson text in working memory** for downstream steps (5 trivial detection, 5A executor prompts, scout / planner). Lessons are advisory; they do not override the user's prompt or scope decisions.
 
-## Step 0: Concurrency Check
+## Step 5: Trivial detection (inline)
 
-<!-- Design: Advisory system, not hard-lock. Warns on overlap via AskUserQuestion. Stale manifests (>2h) auto-cleaned. -->
+Decide trivial vs non-trivial. Trivial trades fidelity for latency, so the bar is high:
 
-1. `echo "apex-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 8)"` -- keep session-id in context
-2. `mkdir -p .claude-tmp/apex-active`
-3. Glob `*.json` in that dir. Delete >2h old manifests (stale), else print `CONCURRENT SESSION: {task} (started {time})`. Clean orphaned scope/budget files: extract session ID prefix from `*-scope.json`/`*-budget.json`, delete if no matching manifest exists. Print `ORPHAN CLEANUP: {N} files removed` if any.
-4. If concurrent: AskUserQuestion -- "Proceed", "Abort", "Show file claims"
-5. Batch-fetch deferred tools: `ToolSearch select:TaskCreate,TaskUpdate,TaskList,AskUserQuestion,EnterPlanMode,ExitPlanMode,TeamCreate,TeamDelete,SendMessage` (single call, max_results: 10).
-6. After compaction, PostCompact hook re-injects session state. Use echoed state (path, step, files, tail mode, task description, user decisions) to resume. StopFailure hook fires on API errors using same script.
+- **trivial** - ALL of:
+  - Single file edit (or single new file), AND
+  - No cross-file dependencies surfaced in `{session}-hypothesis.json` (no other modules / barrels / callers implicated), AND
+  - No new abstractions (no new public symbol, no new component, no new endpoint)
+- **non-trivial** - any other shape, OR uncertain. **Default to non-trivial when uncertain** - hidden-blast-radius cost dominates the latency loss of running scout.
 
-Manifest written after Step 2 scan to include file claims. All manifest operations are best-effort -- never retry on failure. Manifests are advisory only.
+### Trivial branch
 
-## Step 1: Parse Request
+1. **Write the scope artifact** at `.claude-tmp/apex-active/{session}-main-scope.json` via the `Write` tool, conforming to `schemas/main-scope.schema.json`:
+   ```json
+   {
+     "session": "<8-hex token>",
+     "allowed_files": ["<detected file>", ...standard safety paths...],
+     "produced_by": "trivial-inline",
+     "produced_at": "<ISO-8601 now>"
+   }
+   ```
+   `allowed_files` = the detected single file PLUS standard safety paths (`.claude-tmp/`, `~/.claude/tmp/`, `/tmp/{session}-*`, project `docs/**`, any `README*`; see `shared-guardrails.md`). The schema's `session` field MUST match the manifest's `{session}` token.
 
-Extract the user's task description.
+2. **Write the scope-check pointer** at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` via the `Write` tool. The file is a single line containing the absolute path to the scope JSON written in step 1. Required so the PreToolUse scope-check hook can resolve the active scope for any subsequent `Edit` / `Write` (see `shared-guardrails.md` / scope-check hook).
 
-**Batch-mode detection.** If task argument matches `.claude-tmp/{type}/*.md` (type: `audit` or `prd`), set task type. Session type reference: see `~/.claude/skills/apex/apex-doc-formats.md`. Read file, parse YAML front matter for progress counters and completed-items lists. Remaining items = IDs not in completed list.
+3. **Mark queued tasks 6-9 as completed** (skipped, no-op) on the TaskList - they were never queued in the trivial branch (Step 0 only enqueued 6-9 conditionally), so this is a no-op when only tasks 1-5 exist. If the orchestrator pre-emptively queued them, mark them completed now so the TaskList reflects reality.
 
-**Audit-matrix JSON detection.** If task matches `.claude-tmp/audit-matrix/*.json` (type 3: `audit-matrix-remediation`), extract FAIL cells via Bash: `python3 -c "import json,sys;d=json.load(open(sys.argv[1]));m=d.get('matrix',d.get('cells',[]));defs=d.get('criteria_definitions',{});fails=[c for c in m if c.get('status')=='fail'];[print(f\"{c['criterion']} [{defs.get(c['criterion'],{}).get('severity','?')}] | {c['target']}\n  Evidence: {c.get('evidence','n/a')}\n  Criterion: {defs.get(c['criterion'],{}).get('description','n/a')}\") for c in fails];print(f'{len(fails)} FAIL / {len(m)} total')" {path}`. Print `MATRIX REMEDIATION: {N} FAIL cells extracted`. All failures = one batch. For audit inputs, see Audit Input Trust in apex-doc-formats.md. Proceed to Step 2.
+4. **Call `p1.md`** - read `~/.claude/skills/apex/p1.md` and follow its instructions. The trivial branch writes NO preflight artifact; p1.0 reads an absent `preflight-{session}.json` and runs the no-findings-consultation branch.
 
-**Batch selection.** Pick items by priority order (see reference), sized 3-5 items or single priority tier (whichever smaller). Exception: full tier when all items are mechanically independent and user approves via AskUserQuestion. Selected batch items become the task description for the rest of the flow.
+### Non-trivial branch
 
-**Batch verification (audit-remediation and prd-implementation).** Before selecting batch: verify remaining items in bulk. Budget: max 2 Grep per item (combine regex alternation for shared dirs). Print `VERIFY BUDGET: {N}/{max} Grep`. Drop already-resolved items. Select from verified remaining.
+TaskCreate tasks 6-9 per the template in Step 0. Continue with Step 6 (scout phase 1).
 
-Present batch via AskUserQuestion: "Proceed with all" vs "Defer items" (specify which). If user defers, remove from batch. If none remain, report "{Type} complete." Route to Path 1 or Path 2 based on batch scope (apply Step 3 to the batch, not the full document).
-- Homogeneity: if all items share same violation type/area and fix pattern, treat as single concern for Step 3
-- For batches decomposing into independently-mechanical groups (no shared files), apply Step 3 per group -- all Path 1 = batch Path 1 with parallel agents
+## Step 6 routing: zero-layer (exit code 10 from enumerate)
 
-**Large homogeneous tier (>10 items).** Single AskUserQuestion: "All {N}" / "By area ({groups})" / "Recently modified ({M})". Cap: one AskUserQuestion for batch selection.
+Surfaced by `scout1.md` / `scout2.md`. Orchestrator handles the user-facing question:
 
-**Brainstorm-then-implement.** If request is design/brainstorm (conceptual exploration, "how should we X"), answer inline. Once concrete spec emerges, treat as task description and proceed to Step 2. Design-to-implementation = re-entry to Step 2, not skip of APEX.
+```
+AskUserQuestion at 6.a (zero-layer):
+  - "abort"
+  - "proceed-with-prompt-paths"  (regex-extract paths from original_prompt,
+                                  validate each on disk, write scope inline + pointer,
+                                  SKIP 6.b/6.c/7/8/9, call p1.md directly)
+  Dismiss / cancel = abort
+0 validated paths after extraction -> abort like verify exit-1.
 
-## Step 1.5: Audit Catalog Routing
+AskUserQuestion at 6.b (>8 shards):
+  - "continue"  (no max cap; proceed to 6.c with the wide plan)
+  - "refine"    (abort cleanly so user can re-prompt with narrower scope)
+  Dismiss / cancel = abort
+```
 
-<!-- Design: Unifies /apex and /apex-audit-matrix entry points. Matching catalog -> deterministic audit-matrix flow (no scan/scout/Path 2). /apex-audit-matrix remains for direct invocation. -->
+## Step 8 verify-claims dispatch
 
-Skip if: (a) batch-mode detected in Step 1, (b) audit-matrix-remediation detected, or (c) task doesn't mention "audit"/"verify compliance"/"check against criteria"/"run audit matrix".
+Exit-code priority 1 > 2 > 3 > 0. Read `abort_cause` from stderr on exit 1.
 
-1. **Glob catalogs** from `{project-root}/.claude/audit-criteria/*.md` and `~/.claude/audit-criteria/*.md`. None found: skip to Step 2.
-2. **Extract subject.** Strip "audit" + filler words (the/for/all/my/our/this/run/do/check). Normalize: lowercase, hyphens. E.g., "audit the API consistency" -> "api-consistency".
-3. **Match against catalogs.** Derive match key from filename stem. Rules (first wins):
-   - Exact: subject == key
-   - Prefix: either starts with the other
-   - Substring: either contained in the other
-   - Multiple matches at same level: collect all
-4. **Route:**
-   - **Single match:** Print `AUDIT ROUTING: auto-selected catalog "{key}" at {path}`. Build args: `--catalog {path}`. If catalog has `project-root` metadata (first 15 lines), append `--root {value}`. Read and follow `~/.claude/skills/apex-audit-matrix/SKILL.md`. STOP after matrix. Cleanup: `bash ~/.claude/skills/apex/scripts/cleanup-session.sh {session-id}` if manifest exists. Then read/follow `~/.claude/skills/apex/apex-reflect.md` with `mode: execution`, `has_scan_phase: false`, `has_build: false`. Skip reflection if audit completed in single inline verification.
-   - **Multiple matches:** AskUserQuestion with each catalog + "Scout audit (no catalog)" option.
-   - **No match, catalogs exist:** AskUserQuestion listing ALL catalogs + "Scout audit (no catalog)". Header: "No catalog matched '{subject}'."
-   - **No subject** (bare "audit"): AskUserQuestion listing ALL catalogs + "Scout audit (no catalog)". Header: "Which audit?"
-5. "Scout audit (no catalog)" -> fall through to Step 2 (Step 3 routes to Path 2 scout audit mode).
+| Exit | Action | User-facing message |
+|------|--------|---------------------|
+| 0 | scope written, proceed | (none - step 9 dispatches) |
+| 1 (`preflight_bad`) | abort + cleanup | "Hypothesis may be wrong - review and re-prompt" + surface hypothesis text from `{session}-hypothesis.json` |
+| 1 (`screened_unconverged`) | abort + cleanup | "Scout could not converge after re-screening - review hypothesis and re-prompt" |
+| 2 | re-run 6.c + 7 (one cap via `{session}-verify-rerun.json`) | (none) |
+| 3 | inline review of `claim-review-{session}.json` (>=3 unresolved); write `claim-review-resolved-{session}.json` (`[{file, action: keep\|drop, reason}]`); re-invoke `verify-claims.sh --apply-resolved` | (none) |
 
-## Step 2: Quick Scan
+On exit 0 (default mode OR `--apply-resolved`): the script wrote `{session}-main-scope.json`. The orchestrator MUST then write the scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single line: absolute path to the scope JSON) via the `Write` tool, mirroring the trivial / zero-layer branches (`shared-guardrails.md` / scope-check hook). Without the pointer, the PreToolUse hook is pass-through and downstream `Edit` / `Write` are unguarded.
 
-Budget: warn at 5 Grep/Glob + 3 doc-read, block at 8 + 5 (plus source-read hard cap 3 -- see Exception (a)). Print after each: `SCAN BUDGET: {N}/8 search, {M}/5 doc-read`. project-context.md is mandatory and budget-exempt. Past warn, stop searches and proceed to Step 3 -- exceptions (a)/(b) source reads and remaining doc reads may continue. Source file reads are forbidden during scan (Exception (a) gated, Exception (b) opt-in). If you need more searches, the task needs scouts -- proceed to Step 3. Audit tasks: resist deep-scanning; scouts handle discovery. No subagents during scan. Use Glob not Bash ls/find (per project conventions).
+On exit 1: run `scripts/session-end-hook.sh {session}` inline before exiting (mid-abort cleanup).
 
-1. Read docs/project-context.md (mandatory, budget-exempt). For audit tasks, prioritize security/auth doc within 3-doc-read limit.
+## Step p2.0a/b/c: Plan-mode chain (Path 2 only)
 
-**Arm scan budget.** `echo '{"grep_glob_count": 0, "warn_threshold": 5, "max": 8, "doc_read_count": 0, "doc_read_warn": 3, "doc_read_max": 5, "source_read_count": 0, "source_read_warn": 2, "source_read_max": 3}' > .claude-tmp/apex-active/{session-id}-budget.json`
+Queued by step 9 when `decide-path.sh` returns `complex`. Three tasks run sequentially in the entry-flow Claude Code session, immediately after step 10 (entry-flow self-reflect runs in the background and does not block p2.0a). The plan composed in p2.0b is what survives the p2.0c context clear.
 
-2. Grep key terms. Tips:
-   - Auto-save/callback tasks: also grep actual save/persist/write function names
-   - Broad terms (`new Date`, `window\.`): combine with context (e.g., `useMemo.*new Date`)
-   - New features: include synonyms/partial-name variants to surface existing implementations
-   - Duplicate / shared-component detection: Read the folder barrel `index.ts` first -- exports are the canonical inventory, avoiding per-file Globs
-   - **Plan parallel Grep batches.** For multi-concern scans (edge validation + UI parity + bug trace, etc.), enumerate all planned Greps upfront and batch them into a single parallel response before looking at results -- sequential Greps waste the 5-call budget on early hits.
-   - **Multi-line API calls:** Single-line patterns miss calls whose arguments span lines (e.g., `useStore(selector, shallow)` where `shallow` is on its own line). For hook/function calls with known second-arg patterns, add a `multiline: true` Grep variant alongside the single-line pattern.
-3. Glob likely file patterns (scope to `apps/`, `packages/`). Multiple globs or broader patterns for framework auxiliary files (page, layout, error, not-found, loading). Bracket dirs (`[id]`, `[locale]`): prefer `bash find` (e.g., `find apps/web/app -name 'page.tsx'`). Fallback: `*` wildcard in Glob to replace bracket segments (e.g., `apps/web/app/*/app/*/page.tsx`).
+### p2.0a Enter plan mode
 
-**Specialized scan shortcuts:**
-- **Size-based tasks:** `find <dir> -name '*.{ext}' -exec wc -l {} + | sort -rn | head -40` -- skip grep/glob, go to file health check
-- **Visual/asset replacement:** Search by asset content (`<svg>`, `<img src=`, filenames) + API wrappers -- inline duplicates across rendering surfaces miss API-name-only search
-- **Config-driven structures:** Grep for components duplicating config inline (esp. mobile counterparts)
+Call the `EnterPlanMode` tool. No parameters. After this returns, the orchestrator is in plan mode and any subsequent text becomes part of the plan body.
 
-Collect: matching files, packages, obvious dependencies.
+Do NOT call `EnterPlanMode` more than once per Path 2 run - re-entry has no defined semantics and would discard the planner's draft.
 
-**File health check (mandatory gate).** `bash ~/.claude/skills/apex/scripts/file-health-check.sh 400 {files}` -- standalone Bash call (do not batch with other parallel commands -- exit behavior can cancel siblings). Quote bracket paths. Outputs violations only (`blocked` >500L, `split-first` >400L), exits 0. Hard gates.
+### p2.0b Embed delegation plan
 
-**Scan methodology:**
-- Use Grep/Glob + CLAUDE.md Doc Quick Reference for file enumeration
-- **Union type/interface additions:** LSP `findReferences` on type name (budget-free) to enumerate consumers. Include in modification list.
-- Read docs, not source files. Source reads in Step 5A.
-- **Exception (a) -- Architecture decisions:** Read minimal source for scope decisions. **Hard gate: 3 source reads max.** After the 3rd source read during scan (non-Exception-b), STOP -- print `PATH DECISION: Path 2` and proceed to Step 3. Continuing to read source files to avoid Path 2 escalation is non-compliance. Enforced by scan-budget-hook. **UI/design-consistency audits:** When the authoritative spec is a comprehensive doc file (e.g., a design-tokens or UI-standards doc), read ONE representative reference implementation file as Exception (a) to surface doc-vs-code drift before routing to scouts -- drifts found here avoid a full scout round-trip. **Feature doc vs code matching:** When a feature doc describes a design and scan finds matching code in the primary entry point, verify ALL entry-point variants (e.g., both `runAll` and `runToNode` paths) before concluding the design matches -- the source-read cap routinely leaves secondary entry points unread, masking behavioral divergence that scouts would catch. **Feature doc reliability:** Feature docs describing internal helpers or private implementation details are unreliable for behavior claims -- the code changes but the doc does not. If the scan reads a feature doc that claims a helper exists or behaves a specific way, verify the claim against the actual code or tests before routing to Path 1. Stale docs cause scope overestimation and incorrect Path 1 routing. **Cross-cutting multi-source scan:** For features that touch multiple areas (e.g., "across all node types", "all upload sources"), prefer reading ONE feature/architecture doc + running parallel Greps over reading 3 source entry files inline -- the doc provides the pattern, Greps surface the file list, and scouts handle the per-file details. This preserves all 3 source reads for disambiguation rather than burning them on enumeration. **Test-name pre-scout shortcut:** If the scan finds a test file whose test titles already assert the exact target behavior (e.g., "should return X when Y"), read it before dispatching scouts -- one file-read can confirm the behavior exists and eliminate a whole scout area. Applicable when test titles are highly specific and the task is verifying existing behavior rather than adding new behavior.
-- **Exception (b) -- Bug investigation:** Source reading IS the scan. Prefer empirical validation (test scripts) over multi-round reading. Capture build/test output: `{cmd} 2>&1 | tee .claude-tmp/{type}-{target}.txt`. Parse from captured file -- do not re-run for different views. Stale cache: clean framework cache once, retry once. Bug investigation: arm with `source_read_max: -1` to disable source-read enforcement for this phase. **Arm at scan start:** When the task request contains bug-report markers ("bug", "not working", "broken", "stuck", user-provided repro screenshot or error output), arm `source_read_max: -1` in the budget JSON BEFORE the first Read call -- do not wait until the cap is hit. Delayed arming means the first 3 source reads are burned before enforcement is disabled, wasting reads on unrelated files and forcing re-reads of the same files post-arm. **Repro-scenario disambiguation:** If the bug description leaves >=2 plausible trigger interpretations (refresh vs navigation vs new-session, create-flow vs update-flow, cold-load vs warm-reload), AskUserQuestion to pin the scenario BEFORE arming the scan budget -- otherwise grep/source-read spend targets the wrong area.
-- **Infrastructure diagnostics:** Batch inspection commands into single Bash script.
+Read and follow `~/.claude/skills/apex/planner.md`. Inputs (already on disk from earlier steps):
+- `.claude-tmp/scout/screened-{session}.json` - kept-files set (scope source)
+- `.claude-tmp/scout/preflight-{session}.json` - `effective_blast`, `mode`
+- `.claude-tmp/apex-active/{session}-hypothesis.json` - `complexity_hint`, `original_prompt`, `hypothesis`
 
-**Interface/type blast radius.** Grep all callers including tests. Required-field additions break constructors. Removals break readers (frontend consumers, not just API). Include in modification list.
+Compose the plan body per `planner.md` "Plan embed template" - team size, per-teammate model, per-teammate `{teammate-id}` (`openssl rand -hex 2`), per-teammate task description, per-teammate `allowed_files`, and `shared_files`.
 
-**Preliminary modification list.** Print numbered list (per shared-guardrails #15). Best-effort estimate -- scouts (Path 2) or implementation agents (Path 1) may discover additional files. Dirty-state / mid-refactor scopes (extensive uncommitted changes across the task area) routinely expand 3-5x during scouting because drift items cluster; size the preliminary list conservatively when the base is clean, expect substantial scout expansion when dirty. Check symmetric structures (images-tab + videos-tab, en.json + fr.json, create + update route, API + frontend). Note `Related existing: [patterns]` for semantic overlaps with the task. Enforcement / validation / cap / quota tasks: include server-side validators and controllers in the preliminary list even when the request-surface is all frontend -- client-side constraints are UX only, server is the authoritative layer. **Module-scope constant heuristic:** When a file in the preliminary list imports module-scope configuration constants or prop defaults from another file, grep the import path to resolve the actual source file -- constants often live in a sibling `*-utils.ts` or `*-config.ts` not in the named registry; the sibling may also need changes. **Shared-hook cap/gate check:** When scan finds a cap or gate enforcement check inside a shared hook or utility, also grep that hook's call sites to verify each caller passes the cap/gate parameter -- the hook guard is dead for callers that omit the parameter entirely, producing silent over-limit behavior that only scouts would surface. **Helper twin check:** When the task concerns a canonical primitive (URL builder, media resolver, config reader), grep for orchestrator and helper variants with the same semantic role across all `*runner*.ts`, `*orchestrator*.ts`, `*helpers*.ts` files -- helpers often have a twin in the orchestrator layer that re-implements the same check independently. Missing the twin produces a mod list that covers only one half of the enforcement surface. **Consumer count accuracy:** When the mod list or plan text claims a specific numeric count ("5 other node types use X"), verify via Grep before publishing -- off-by-one counts create minor verification noise and erode trust in preliminary estimates. Use qualitative phrasing ("several node types", "all consumers") when grep count is not confirmed.
+Disjoint-scope validator (mandatory before exit):
 
-**Rename/remove exported-symbol check.** When the task renames or removes an exported symbol (function, hook, component, type), grep ancestor-folder `index.ts` barrels from the defining folder up to the package root for re-exports of the old name and include matching barrels in the mod list. Stale re-exports otherwise surface only at verification and force a scope extension + re-verify round.
+```
+# Write candidate plan to a tmp file
+plan_tmp=".claude-tmp/apex-active/{session}-plan-candidate.json"
+# (orchestrator writes JSON: {"teammates":[{"teammate_id":"...","allowed_files":[...]},...]})
 
-**Reorganization scope.** AskUserQuestion: top-level restructuring vs within-folder subgrouping.
+python3 ~/.claude/skills/apex/scripts/validate-disjoint-scopes.py \
+  --plan "$plan_tmp" --session "{session}"
+```
 
-**Blast radius check.** Shared files (layout, context, utility) affecting more than mentioned scope: AskUserQuestion to confirm. Exception: user explicitly requests codebase-wide changes.
+- exit 0 - disjoint, proceed to p2.0c
+- exit 1 - overlap; reassign each `OVERLAP <file>\t<a>\t<b>` per the planner heuristic (more findings = stronger owner; cross-cutting -> `shared_files`); re-run the validator
+- exit 2 - input malformed (planner bug); abort Path 2 + run `scripts/session-end-hook.sh {session}` inline
 
-**Scope-affecting architecture choices.** Multiple valid approaches with different scope: AskUserQuestion BEFORE Step 3.
+After validator exit 0, the **first instruction** in the embedded plan body MUST be:
 
-**Stale-state + dirty-state checks** -- run git commands in parallel, process AskUserQuestion sequentially.
-- **Stale-state:** `git log --oneline -10`. Related recent commit: AskUserQuestion "Continue or Abort?". Skip for audit-remediation/prd-implementation.
-- **Dirty-state:** `git diff --name-only` + `git diff --cached --name-only`. Overlap with mod list: print `DIRTY STATE: {files}`, AskUserQuestion: "Stash and continue" / "Continue anyway" / "Abort". Skip `.claude-tmp/`.
+```
+First instruction: read and follow ~/.claude/skills/apex/p2.md
+```
 
-**Question batching.** Multiple AskUserQuestion triggers: batch into single call (max 4).
+Without this, the post-context-clear session has no entry point into the Path 2 chain.
 
-**Write session manifest.** `.claude-tmp/apex-active/{session-id}.json`: `{"task": "...", "started": "<ISO>", "files": [...], "path": null, "current_step": "2", "tail_mode": null, "scout_findings": null, "decisions": ""}`. Check other manifests for overlapping file claims -> `FILE CONFLICT` + AskUserQuestion.
+The candidate-plan tmp (`{session}-plan-candidate.json`) is cleaned up by `cleanup-session.sh` along with other `{session}-*` artifacts at p2.6 / SessionEnd; no explicit rm needed.
 
-**Record decisions.** `bash ~/.claude/skills/apex/scripts/update-manifest.sh {session-id} decisions="{summary}"` (comma-separated, e.g. "blast-radius: modify shared, scope: full impl"). Must run AFTER manifest write -- update-manifest.sh is best-effort and silently no-ops if the manifest file does not yet exist.
+### p2.0c Exit plan mode
 
-**Write scope file.** `.claude-tmp/apex-active/{session-id}-scope.json`: `{"files": [...]}`. Supports glob patterns for undetermined filenames. **Verify:** `cat` the file, confirm non-empty, rewrite once if wrong. Print `SCOPE WRITTEN: {N} files`. **Parallel-session mtime fix:** After writing, run `touch .claude-tmp/apex-active/{session-id}-scope.json` to ensure this session's scope file has the newest mtime -- the scope-check hook selects by newest-mtime when multiple scope files exist, and a peer session's scope file written slightly later would otherwise hijack scope enforcement.
+Call the `ExitPlanMode` tool. The user is presented the plan and accepts or rejects:
 
-**Disconfirmation.** (1) Re-evaluate scan data: alternative implementations, doc warnings, intentional behavior, audit file-attribution accuracy. (2) 1-2 counter-Greps (budget-exempt): alternative implementations, guard clauses codifying current behavior, test assertions expecting current behavior. No testable counter-hypothesis: skip phase 2. Contradicting evidence: note as "Counter-evidence: ..." for path decision. Print: `DISCONFIRMATION: {counter-evidence found | no contradicting evidence | no testable counter-hypothesis}`.
+| Outcome | Action |
+|---------|--------|
+| User accepts | Claude Code clears context; the embedded "first instruction" runs `p2.md` in the new session, which captures baseline + appends `p2_cc_session_id` to the manifest + writes the post-context-clear scope pointer + TaskCreates p2.1 -> p2.7 |
+| User rejects | Orchestrator runs `scripts/session-end-hook.sh {session}` inline (cleans manifest + traces + scope + hypothesis + scope-pointer dir, idempotent), surfaces a brief user-facing summary ("Plan rejected; session cleaned up"), and exits cleanly. Distinct from session-level abort (covered by SessionEnd hook) |
 
-For audit inputs, see Audit Input Trust in `~/.claude/skills/apex/apex-doc-formats.md`.
+Do NOT re-enter plan mode on rejection - that would loop. Treat rejection as terminal for this `/apex` invocation; the user can re-prompt with a refined request.
 
-**Scan exit.** Print preliminary modification list. For audit/discovery tasks, list defines exploration scope (minimal is expected -- scouts expand). **Disarm budget:** `rm -f .claude-tmp/apex-active/{session-id}-budget.json`.
+## Mid-/apex abort cleanup
 
-**Scan-exit checkpoint.** Verify: (1) top 2 files exist via Glob, (2) named function/component in at least one file via Grep. Budget-exempt. Update mod list if check fails. **Path 1 applies too** -- feature doc-sourced paths silently go stale (hooks move to colocated dirs, components extract to shared); a missing Glob hit now is cheaper than a scope-check-hook violation or wrong-file implementation later.
-
-Ambiguous request: AskUserQuestion before proceeding.
-
-## Step 3: Decide Path
-
-<!-- Design: Path selection is automatic -- no flags. Criteria below are the canonical definition. -->
-
-**Path 1 (Direct)** -- ALL true:
-- Single concern
-- <=5 files with non-trivial changes (mechanical changes don't count)
-- Patterns clear
-
-**Caution:** Cross-layer renames/refactors (DB + API + shared + frontend) -> Path 2.
-
-**Path 2 (Delegated)** -- ANY true:
-- Multiple concerns (frontend + backend, cross-layer)
-- >5 files
-- Cross-cutting across packages
-- Uncertain scope
-- "audit" mentioned (needs scout audit mode). Exceptions: (1) audit-remediation evaluates normally. (2) Small-scope behavioral audits meeting ALL Path 1 criteria stay Path 1. (3) Catalog-matched audits routed via Step 1.5.
-- Document creation requested ("create a prd", "write requirements", "spec out") -> Path 2 for apex-apex.md Step 2.6
-
-Print: `PATH DECISION: Path {1/2}` + one-line justification. No source reads between scan exit and Step 5A.
-Update manifest: `bash ~/.claude/skills/apex/scripts/update-manifest.sh {session-id} path={path} current_step=3` (best-effort)
-
-**Effort assessment (Path 1 only).** Follow `effort-trigger.txt`. Path 2 skips (scouts/plan have own triggers).
-
-## Step 3.5: Load Relevant Lessons (Path 1 only)
-
-Skip for Path 2 (apex-apex.md Step 3.5 calls this directly).
-
-**Lessons headroom check.** `wc -l < .claude-tmp/lessons-tmp.md 2>/dev/null || echo 0`. If >= 45: print `LEARN HEADROOM: {N}/50 -- run /apex-lessons-extract before next task (tail spawn will be blocked)`. This is advisory -- the extract is not mandatory now, but the tail headroom check will block Agent 1 at >= 45 lines. Early warning avoids a mid-tail abort.
-
-1. Extract key terms from task, file names, package names.
-   - Max 8 terms. Prefer specific (function names, tables, components) over generic.
-   - Blocklist (bare): `token`, `config`, `migration`, `email`, `auth`, `service`, `model`, `error` -- qualify them (e.g., `tiktok_token`). Broad framework/domain tokens (e.g., `canvas`, `react`, `upload`, `connected`, `upstream`, `hook`, `indicator`) function as generically as blocklisted terms -- cap at 1 per query. Accept term count below Max 8 when only a few specific symbols are available; undersized queries beat padded ones. **Domain filter (Path 1):** For single-domain tasks (backend service/webhook/cron -- no frontend scope), omit terms that primarily surface lessons from the other domain (frontend hook patterns, component lifecycle, UI state, platform integrations like `tiktok`/`youtube` when task is backend-only) -- cross-domain lessons add context noise without aiding the fix.
-   - Meta/workflow tasks: use specific skill/mechanism names.
-   - Max 2 attempts. >150 lines output: re-run after dropping the 1-2 most generic terms (preserve specific function/component/table names). Do not replace with highly specific symbols -- that tends to match nothing. Do not Read tool result files or pipe through cat. Empty: skip. **Domain saturation early-skip:** If first-attempt output is >150 lines AND all query terms are already specific (no blocklisted or broad terms remain to drop), skip the retry entirely -- the lessons file has dominant sections matching this domain and a narrower query will produce zero matches; proceed to implementation with the context already loaded.
-2. `bash ~/.claude/skills/apex/scripts/grep-lessons.sh {project-root} {term1} {term2} ...` -- script missing or no output: skip.
-3. Output has `--- LINES {start}-{end} ---` markers. Update `[last-hit]` dates (skip if all within current ISO week):
-   `bash ~/.claude/skills/apex/scripts/update-hit.sh {project-root}/.claude/lessons.md {line1} {line2} ...` (idempotent).
-4. Keep lessons in context. Include relevant sections in subagent spawn prompts.
-
-## Step 5A: Execute Direct (Path 1)
-
-Update manifest: `bash ~/.claude/skills/apex/scripts/update-manifest.sh {session-id} current_step=5A` (best-effort)
-
-**Zero-implementation path.** No changes needed (audit: zero discrepancies, investigation: current behavior correct): skip to Step 6A sub-step 4 (reflect) + 5-6 (cleanup + summary).
-
-Always TaskCreate for every change (overrides global 3+ threshold -- APEX needs per-change tracking).
-
-**Create implementation tasks upfront** before any implementation. Lead tail-dispatch tasks (lessons, docs, reflect) are created in Step 6A. Teammates (Path 2) also create a per-teammate "Verify and reflect" completion task in apex-teammate-workflow.md Phase 2 -- that is distinct from lead tail dispatch.
-
-1. TaskCreate per change (subject, description, activeForm).
-2. **File health gate resolution.** For each flagged file:
-   - >400L AND >10 net new lines: split first (extract to new module), add as prerequisite task
-   - Modify-only (no net additions): skip
-   - Trivial-edit (>500L but <=10 net new): allow inline, log to `.claude-tmp/file-health-notes.md` as `deferred-split-trivial-edit-{N}L`
-   - New extraction targets: (i) pre-extend scope file BEFORE first Write, (ii) grep all import sites before extracting
-   - Print `GATE RESOLVED: {path} -- {disposition}` for each
-3. Execute implementation:
-
-**Single change:** TaskUpdate in_progress -> implement -> TaskUpdate completed
-
-**Multiple changes:** Read and follow `~/.claude/skills/apex/subagent-delegation.md` (includes mandatory pre-spawn baseline [step 4] and post-spawn scope check [step 10]). Pass: modification list, lessons, scout findings summary, Related Existing patterns.
-
-**Mid-implementation file health.** Before adding >10 lines to any file, run `wc -l`. Apply gates per Step 2.
-
-**Scope extension.** Legitimate cascades to out-of-scope files: `python3 -c "import json; d=json.load(open('.claude-tmp/apex-active/{session}-scope.json')); d['files'].append('{path}'); json.dump(d, open('.claude-tmp/apex-active/{session}-scope.json','w'))"`. Also update manifest via update-manifest.sh.
-
-**Parallel spawn notes:**
-- Audit-remediation doc-code mismatch: instruct agent to grep affected term across target dir (stale terms in sibling files)
-- TaskUpdate each to completed as agents return
-- Stale diagnostic filter: per shared-guardrails #19
-- Post-subagent scope check: per delegation protocol steps 4+10. Unauthorized files: AskUserQuestion "Revert / Keep / Review diff"
-- **Replan trigger.** Unexpected complexity (scope doubles, dead end): STOP, print `REPLAN: {reason}`. Re-evaluate path criteria. Path 2 needed: abandon Path 1, restart from Step 5B with new `PATH DECISION: Path 2`. Same path, different approach: AskUserQuestion before reverting.
-
-**Dependent (sequential):** Execute sequentially with TaskUpdate in_progress -> implement -> completed.
-
-## Step 6A: Tail (Path 1)
-
-**Diagnostic blackout** (agent return through verification PASS). No LSP/TS diagnostic investigation. Verifier is authoritative.
-
-Update manifest: `bash ~/.claude/skills/apex/scripts/update-manifest.sh {session-id} current_step=6A tail_mode={economy|full}` (best-effort)
-
-1. **Requirements cross-check.** Re-read task. Verify each requirement covered in ALL mod list files. Asset-replacement: re-grep replaced pattern for missed surfaces.
-1a. **Infrastructure commands (Path 1).** Identify runtime activation needed: migrations, seeders, codegen, external service provisioning, dependency installs. Collect for verifier prompt.
-1b. **Doc update setup (audit-remediation/prd-implementation only).** Include "Update audit/PRD file" tail task in sub-step 3.
-1c. **Economy tail detection.** Catalog-only override: ALL files under `.claude/audit-criteria/` or `~/.claude/audit-criteria/` -> force economy (skip detect-tail-mode.sh). Otherwise: `bash ~/.claude/skills/apex/scripts/detect-tail-mode.sh {files}`. Economy: <=5 files AND <=80 lines changed; else full.
-
-2. **Verification.** Catalog-only: skip apex-verify, run `python3 ~/.claude/skills/apex/scripts/audit-catalog-health.py --catalog-dir {dir} --project-root {root}`. Fix issues. Print `CATALOG VERIFY: {N} issues`.
-Otherwise: spawn sonnet subagent: "ASCII only. No tables, no diagrams. Read and follow ~/.claude/skills/apex/apex-verify.md. Modified files: {list}. Path: 1. Change type: {type}. Scope: modification list only. Minimal corrections only. Infrastructure commands: {list or 'auto-detect'}."
-   - Economy: append "Economy -- build+lint only, skip tests."
-   - UI-only: append "UI-only -- skip tests (Step 3.7)."
-   - Full tail: wrap in TaskCreate "Verify build and lint" with blockedBy.
-   - Fail after retries: stop and report.
-   - **Agent fallback:** spawn fails/times out/no verdict: run `pnpm build 2>&1 | tail -30` then `pnpm lint 2>&1 | tail -20` directly.
-   - After PASS: trust verdict, don't re-read files for stale diagnostics.
-   - **Post-verify scope check.** `git diff --name-only`. Out-of-scope: AskUserQuestion "Revert / Keep / Review diff". No autonomous revert.
-
-2b. **Inline diff write (MANDATORY, before tail dispatch).** Owned by the caller, not by apex-tail.md, so the Write tool call cannot be dropped into a parallel agent-spawn batch. Skip only for zero-implementation sessions (no changes committed). Steps:
-   1. Generate RUN_ID via Bash: `echo "$(date +%Y%m%d)-$(LC_ALL=C tr -dc 'a-z0-9' < /dev/urandom | head -c 6)"`
-   2. `mkdir -p .claude-tmp/git-diff` (Bash)
-   3. Write a 1-3 sentence summary with a `Files: [list]` line (all modified file paths) to `.claude-tmp/git-diff/git-diff-{RUN_ID}.md` (Write tool, direct call by main agent -- no subagent).
-   4. Print `DIFF WRITTEN: .claude-tmp/git-diff/git-diff-{RUN_ID}.md` verbatim.
-   Do not batch this with Step 3 agent spawns -- execute it as its own sequential tool call, then proceed to Step 3.
-
-3. **Tail dispatch.** Read and follow ~/.claude/skills/apex/apex-tail.md. Pass: tail mode, session type, implementation summary, files modified, tricky patterns, doc targets from CLAUDE.md Doc Quick Reference. Audit-remediation/prd-implementation: include doc path + completed IDs. For test-gaps source: note .claude-tmp/test-gaps.md origin. Tail pre-flight will abort if `DIFF WRITTEN` was not printed in sub-step 2b.
-
-   **Path 1 task tracking (full tail only).** Create TaskCreate per applicable tail agent before following apex-tail.md spawn protocol. Set in_progress, follow parallel spawn, mark completed after return. Economy: skip tracking.
-3b. **Post-tail scope advisory.** `git diff --name-only` -- print `TAIL TOUCHED: {extra files}` (informational). Files dirty at session start appear here too -- cross-reference the Step 2 dirty-state output before attributing changes to tail.
-3c. **Tail-discovered code gaps.** Tail agent reports code changes needed: extend scope, make edit, re-run verification on new files if build-affecting. Print `TAIL CODE FIX: {files}, reason: {report}`.
-4. **Reflect decision.** Print `REFLECT DECISION: {spawn|skip} -- {reason}`. Condition: session downgraded from Path 2 (manifest `path` == `'1-downgraded'` or apex-apex.md Step 2.6 executed). Economy + spawn: `REFLECT DECISION: skip -- economy gate supersedes downgrade`. Full + spawn: run reflect inline (mode: execution, economy: false, categories 1-6, 9-11, skip 7-8, 12). Not downgraded: skip (Path 1 lacks scout/plan/team phases).
-5. Cleanup: `bash ~/.claude/skills/apex/scripts/cleanup-session.sh {session-id}`
-6. **Completion gate.** TaskList. Pending/in_progress: `BLOCKED: {N} tasks incomplete -- {subjects}`. Resolve before summary.
-7. Print: `APEX completed. {N} files changed. Verify: {pass/fail}. Tail: {economy/full} ({agents}).` Use `git diff --stat`. Numbered list format (shared-guardrails #15).
-
-Stop here for Path 1.
-
-## Step 5B: Execute Delegated (Path 2)
-
-Read ~/.claude/skills/apex/apex-apex.md and execute from Step 2. That file owns the entire Path 2 workflow (scout, lessons, plan, EnterPlanMode). Do not do any of these here. Includes audit tasks -- audit document creation handled by apex-apex.md Step 2.6.
-
-**Mandatory handoff -- no shortcuts.** Extended scan-phase discussion does not substitute for Path 2 flow. PRD/audit tasks still require full chain: apex-apex.md Step 2 onward (Step 2.6, pre-plan reflection Step 4.5, lessons-only tail). Do not jump to document creation from SKILL.md.
-
-## Forbidden Actions
-
-Shared guardrails: read ~/.claude/skills/apex/shared-guardrails.md. Additionally:
-
-- Route complex tasks through apex-apex.md -- SKILL.md lacks scout/plan/team phases
-- Call EnterPlanMode only from apex-apex.md, not SKILL.md
-- Delegate scouts to apex-apex.md for Path 2
-- Delegate independent tasks to parallel subagents (not direct parallel Edit/Write) unless small-change exception (Step 5A)
-- Per shared-guardrails #1: foreground agents for tail tasks -- main session blocks until all return before "APEX completed"
-- Defer source reads to Step 5A (Step 2 scan rule). Source reads in main context cause context rot.
-- Respect Step 2 scan budget (warn 5 Grep/Glob, 3 doc-read; block 8 + 5). At warn: stop, proceed to Step 3. Exception (a)/(b) source reads and remaining doc reads may continue. Route to Path 2 if underexplored.
-- Direct Glob/Grep only during Quick Scan (Step 2). Subagents start in Step 5A or apex-apex.md Step 2.
-- Browser automation/interactive tools (Chrome MCP): inline in main session only
-- Always run concurrency check (Step 0)
-- Route audit document creation through apex-apex.md Step 2.6 exclusively
-- Manifest operations (`.claude-tmp/apex-active/*.json`): best-effort, never retry
+Any orchestrator exit bypassing p1.5 / p2.6 runs `scripts/session-end-hook.sh {session}` inline. Triggers (per `shared-guardrails.md`):
+- verify exit-1 (preflight_bad / screened_unconverged)
+- AskUserQuestion-abort at step 2 / 6.a / 6.b / p1.0 / p2.0
+- zero-layer "no validated paths" abort
+- teammate-failure abort
+- plan-mode rejection at p2.0c

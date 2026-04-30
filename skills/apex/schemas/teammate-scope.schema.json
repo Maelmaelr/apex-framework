@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "teammate-scope.schema.json",
+  "title": "{session}-{teammate-id}-scope.json",
+  "description": "Per-teammate scope (subset of main, pairwise disjoint with other teammates excluding safety paths). Single producer: teammates.md at p2.1. See apex-core.md p2.0b disjoint-scope rule.",
+  "type": "object",
+  "required": ["session", "teammate_id", "allowed_files"],
+  "properties": {
+    "session": { "type": "string", "pattern": "^[0-9a-f]{8}$" },
+    "teammate_id": { "type": "string", "pattern": "^[0-9a-f]{4}$", "description": "4-char lowercase hex shortened guid (openssl rand -hex 2)" },
+    "allowed_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Subset of main scope's allowed_files + standard safety paths"
+    },
+    "produced_at": { "type": "string", "format": "date-time" }
+  }
+}

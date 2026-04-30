@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "inventory.schema.json",
+  "title": "{run}-inventory.json",
+  "description": "Output of scripts/inventory-apex.sh. Canonical snapshot of apex skills/agents/scripts/schemas/hooks/spec_docs/version. Consumed by audit.md (drift detection) and evolve.md (pre-op snapshot for mid-flight drift detection). See skills/admin-apex/SKILL.md task 2.",
+  "type": "object",
+  "required": ["skills", "agents", "scripts", "schemas", "hooks", "spec_docs", "version"],
+  "properties": {
+    "skills": {
+      "type": "array",
+      "description": "skills/apex/*.md files (skill bodies + SKILL.md). Each entry: path, lines.",
+      "items": {
+        "type": "object",
+        "required": ["path", "lines"],
+        "properties": {
+          "path": { "type": "string" },
+          "lines": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "agents": {
+      "type": "array",
+      "description": "agents/*.md files. Each entry: path, lines.",
+      "items": {
+        "type": "object",
+        "required": ["path", "lines"],
+        "properties": {
+          "path": { "type": "string" },
+          "lines": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "scripts": {
+      "type": "array",
+      "description": "skills/apex/scripts/* (.sh and .py). Each entry: path, lines, kind.",
+      "items": {
+        "type": "object",
+        "required": ["path", "lines", "kind"],
+        "properties": {
+          "path": { "type": "string" },
+          "lines": { "type": "integer", "minimum": 0 },
+          "kind": { "enum": ["sh", "py"] }
+        }
+      }
+    },
+    "schemas": {
+      "type": "array",
+      "description": "skills/apex/schemas/*.json. Each entry: path, $id, title.",
+      "items": {
+        "type": "object",
+        "required": ["path", "id"],
+        "properties": {
+          "path": { "type": "string" },
+          "id": { "type": "string", "description": "$id field from the schema (expected == basename(path))" },
+          "title": { "type": "string" }
+        }
+      }
+    },
+    "hooks": {
+      "type": "array",
+      "description": "Parsed entries from settings.json hooks. Each entry: event, matcher, command.",
+      "items": {
+        "type": "object",
+        "required": ["event", "command"],
+        "properties": {
+          "event": { "type": "string" },
+          "matcher": { "type": "string" },
+          "command": { "type": "string" }
+        }
+      }
+    },
+    "spec_docs": {
+      "type": "array",
+      "description": "Top-level spec docs (apex-core.md, apex-core-overview.md, README.md, CLAUDE.md when present). Each entry: path, lines.",
+      "items": {
+        "type": "object",
+        "required": ["path", "lines"],
+        "properties": {
+          "path": { "type": "string" },
+          "lines": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "version": { "type": "string", "description": "Contents of VERSION file, trimmed." },
+    "_meta": {
+      "type": "object",
+      "properties": {
+        "generated_at": { "type": "string", "format": "date-time" },
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

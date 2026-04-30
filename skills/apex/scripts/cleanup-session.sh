@@ -1,194 +1,136 @@
 #!/usr/bin/env bash
-# cleanup-session.sh -- Remove .claude-tmp/ artifacts for a completed APEX session.
-# Usage: bash cleanup-session.sh <session-id> [project-root]
-# Called by: SKILL.md Step 6A, apex-apex.md Step 2.6/2.6a, apex-plan-template.md Phase 4
-# Version: v1.2 -- 2026-04-15 (stop deleting git-diff/*.md; /apex-git consumes them)
-# Arguments:
-#   session-id    APEX session ID to clean (e.g., "apex-33of2yzf")
-#   project-root  Optional path to project root (default: current directory)
-# Exit codes:
-#   0  Cleanup done (even if nothing was removed)
-#   1  Missing required arguments
+# p1.5 / p2.6: idempotent session cleanup.
+# Spec: apex-core.md p1.5 / p2.6 + Failure handling / "cleanup-session.sh".
+#
+# Cleans (idempotent; exit 0 on partial cleanup with warnings to stderr):
+#   - .claude-tmp/scout/*{session}*                            (all session-keyed scout artifacts)
+#   - .claude-tmp/apex-active/{session}-*-scope.json           (main + teammate scopes)
+#   - .claude-tmp/apex-active/{session}-scopes/                (all scope-pointer files)
+#   - .claude-tmp/apex-active/{session}-*-task.md              (per-teammate task descriptions)
+#   - .claude-tmp/apex-active/{session}-traces/
+#   - .claude-tmp/apex-active/{session}.json                   (manifest)
+#   - .claude-tmp/apex-active/{session}-fix-attempts-*.json    (all contexts)
+#   - .claude-tmp/apex-active/{session}-verify-rerun.json
+#   - .claude-tmp/apex-active/{session}-baseline.json
+#   - .claude-tmp/apex-active/{session}-verify-errors.txt
+#   - /tmp/{session}-*                                         (reflector snapshots etc.)
+#
+# Intentionally NOT cleaned (consumed downstream by p1.6 / p2.7):
+#   - .claude-tmp/apex-active/{session}-hypothesis.json
+#     session-end-hook.sh removes it as belt-and-suspenders fallback when consumer fails.
+#
+# Args:
+#   --session <token>  (required; 8-char lowercase hex per Conventions / Session token format)
+#
+# Exit code: always 0 (idempotent contract; warnings to stderr).
 
-set -euo pipefail
+# Intentionally NOT using `set -e`: cleanup is best-effort. A single rm failure
+# (permission, race, etc.) must not abort remaining cleanup steps. Per-target
+# failures surface to stderr via warn() while the script continues.
+set -uo pipefail
 
-usage() {
-  cat <<'EOF'
-Usage: bash cleanup-session.sh <session-id> [project-root]
+APEX_ACTIVE=".claude-tmp/apex-active"
+SCOUT_DIR=".claude-tmp/scout"
 
-Arguments:
-  session-id    APEX session ID to clean (e.g., "apex-33of2yzf")
-  project-root  Path to project root (default: current directory)
+SESSION=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --session)
+      SESSION="${2:-}"
+      shift 2
+      ;;
+    *)
+      echo "cleanup-session.sh: unknown arg: $1" >&2
+      exit 0
+      ;;
+  esac
+done
 
-Artifacts removed (all under {project-root}/.claude-tmp/):
-  apex-active/{session-id}.json
-  apex-active/{session-id}-scope.json
-  apex-active/{session-id}-budget.json
-  scout/  (scout-findings-*.md and audit-checklist-*.md)
-  apex-context/  (apex-context-*.md)
-  apex-baseline-*.txt  (team scope baselines)
-  pre-agent-diff.stat  (subagent delegation baseline)
-
-Artifacts NOT removed (consumed by /apex-git post-commit):
-  git-diff/  (git-diff-*.md -- persist across sessions for batch commit)
-
-Exit codes:
-  0  Cleanup done (even if nothing was removed)
-  1  Missing required arguments
-
-Notes:
-  - Idempotent: safe to re-run after partial cleanup
-  - Does NOT remove party/brainstorm archives
-  - Does NOT remove persistent files (lessons.md, lessons-index.md, audit/PRD docs)
-  - Does NOT remove test-gaps.md (managed by apex-tail.md conditional cleanup)
-
-Examples:
-  bash cleanup-session.sh apex-33of2yzf
-  bash cleanup-session.sh apex-33of2yzf /path/to/project
-EOF
-}
-
-if [[ "${1:-}" == "--help" ]]; then
-  usage
+if [[ -z "$SESSION" ]]; then
+  echo "cleanup-session.sh: --session is required" >&2
   exit 0
 fi
 
-if [[ $# -eq 0 ]]; then
-  echo "error: session-id is required" >&2
-  usage >&2
-  exit 1
+# Token-shape guard: 8-char lowercase hex. The tight match is what makes the
+# *{session}* substring glob in $SCOUT_DIR safe (per Conventions / Session token
+# format - "tight enough that cleanup glob *{session}* cannot substring-match
+# unrelated files"). Reject anything else and exit cleanly to honour the
+# idempotent contract.
+if [[ ! "$SESSION" =~ ^[0-9a-f]{8}$ ]]; then
+  echo "cleanup-session.sh: invalid session token shape: $SESSION (expected 8-char lowercase hex)" >&2
+  exit 0
 fi
 
-if [[ ! "$1" =~ ^apex-[a-z0-9]{6,8}$ ]]; then
-  echo "error: invalid session-id format (expected: apex-XXXXXX to apex-XXXXXXXX)" >&2
-  exit 1
-fi
-
-SESSION_ID="${1}"
-PROJECT_ROOT="${2:-.}"
-
-TMP_DIR="${PROJECT_ROOT}/.claude-tmp"
-removed_count=0
-
-# Helper: remove a single file and report
-remove_file() {
-  local label="$1"
-  local path="$2"
-  if [[ -f "$path" ]]; then
-    rm -f "$path"
-    echo "CLEANUP: Removed ${label}"
-    removed_count=$((removed_count + 1))
-  else
-    echo "CLEANUP: No ${label} found for ${SESSION_ID}"
-  fi
+warn() {
+  echo "cleanup-session.sh: $*" >&2
 }
 
-# Helper: remove a directory and report
-remove_dir() {
-  local label="$1"
-  local path="$2"
-  if [[ -d "$path" ]]; then
-    rm -rf "$path"
-    echo "CLEANUP: Removed ${label}"
-    removed_count=$((removed_count + 1))
-  else
-    echo "CLEANUP: No ${label} found for ${SESSION_ID}"
-  fi
+# Best-effort remove of a single literal path. Silences rm's own stderr (the
+# warn message we emit on failure is enough) and converts any non-zero exit
+# into a stderr warning so the script keeps going.
+rm_target() {
+  local target="$1"
+  rm -rf -- "$target" 2>/dev/null || warn "failed to remove: $target"
 }
 
-# 1. Session manifest and state files
-remove_file "apex-active/${SESSION_ID}.json" "${TMP_DIR}/apex-active/${SESSION_ID}.json"
-remove_file "apex-active/${SESSION_ID}-scope.json" "${TMP_DIR}/apex-active/${SESSION_ID}-scope.json"
-remove_file "apex-active/${SESSION_ID}-budget.json" "${TMP_DIR}/apex-active/${SESSION_ID}-budget.json"
+# Glob-expansion remover. Enables nullglob locally so "no matches" yields an
+# empty array (rather than passing the literal pattern to rm). Each match is
+# removed independently via rm_target so a single failure doesn't shadow others.
+rm_glob() {
+  local pattern="$1"
+  shopt -s nullglob
+  # shellcheck disable=SC2206  # pattern is a controlled literal; intentional split+glob.
+  local matches=( $pattern )
+  shopt -u nullglob
+  # macOS ships bash 3.2 where ${matches[@]} on an empty array is "unbound" under
+  # `set -u`. Explicit length guard keeps idempotent re-runs (zero matches) at exit 0.
+  (( ${#matches[@]} == 0 )) && return 0
+  local m
+  for m in "${matches[@]}"; do
+    rm_target "$m"
+  done
+}
 
-# 1b. Stale manifest cleanup (>2h old, from other sessions)
-if [[ -d "${TMP_DIR}/apex-active" ]]; then
-  now=$(date +%s)
-  while IFS= read -r -d '' f; do
-    [[ "$(basename "$f")" == "${SESSION_ID}"* ]] && continue
-    file_age=$(( now - $(stat -f %m "$f" 2>/dev/null || echo "$now") ))
-    if (( file_age > 7200 )); then
-      rm -f "$f"
-      echo "CLEANUP: Removed stale $(basename "$f") (age: $(( file_age / 3600 ))h)"
-      removed_count=$((removed_count + 1))
-    fi
-  done < <(find "${TMP_DIR}/apex-active" -maxdepth 1 -name "*.json" -print0 2>/dev/null)
-fi
+# --- Cleanup (declaration order matches the apex-core.md p1.5 / p2.6 lists) ---
 
-# 2. Scout findings and audit checklists (scout-findings-*.md, audit-checklist-*.md)
-#    These use independent UIDs, not session-id. Clean all since sessions are serialized
-#    (SKILL.md Step 0 warns on concurrency).
-scout_found=false
-if [[ -d "${TMP_DIR}/scout" ]]; then
-  while IFS= read -r -d '' f; do
-    rm -f "$f"
-    echo "CLEANUP: Removed scout/$(basename "$f")"
-    removed_count=$((removed_count + 1))
-    scout_found=true
-  done < <(find "${TMP_DIR}/scout" -maxdepth 1 -name "*.md" -print0 2>/dev/null)
-fi
-if [[ "$scout_found" == false ]]; then
-  echo "CLEANUP: No scout artifacts found"
-fi
+# Scout artifacts: substring-match glob covers prefix-then-session filenames
+# (findings-{session}.json, shard-{shard-id}-{session}.json, screened/preflight/
+# rescout/claim-review[-resolved]-{session}.json, shard-plan-{session}.json).
+rm_glob "$SCOUT_DIR/*${SESSION}*"
 
-# 3. Diff summaries (git-diff-*.md) -- intentionally NOT removed here.
-#    They persist across sessions so /apex-git can batch-commit accumulated
-#    diffs from multiple APEX runs. /apex-git Step 4 deletes them after a
-#    successful commit + push. Removing them per-session breaks that contract.
-echo "CLEANUP: Skipping git-diff/ (consumed by /apex-git)"
+# Scope files: catches {session}-main-scope.json and every {session}-{teammate-id}-scope.json.
+# Hypothesis ({session}-hypothesis.json) does not match this glob (no -scope.json suffix).
+# IMPORTANT: keep `*` INSIDE the double quotes so it stays literal in the function arg
+# - call-site glob expansion would split matches across positional args and rm_glob only reads $1.
+rm_glob "$APEX_ACTIVE/${SESSION}-*-scope.json"
 
-# 4. Teammate context files (apex-context-*.md -- independent UIDs)
-context_found=false
-if [[ -d "${TMP_DIR}/apex-context" ]]; then
-  while IFS= read -r -d '' f; do
-    rm -f "$f"
-    echo "CLEANUP: Removed apex-context/$(basename "$f")"
-    removed_count=$((removed_count + 1))
-    context_found=true
-  done < <(find "${TMP_DIR}/apex-context" -maxdepth 1 -name "*.md" -print0 2>/dev/null)
-fi
-if [[ "$context_found" == false ]]; then
-  echo "CLEANUP: No context files found"
-fi
+# Scope-pointer dir wholesale: covers main, p2 (post-context-clear), and every
+# teammate pointer file written under {session}-scopes/.
+rm_target "$APEX_ACTIVE/${SESSION}-scopes"
 
-# 5. Team baseline files (apex-baseline-*.txt -- keyed by team-name, not session-id)
-#    Created by apex-team.md Step 1 for scope verification. Safe to remove after session.
-baseline_found=false
-while IFS= read -r -d '' f; do
-  rm -f "$f"
-  echo "CLEANUP: Removed $(basename "$f")"
-  removed_count=$((removed_count + 1))
-  baseline_found=true
-done < <(find "${TMP_DIR}" -maxdepth 1 -name "apex-baseline-*.txt" -print0 2>/dev/null)
-if [[ "$baseline_found" == false ]]; then
-  echo "CLEANUP: No baseline files found"
-fi
+# Per-teammate task descriptions. No-op in path-1 sessions (none written);
+# included for parity with the shared script per spec.
+rm_glob "$APEX_ACTIVE/${SESSION}-*-task.md"
 
-# 6. Pre-agent diff stat (pre-agent-diff.stat -- from subagent-delegation.md)
-#    Normally self-cleaned by delegation protocol, but clean here as safety net.
-if [[ -f "${TMP_DIR}/pre-agent-diff.stat" ]]; then
-  rm -f "${TMP_DIR}/pre-agent-diff.stat"
-  echo "CLEANUP: Removed pre-agent-diff.stat"
-  removed_count=$((removed_count + 1))
-fi
+# Trace tree wholesale: entryflow/, p1/, p2/ subtrees and any future phase dir.
+rm_target "$APEX_ACTIVE/${SESSION}-traces"
 
-# 7. Team scope files (apex-active/{team-name}-scope.json -- keyed by team-name, not session-id)
-#    apex-team.md Step 0 writes {team-name}-scope.json, NOT {session-id}-scope.json.
-#    cleanup-session.sh section 1 only removes {session-id}-scope.json, leaving team scope files.
-#    Clean all remaining *-scope.json files NOT matching the session-id pattern.
-if [[ -d "${TMP_DIR}/apex-active" ]]; then
-  while IFS= read -r -d '' f; do
-    basename_f="$(basename "$f")"
-    [[ "$basename_f" == "${SESSION_ID}-scope.json" ]] && continue
-    rm -f "$f"
-    echo "CLEANUP: Removed team scope file $(basename "$f")"
-    removed_count=$((removed_count + 1))
-  done < <(find "${TMP_DIR}/apex-active" -maxdepth 1 -name "*-scope.json" -print0 2>/dev/null)
-fi
+# Session manifest itself. Removing this last-ish keeps stale concurrency
+# detection coherent if a sibling /apex scans mid-cleanup (the manifest is the
+# concurrency anchor; pre-removed scope/trace files do not affect the check).
+rm_target "$APEX_ACTIVE/${SESSION}.json"
 
-# 8. test-gaps.md -- NOT removed here. test-gaps.md persists across sessions
-#    and is only removed by apex-tail.md when the session that consumed it completes.
-#    cleanup-session.sh cannot distinguish "consumed source" from "newly written by verify."
+# Fix-attempt counters: covers -fix-attempts-main.json (Path 1 p1.2) and
+# -fix-attempts-p2.json (central Path 2 p2.3). Wildcard suffix is forward-compat.
+rm_glob "$APEX_ACTIVE/${SESSION}-fix-attempts-*.json"
 
-echo ""
-echo "SESSION CLEANUP: ${removed_count} artifacts removed for ${SESSION_ID}"
+rm_target "$APEX_ACTIVE/${SESSION}-verify-rerun.json"
+rm_target "$APEX_ACTIVE/${SESSION}-baseline.json"
+rm_target "$APEX_ACTIVE/${SESSION}-verify-errors.txt"
+
+# /tmp reflector snapshots ({session}-entryflow-snapshot.txt, {session}-p1-snapshot.txt,
+# {session}-p2-snapshot.txt) plus any other session-keyed /tmp artifact. Prefix match
+# (not substring) - the 8-hex token is unique enough that prefix is safe and tighter.
+rm_glob "/tmp/${SESSION}-*"
+
+exit 0

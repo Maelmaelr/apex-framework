@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "screened.schema.json",
+  "title": "screened-{session}.json",
+  "description": "Aggregated 6.c output (merge of all shard JSONs). See apex-core.md step 6.c aggregator.",
+  "type": "object",
+  "required": ["kept", "dropped"],
+  "properties": {
+    "kept": {
+      "type": "array",
+      "items": { "$ref": "shard.schema.json#/properties/kept/items" }
+    },
+    "dropped": {
+      "type": "array",
+      "items": { "$ref": "shard.schema.json#/properties/dropped/items" }
+    },
+    "_meta": {
+      "type": "object",
+      "properties": {
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "dropped_per_layer": {
+          "type": "object",
+          "properties": {
+            "static-imports": { "type": "integer", "minimum": 0 },
+            "ast-grep": { "type": "integer", "minimum": 0 },
+            "lsp": { "type": "integer", "minimum": 0 },
+            "framework": { "type": "integer", "minimum": 0 },
+            "ripgrep": { "type": "integer", "minimum": 0 },
+            "rescout": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    }
+  }
+}

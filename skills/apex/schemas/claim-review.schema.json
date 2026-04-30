@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "claim-review.schema.json",
+  "title": "claim-review-{session}.json",
+  "description": "Step 8 unresolved-claim batch (mechanically valid but semantic match unclear, OR low-confidence + no line_range). See apex-core.md step 8.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["file", "reason"],
+    "properties": {
+      "file": { "type": "string" },
+      "reason": { "type": "string" },
+      "line_range": {
+        "oneOf": [
+          { "type": "null" },
+          { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } }
+        ]
+      },
+      "confidence": { "enum": ["high", "medium", "low"] }
+    }
+  }
+}
