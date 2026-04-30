@@ -5,7 +5,7 @@ description: Cross-cutting rules referenced by every apex skill and agent. Singl
 
 # Shared guardrails
 
-This file consolidates the cross-cutting rules from `apex-core.md` "Conventions" and "Failure handling". Every other skill / agent file in this repo should reference back here rather than duplicating these rules.
+Cross-cutting reference for apex skill / agent files. Authoritative spec is `apex-core.md`; this file holds only the rules that other files cite by topic (safety paths, manifest schema, scope-write producers, scope-check hook resolution, trace path schema, JSON Schema validation, mid-/apex abort cleanup, project-specific hooks). Anything not listed here lives in `apex-core.md` or `apex-core-overview.md`.
 
 ## Standard safety paths (always allowed in any scope artifact)
 
@@ -52,19 +52,6 @@ Pointer writers:
 
 Bash file ops (`sed -i`, redirection, `tee`, `cp`, `mv`) NOT gated - prompt-layer convention only.
 
-## verify-claims.sh modes (exit-code priority 1 > 2 > 3 > 0)
-
-Default mode (no flag): runs the full claim verification pass and dispatches via exit code.
-
-| Exit | Meaning | abort_cause (stderr) |
-|------|---------|----------------------|
-| 0 | proceed - scope written as last action | - |
-| 1 | abort | `preflight_bad` OR `screened_unconverged` |
-| 2 | re-run 6c+7 (cap 1 via `{session}-verify-rerun.json`) | - |
-| 3 | inline review - orchestrator writes `claim-review-resolved-{session}.json`, re-invokes `--apply-resolved` | - |
-
-`--apply-resolved` mode: skips re-validation (claims already validated), re-reads `screened-{session}.json` + `claim-review-resolved-{session}.json`, re-adds `keep` claims to screened, and unconditionally writes `{session}-main-scope.json` as its last action (exits 0). Used by orchestrator after exit-3 inline review.
-
 ## Trace path schema
 
 `.claude-tmp/apex-active/{session}-traces/{phase}/{agent}[-{disambiguator}].md`
@@ -89,14 +76,9 @@ Validated artifacts: see `apex-core.md` "Artifact validation" section for the fu
 
 ## Mid-/apex abort cleanup
 
-Any orchestrator exit bypassing p1.5/p2.6 runs `scripts/session-end-hook.sh {session}` inline. Triggers:
-- verify exit-1 abort (`preflight_bad` or `screened_unconverged`)
-- AskUserQuestion-abort at step 2 / 6.a zero-layer / 6.b / p1.0 / p2.0
-- zero-layer "no validated paths" abort
-- teammate-failure abort
-- plan-mode rejection at p2.0c
+Any orchestrator exit that bypasses the success-path cleanup (p1.5 / p2.6) MUST run `scripts/session-end-hook.sh {session}` inline before returning. Same idempotent cleanup as SessionEnd, plus removal of `{session}-hypothesis.json` (belt-and-suspenders fallback).
 
-`session-end-hook.sh` wraps `cleanup-session.sh` + removes `{session}-hypothesis.json` (belt-and-suspenders).
+Per-trigger abort paths are documented in their owning step (apex-core.md): step 2 manifest, step 6.a zero-layer, step 6.b shard cap, step 8 verify exit-1, p1.0 / p2.0 conflict check, p2.0c plan-mode rejection, p2.1 teammate-failure.
 
 ## Project-specific hooks (additive to v1.0)
 
