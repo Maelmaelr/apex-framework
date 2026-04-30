@@ -18,6 +18,23 @@ Closed set:
 
 Never includes `.env*` or `.git/`.
 
+## Project context (architecture entry point)
+
+`<project-root>/docs/project-context.md` is the canonical entry point to the codebase architecture - written by `apex-init` at project setup and curated by the team thereafter. When present, it surfaces module names, conventions, security-sensitive paths, and architectural boundaries that pure file enumeration cannot reveal.
+
+**Read contract (closed list - hybrid depth, NOT blanket):**
+- Main orchestrator at `SKILL.md` Step 1: best-effort read; absent file is silently skipped. Pre-biases hypothesis + propagates by inheritance through working memory to trivial / zero-layer branches.
+- `planner.md` at p2.0b: re-read before team-sizing - architectural boundaries inform disjoint-scope and `shared_files` routing.
+- `agents/executor.md`: re-read ONLY when the slice spans modules or introduces a new abstraction. Skipped for mechanical edits.
+- `agents/documentation.md` at p1.3 / p2.4: ALWAYS re-read - it is the doc-layer entry point when updating project docs / architecture notes.
+
+**Read-skip set (these NEVER read project-context.md):**
+- `agents/screener.md` (6.c) - hypothesis already biases keep/drop; architecture context would over-constrain.
+- `agents/learn.md`, `agents/git.md`, `agents/reflector.md`, `agents/rescout.md` - inputs are diff / TaskList / traces / missed-regions, not architecture.
+- All scripts (enumerate, shard, verify, decide-path, etc.) - mechanical, not LLM-driven.
+
+`docs/**` is already in the safety-paths closed set above, so `project-context.md` is always readable from any apex scope without scope-artifact extension.
+
 ## Session token format
 
 8-char lowercase hex (`openssl rand -hex 4`). Tight enough that cleanup glob `*{session}*` cannot substring-match unrelated files.

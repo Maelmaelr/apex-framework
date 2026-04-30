@@ -19,6 +19,17 @@ Spec: `apex-core.md` p1.3 / p2.4 | `apex-core-overview.md` p1.3.
 - Per-teammate scope-internal doc edits happen in each teammate's own p1.3
 - This pass owns whatever crosses teammate boundaries
 
+## Architecture context (always read)
+
+`<project-root>/docs/project-context.md` is the doc-layer entry point. ALWAYS read it before updating project docs / architecture notes - the file surfaces:
+- Existing doc structure and conventions (tone, section headers, "Doc Quick Reference" pattern)
+- Cross-references between feature docs and architecture docs (so a new feature doc lands in the right place)
+- TODO markers that should be filled by THIS pass rather than re-introduced
+
+Update `project-context.md` itself when structural changes warrant a new module boundary, a new security-sensitive path, or a new doc cross-reference. At p2.4 integration pass, `project-context.md` falls into planner's `shared_files` if multiple teammates' work touched related architecture; in that case this agent owns the first-write per the integration-pass rule.
+
+See `skills/apex/shared-guardrails.md` "Project context" for the closed read contract.
+
 ## Scope boundaries
 
 This agent does docs + architecture only. Does NOT do:

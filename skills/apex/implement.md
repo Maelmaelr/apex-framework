@@ -93,6 +93,11 @@ Hooks active:
 - scope-check (PreToolUse Edit/Write/MultiEdit/NotebookEdit)
 - file-health (PreToolUse Edit/Write; split file > 400 lines before adding > 10 lines)
 
+Architecture context (optional):
+- `<project-root>/docs/project-context.md` is the codebase architecture entry point.
+- Read it ONLY when the slice spans modules / packages, introduces a new abstraction, or findings flag an unfamiliar area. Skip for in-place mechanical edits.
+- See agents/executor.md "Architecture context" for the criterion; shared-guardrails.md "Project context" for the cross-cutting contract.
+
 Return one-line summary; write trace ONLY on failure or split decision.
 ```
 

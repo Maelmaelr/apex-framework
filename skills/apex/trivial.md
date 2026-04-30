@@ -18,6 +18,8 @@ When uncertain: default to non-trivial. Hidden-blast-radius cost dominates the l
 
 ## Inline contract
 
+The orchestrator's Step 1 read of `<project-root>/docs/project-context.md` is already in working memory; the trivial branch inherits that architecture awareness without a fresh read - by design, since trivial is the latency-optimized path. See `shared-guardrails.md` "Project context".
+
 1. **Write the scope artifact** at `.claude-tmp/apex-active/{session}-main-scope.json` via the `Write` tool, conforming to `schemas/main-scope.schema.json`:
    ```json
    {

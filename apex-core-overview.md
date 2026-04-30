@@ -20,6 +20,7 @@ Legend:
 - **1. Analyze prompt**
   - Tool: inline
   - Routing: AskUserQuestion if ambiguous (assuming forbidden)
+  - Reads `<project-root>/docs/project-context.md` if present (best-effort; absent = silent skip). Pre-biases hypothesis + propagates by inheritance to trivial / zero-layer; hybrid depth - downstream re-reads on demand at planner / executor / documentation. See "Cross-cutting infrastructure / Project context" below.
 
 - **2. Create session manifest (concurrency check)**
   - Tool: manifest script
@@ -228,15 +229,16 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
     - Receives 1-line peer summaries
     - Executor trace path: `p2/executor-{teammate-id}-{task-id}.md`
   - Monitors and coordinates teammates until done
-  - **Teammate-failure handling**:
+  - **Teammate-failure handling** (`teammates-failure.md` decision tree):
     - (a) orchestrator self-fixes the slice
     - (b) spawns replacement teammate with revised scope (new id = fresh shortened guid; random 4-char hex space makes collision with failed-teammate id negligible, so artifacts stay collision-free without "next unused index" bookkeeping)
     - (c) AskUserQuestion if non-obvious (continue with surviving / retry slice / abort Path 2; dismiss = abort)
   - p2.2 shutdown waits for surviving teammates + any replacement
 
 - **p2.2 Shut down teammates**
-  - Tool: `TeamDelete`
-  - Per teammate: ack final message, then TeamDelete
+  - Tool: `p2-shutdown.md` (skill, inline orchestrator action; no subagent)
+  - Per teammate: ack `SendMessage` + `shutdown_request`; wait for `shutdown_response`; then `TeamDelete`
+  - Skips dropped teammates from `teammates-failure.md` branch (c)
 
 - **p2.3 Verify (lint/build) + fix**
   - Tool: `verify-fix.md` (skill, `--phase p2`) -> `verify-build.sh` (script) -> `executor.md` (agent)
@@ -283,6 +285,17 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
 - **Standard safety paths** (always allowed in any scope):
   - `.claude-tmp/`, `~/.claude/tmp/`, `/tmp/{session}-*`, project `docs/**`, any `README*` at any depth
   - Closed set; never includes `.env*` or `.git/`
+
+### Project context (architecture entry point)
+
+- `<project-root>/docs/project-context.md` is the codebase architecture entry point, written by `apex-init` and curated by the team
+- **Read contract (hybrid depth, NOT blanket)**:
+  - Main orchestrator at SKILL.md Step 1 (best-effort; absent = silent skip)
+  - `planner.md` at p2.0b (architectural boundaries inform disjoint-scope + `shared_files`)
+  - `agents/executor.md` (only when slice spans modules / introduces new abstraction)
+  - `agents/documentation.md` at p1.3 / p2.4 (always; doc-layer entry point)
+- **Read-skip set**: screener, learn, git, reflector, rescout, all scripts
+- Spec contract lives in `skills/apex/shared-guardrails.md` "Project context"
 
 ### Failure handling
 

@@ -26,12 +26,23 @@ First instruction in plan: call `p2.md` (TaskCreate p2.1 -> p2.7).
 
 See `shared-guardrails.md` for safety paths, manifest schema, scope write producers.
 
+## Architecture awareness (project-context.md)
+
+Re-read `<project-root>/docs/project-context.md` (if present) BEFORE running the team-sizing heuristic. The doc surfaces architectural boundaries (frontend / backend, auth / payments, monorepo package layout) that kept-file count alone cannot reveal. Boundary respect is the planner's responsibility:
+
+- A teammate slice should not span an architectural boundary unless `original_prompt` + `hypothesis` explicitly require cross-cutting work.
+- Files clearly belonging to multiple boundaries (shared types, root configs, `docs/**`) belong in `shared_files`, never in any teammate's `allowed_files`.
+- Per-teammate model selection may shift to Opus when a slice crosses a boundary that project-context.md flags as security-sensitive (auth, payments, webhook signing) - the size heuristic below is a floor, not a ceiling.
+
+If `project-context.md` is absent, fall back to the kept-file count + hypothesis only - no inferred architecture. See `shared-guardrails.md` "Project context" for the closed read contract.
+
 ## Team-sizing heuristic
 
 Inputs:
 - `complexity_hint` from `{session}-hypothesis.json`
 - kept-file count from `screened-{session}.json`
 - per-shard kept distribution from `shard-plan-{session}.json`
+- architectural boundaries from `<project-root>/docs/project-context.md` (if present; see above)
 
 | complexity_hint | kept-file count | suggested team size |
 |-----------------|-----------------|---------------------|

@@ -35,6 +35,20 @@ The caller (`implement.md` or the verify-fix dispatcher) injects the correct tra
 4. On clean completion (no failure, no split decision): NO trace; return a one-line summary
 5. On failure OR file-split decision: write the trace at the injected path BEFORE returning summary
 
+## Architecture context (optional read)
+
+Read `<project-root>/docs/project-context.md` ONLY when one of these holds:
+- The slice spans modules / packages
+- The slice introduces a new abstraction (new public symbol, component, endpoint, route)
+- Findings flag an "unfamiliar area" or cross-cutting dependency the orchestrator did not pre-bias
+
+Skip the read for:
+- Single-file mechanical edits (typo, signature change, rename, import update)
+- Test additions to an existing test pattern
+- Fix-attempts under p1.2 / p2.3 (the errors file already names the failure surface)
+
+The orchestrator already pre-biased your spawn prompt with relevant `project-context.md` excerpts at Step 1 (architecture terms surface in the hypothesis embedded in your prompt). The on-demand read covers only the gap above. See `skills/apex/shared-guardrails.md` "Project context" for the closed read contract.
+
 ## Trace structure (failure / split only)
 
 The trace is decision provenance, NOT a transcript. Keep it scannable for the reflector.
