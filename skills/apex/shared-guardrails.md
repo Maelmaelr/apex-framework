@@ -35,8 +35,8 @@ Never includes `.env*` or `.git/`.
 ## Scope write producers (single source of truth per artifact)
 
 `{session}-main-scope.json` - exactly one fires per session:
-- trivial path -> step 5 inline orchestrator `Write` tool
-- zero-layer proceed -> step 6.a inline orchestrator `Write` tool
+- trivial path -> `trivial.md` (inline orchestrator `Write`)
+- zero-layer proceed -> `scout1.md` 6.a (inline orchestrator `Write`)
 - normal path -> `verify-claims.sh` (default mode or `--apply-resolved`)
 
 `{session}-{teammate-id}-scope.json` - written only by `teammates.md` at p2.1.

@@ -13,9 +13,26 @@ TaskCreate (insert before task 7) the 3 sub-tasks:
 - **6.c Screen** - parallel `agents/screener.md` per shard -> `shard-{shard-id}-{session}.json`; aggregator merges to `screened-{session}.json`
 
 Routing:
-- 6.a exit code 10 (zero-layer): orchestrator AskUserQuestion (abort / proceed-with-prompt-paths). On proceed: regex-extract paths from `original_prompt`, write scope inline, SKIP 6.b/6.c/7/8/9, call `p1.md`. 0 validated paths -> abort like verify exit-1.
-- 6.b > 8 shards: AskUserQuestion (continue / refine); dismiss = abort.
+- 6.a exit code 10 (zero-layer): orchestrator AskUserQuestion - see "AskUserQuestion contracts" below.
+- 6.b > 8 shards: orchestrator AskUserQuestion - see "AskUserQuestion contracts" below.
 - 6.c: each screener writes trace at `{session}-traces/entryflow/screener-{shard-id}-attempt-N.md`.
+
+## AskUserQuestion contracts (orchestrator-side)
+
+Surfaced by `scout1.md` / `scout2.md`; `SKILL.md` step 6 routing is the entry point. Both questions: dismiss / cancel = abort.
+
+```
+AskUserQuestion at 6.a (zero-layer; exit code 10 from enumerate):
+  - "abort"
+  - "proceed-with-prompt-paths"  (regex-extract paths from original_prompt,
+                                  validate each on disk, write scope inline + pointer,
+                                  SKIP 6.b/6.c/7/8/9, call p1.md directly)
+0 validated paths after extraction -> abort like verify exit-1.
+
+AskUserQuestion at 6.b (> 8 shards):
+  - "continue"  (no max cap; proceed to 6.c with the wide plan)
+  - "refine"    (abort cleanly so user can re-prompt with narrower scope)
+```
 
 Aggregation: read each shard-result JSON, merge per-shard kept/dropped, schema-validate, return artifact path to apex.
 

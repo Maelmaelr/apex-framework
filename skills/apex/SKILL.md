@@ -5,7 +5,7 @@ description: Main coding orchestrator. Entry point for /apex; runs the entry flo
 
 # /apex (main orchestrator)
 
-This skill is the entry point invoked by `/apex <prompt>`. It owns the entry flow (steps 0-10) and routes into either `p1.md` or the Path 2 plan-mode chain.
+This skill is the entry point invoked by `/apex <prompt>`. It owns the entry flow (steps 0-10) and routes into either `p1.md` (Path 1) or `plan-mode.md` (Path 2 plan-mode chain).
 
 Spec sources (canonical, do NOT duplicate here):
 - `apex-core.md` "Entry flow" (steps 0-10) - full behavioral contract
@@ -20,45 +20,31 @@ Spec sources (canonical, do NOT duplicate here):
 | 2    | `scripts/create-session.sh` | Manifest + concurrency check |
 | 3    | inline prompt | Writes `{session}-hypothesis.json` |
 | 4    | `scripts/grep-lessons.sh` + `scripts/update-hit.sh` | |
-| 5    | inline prompt | Trivial -> writes scope inline + scope pointer -> calls `p1.md` |
-| 6    | `scout1.md` | 6.a / 6.b / 6.c |
+| 5    | inline prompt | Trivial -> `trivial.md`; non-trivial -> Step 6 |
+| 6    | `scout1.md` | 6.a / 6.b / 6.c (incl. orchestrator AskUserQuestion contracts) |
 | 7    | `scout2.md` | + 7.x targeted rescout if gated |
 | 8    | `scripts/verify-claims.sh` | Exit-code dispatch (priority 1>2>3>0) |
-| 9    | `scripts/decide-path.sh` | medium -> `p1.md`; complex -> p2.0a/b/c TaskCreate |
+| 9    | `scripts/decide-path.sh` | medium -> `p1.md`; complex -> `plan-mode.md` chain |
 | 10   | `reflect.md` (`--phase entryflow`) -> `scripts/reflect-traces.sh` + `agents/reflector.md` | Path 2 only; reflector spawned in background |
-| p2.0a | this skill (`EnterPlanMode` tool) | Path 2 only |
-| p2.0b | `planner.md` (+ `scripts/validate-disjoint-scopes.py`) | Composes plan body inside plan mode |
-| p2.0c | this skill (`ExitPlanMode` tool) | On reject -> `session-end-hook.sh {session}` inline |
+| p2.0a/b/c | `plan-mode.md` | Path 2 only; sequential after step 10 |
 
 ## Cross-cutting rules
 
 See `shared-guardrails.md` for: scope enforcement, safety paths, manifest schema, trace path schema, scope-write producers, mid-/apex abort cleanup, JSON Schema validation.
 
-## Step 0: TaskCreate entry tasks 1-5
+## Step 0: TaskCreate the entry chain
 
 ```
-TaskCreate "1. Analyze prompt" - inline analysis, AskUserQuestion if ambiguous
-TaskCreate "2. Create session manifest" - blockedBy [1] - scripts/create-session.sh
-TaskCreate "3. Hypothesis" - blockedBy [2] - emits {session}-hypothesis.json
-TaskCreate "4. Load lessons" - blockedBy [3] - grep-lessons.sh + update-hit.sh
-TaskCreate "5. Trivial detection" - blockedBy [4] - inline; routes to trivial/non-trivial
+TaskCreate "1. Analyze"            - inline; AskUserQuestion if ambiguous
+TaskCreate "2. Session manifest"   - blockedBy [1] - scripts/create-session.sh
+TaskCreate "3. Hypothesis"         - blockedBy [2] - inline; writes {session}-hypothesis.json
+TaskCreate "4. Load lessons"       - blockedBy [3] - scripts/grep-lessons.sh + scripts/update-hit.sh
+TaskCreate "5. Trivial detection"  - blockedBy [4] - inline; trivial -> trivial.md, non-trivial -> tasks 6-9
 ```
 
-If step 5 returns non-trivial, append:
-```
-TaskCreate "6. Scout phase 1" - blockedBy [5] - scout1.md
-TaskCreate "7. Scout phase 2 preflight" - blockedBy [6] - scout2.md
-TaskCreate "8. Verify claims" - blockedBy [7] - verify-claims.sh
-TaskCreate "9. Decide path" - blockedBy [8] - decide-path.sh
-```
+Append on non-trivial: `6. scout1.md`, `7. scout2.md`, `8. verify-claims.sh`, `9. decide-path.sh` (each `blockedBy` the previous).
 
-If step 9 returns complex, append (per `apex-core-overview.md` Path 2):
-```
-TaskCreate "10. Self-reflect entry-flow" - blockedBy [9] - reflect.md --phase entryflow (-> reflect-traces.sh + reflector.md, background)
-TaskCreate "p2.0a Enter plan mode" - blockedBy [9] - EnterPlanMode
-TaskCreate "p2.0b Embed delegation plan" - blockedBy [p2.0a] - planner.md
-TaskCreate "p2.0c Exit plan mode" - blockedBy [p2.0b] - ExitPlanMode
-```
+Append on `decide-path.sh = complex`: `10. reflect.md --phase entryflow` (background; reflector via `reflect-traces.sh`), then `p2.0a / p2.0b / p2.0c` per `plan-mode.md`.
 
 ## Step 1: Analyze (inline)
 
@@ -71,7 +57,7 @@ Call `scripts/create-session.sh --cc-session-id <session_id>`. Exit codes:
 - `10` - overlap detected. Script writes detected state to stderr (active manifests / stale manifests). Orchestrator surfaces:
 
 ```
-AskUserQuestion (matcher: filtered to detected state):
+AskUserQuestion (options filtered to detected state):
   - "abort"              (always present)
   - "proceed alongside"  (only if active session detected; new {session} token issued)
   - "cleanup-stale-and-proceed" (only if stale manifest detected; for each stale,
@@ -79,7 +65,7 @@ AskUserQuestion (matcher: filtered to detected state):
   Dismiss / cancel = abort
 ```
 
-On abort: run `scripts/session-end-hook.sh` is NOT applicable (no manifest yet); just exit cleanly.
+On abort: no manifest exists yet, so `session-end-hook.sh` is skipped; exit cleanly.
 
 ## Step 3: Hypothesis (inline)
 
@@ -99,83 +85,25 @@ Write `.claude-tmp/apex-active/{session}-hypothesis.json` via the `Write` tool, 
 
 ## Step 4: Load lessons
 
-Best-effort consultation of curated project lessons. Skip silently when the project has none.
+Best-effort. Project has no `.claude/lessons-index.md` -> skip silently.
 
-1. **Derive keywords** from `{session}-hypothesis.json` (the `hypothesis` field plus any specific symbol / module names in `alternatives`). Cap at ~8; prefer specific tokens (function names, table names, component names) over generic ones (`config`, `error`, `auth` bare). The blocklist exists because generic terms over-match in the index.
+- Derive ~8 keywords from `{session}-hypothesis.json` (`hypothesis` field + symbol/module names from `alternatives`); prefer specific tokens (function / table / component names) over generic (`config`, `error`, `auth` bare).
+- `scripts/grep-lessons.sh <project-root> <term1> [<term2> ...]` - reads `<project-root>/.claude/lessons-index.md` + `lessons.md`; emits `--- LINES s-e ---` blocks (absolute line numbers in `lessons.md`); 150-line cap with `TRUNCATED` footer (narrow keywords and re-run if hit). Tolerate empty output.
+- `scripts/update-hit.sh <project-root>/.claude/lessons.md <line>...` - pass every absolute line number from the emitted blocks (expand each `s-e` to the integer range); idempotent. Skip if every matched block already shows today's date.
+- Keep matched lessons in working memory for downstream steps (5 trivial detection, p1.1 implement, scout / planner). Advisory only - never override the user prompt or scope decisions.
 
-2. **Run grep:**
-   ```
-   scripts/grep-lessons.sh <project-root> <term1> [<term2> ...]
-   ```
-   - `<project-root>` = the orchestrator's working directory (the project being apex'd, NOT the apex skill dir).
-   - Reads `<project-root>/.claude/lessons-index.md` and `.claude/lessons.md`. Both absent -> exit 0 with no output (project has no curated lessons; this is the common case for new projects). The orchestrator MUST tolerate empty output.
-   - On match, emits one or more blocks of the form:
-     ```
-     --- LINES <start>-<end> ---
-     ## Section Name
-     <lesson lines>
-     ```
-     `<start>`-`<end>` are absolute line numbers in `lessons.md`. Total output capped at 150 lines with a `TRUNCATED` footer; if truncated, narrow the keyword list and re-run.
-
-3. **Track hits** (only when grep emitted blocks):
-   ```
-   scripts/update-hit.sh <project-root>/.claude/lessons.md <line> [<line> ...]
-   ```
-   Pass every absolute line number in the emitted block ranges (expand each `--- LINES s-e ---` to the full integer range `s..e`). `update-hit.sh` is idempotent and silently skips lines without `[last-hit:...]` annotations, so over-passing is safe. Optional optimisation: skip step 3 entirely when every matched block already shows today's date.
-
-4. **Keep the matched lesson text in working memory** for downstream steps (5 trivial detection, 5A executor prompts, scout / planner). Lessons are advisory; they do not override the user's prompt or scope decisions.
+See `scripts/grep-lessons.sh` and `scripts/update-hit.sh` headers for full I/O contracts.
 
 ## Step 5: Trivial detection (inline)
 
-Decide trivial vs non-trivial. Trivial trades fidelity for latency, so the bar is high:
+Trivial = ALL of: single file edit (or single new file), no cross-file dependencies in `{session}-hypothesis.json`, no new abstractions (no new public symbol / component / endpoint). **Default to non-trivial when uncertain** - hidden-blast-radius cost dominates the latency saving.
 
-- **trivial** - ALL of:
-  - Single file edit (or single new file), AND
-  - No cross-file dependencies surfaced in `{session}-hypothesis.json` (no other modules / barrels / callers implicated), AND
-  - No new abstractions (no new public symbol, no new component, no new endpoint)
-- **non-trivial** - any other shape, OR uncertain. **Default to non-trivial when uncertain** - hidden-blast-radius cost dominates the latency loss of running scout.
+- trivial -> read and follow `~/.claude/skills/apex/trivial.md` (writes scope inline + scope pointer, marks queued 6-9 completed if any, calls `p1.md`; no preflight artifact written).
+- non-trivial -> TaskCreate tasks 6-9 per Step 0 template; proceed to Step 6.
 
-### Trivial branch
+## Step 6 routing
 
-1. **Write the scope artifact** at `.claude-tmp/apex-active/{session}-main-scope.json` via the `Write` tool, conforming to `schemas/main-scope.schema.json`:
-   ```json
-   {
-     "session": "<8-hex token>",
-     "allowed_files": ["<detected file>", ...standard safety paths...],
-     "produced_by": "trivial-inline",
-     "produced_at": "<ISO-8601 now>"
-   }
-   ```
-   `allowed_files` = the detected single file PLUS standard safety paths (`.claude-tmp/`, `~/.claude/tmp/`, `/tmp/{session}-*`, project `docs/**`, any `README*`; see `shared-guardrails.md`). The schema's `session` field MUST match the manifest's `{session}` token.
-
-2. **Write the scope-check pointer** at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` via the `Write` tool. The file is a single line containing the absolute path to the scope JSON written in step 1. Required so the PreToolUse scope-check hook can resolve the active scope for any subsequent `Edit` / `Write` (see `shared-guardrails.md` / scope-check hook).
-
-3. **Mark queued tasks 6-9 as completed** (skipped, no-op) on the TaskList - they were never queued in the trivial branch (Step 0 only enqueued 6-9 conditionally), so this is a no-op when only tasks 1-5 exist. If the orchestrator pre-emptively queued them, mark them completed now so the TaskList reflects reality.
-
-4. **Call `p1.md`** - read `~/.claude/skills/apex/p1.md` and follow its instructions. The trivial branch writes NO preflight artifact; p1.0 reads an absent `preflight-{session}.json` and runs the no-findings-consultation branch.
-
-### Non-trivial branch
-
-TaskCreate tasks 6-9 per the template in Step 0. Continue with Step 6 (scout phase 1).
-
-## Step 6 routing: zero-layer (exit code 10 from enumerate)
-
-Surfaced by `scout1.md` / `scout2.md`. Orchestrator handles the user-facing question:
-
-```
-AskUserQuestion at 6.a (zero-layer):
-  - "abort"
-  - "proceed-with-prompt-paths"  (regex-extract paths from original_prompt,
-                                  validate each on disk, write scope inline + pointer,
-                                  SKIP 6.b/6.c/7/8/9, call p1.md directly)
-  Dismiss / cancel = abort
-0 validated paths after extraction -> abort like verify exit-1.
-
-AskUserQuestion at 6.b (>8 shards):
-  - "continue"  (no max cap; proceed to 6.c with the wide plan)
-  - "refine"    (abort cleanly so user can re-prompt with narrower scope)
-  Dismiss / cancel = abort
-```
+`scout1.md` owns 6.a / 6.b / 6.c. Orchestrator-side AskUserQuestion contracts (zero-layer at 6.a, > 8 shards at 6.b) live in `scout1.md` "AskUserQuestion contracts (orchestrator-side)". `Dismiss / cancel = abort` for both.
 
 ## Step 8 verify-claims dispatch
 
@@ -193,60 +121,9 @@ On exit 0 (default mode OR `--apply-resolved`): the script wrote `{session}-main
 
 On exit 1: run `scripts/session-end-hook.sh {session}` inline before exiting (mid-abort cleanup).
 
-## Step p2.0a/b/c: Plan-mode chain (Path 2 only)
+## Path 2 plan-mode chain (p2.0a / p2.0b / p2.0c)
 
-Queued by step 9 when `decide-path.sh` returns `complex`. Three tasks run sequentially in the entry-flow Claude Code session, immediately after step 10 (entry-flow self-reflect runs in the background and does not block p2.0a). The plan composed in p2.0b is what survives the p2.0c context clear.
-
-### p2.0a Enter plan mode
-
-Call the `EnterPlanMode` tool. No parameters. After this returns, the orchestrator is in plan mode and any subsequent text becomes part of the plan body.
-
-Do NOT call `EnterPlanMode` more than once per Path 2 run - re-entry has no defined semantics and would discard the planner's draft.
-
-### p2.0b Embed delegation plan
-
-Read and follow `~/.claude/skills/apex/planner.md`. Inputs (already on disk from earlier steps):
-- `.claude-tmp/scout/screened-{session}.json` - kept-files set (scope source)
-- `.claude-tmp/scout/preflight-{session}.json` - `effective_blast`, `mode`
-- `.claude-tmp/apex-active/{session}-hypothesis.json` - `complexity_hint`, `original_prompt`, `hypothesis`
-
-Compose the plan body per `planner.md` "Plan embed template" - team size, per-teammate model, per-teammate `{teammate-id}` (`openssl rand -hex 2`), per-teammate task description, per-teammate `allowed_files`, and `shared_files`.
-
-Disjoint-scope validator (mandatory before exit):
-
-```
-# Write candidate plan to a tmp file
-plan_tmp=".claude-tmp/apex-active/{session}-plan-candidate.json"
-# (orchestrator writes JSON: {"teammates":[{"teammate_id":"...","allowed_files":[...]},...]})
-
-python3 ~/.claude/skills/apex/scripts/validate-disjoint-scopes.py \
-  --plan "$plan_tmp" --session "{session}"
-```
-
-- exit 0 - disjoint, proceed to p2.0c
-- exit 1 - overlap; reassign each `OVERLAP <file>\t<a>\t<b>` per the planner heuristic (more findings = stronger owner; cross-cutting -> `shared_files`); re-run the validator
-- exit 2 - input malformed (planner bug); abort Path 2 + run `scripts/session-end-hook.sh {session}` inline
-
-After validator exit 0, the **first instruction** in the embedded plan body MUST be:
-
-```
-First instruction: read and follow ~/.claude/skills/apex/p2.md
-```
-
-Without this, the post-context-clear session has no entry point into the Path 2 chain.
-
-The candidate-plan tmp (`{session}-plan-candidate.json`) is cleaned up by `cleanup-session.sh` along with other `{session}-*` artifacts at p2.6 / SessionEnd; no explicit rm needed.
-
-### p2.0c Exit plan mode
-
-Call the `ExitPlanMode` tool. The user is presented the plan and accepts or rejects:
-
-| Outcome | Action |
-|---------|--------|
-| User accepts | Claude Code clears context; the embedded "first instruction" runs `p2.md` in the new session, which captures baseline + appends `p2_cc_session_id` to the manifest + writes the post-context-clear scope pointer + TaskCreates p2.1 -> p2.7 |
-| User rejects | Orchestrator runs `scripts/session-end-hook.sh {session}` inline (cleans manifest + traces + scope + hypothesis + scope-pointer dir, idempotent), surfaces a brief user-facing summary ("Plan rejected; session cleaned up"), and exits cleanly. Distinct from session-level abort (covered by SessionEnd hook) |
-
-Do NOT re-enter plan mode on rejection - that would loop. Treat rejection as terminal for this `/apex` invocation; the user can re-prompt with a refined request.
+Read and follow `~/.claude/skills/apex/plan-mode.md`. Sequential post-step-9 tasks (entry-flow self-reflect runs in the background and does NOT block p2.0a): `EnterPlanMode` -> embed plan via `planner.md` + disjoint-scope validator -> `ExitPlanMode` (rejection -> `session-end-hook.sh {session}` inline).
 
 ## Mid-/apex abort cleanup
 

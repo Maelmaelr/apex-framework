@@ -40,9 +40,9 @@ Legend:
   - Greps `.claude/lessons-index.md` from hypothesis keywords; tracks hits
 
 - **5. Trivial detection**
-  - Tool: inline
+  - Tool: inline; trivial branch owned by `trivial.md`
   - Routing:
-    - trivial -> orchestrator writes scope inline + scope pointer, calls `p1.md`
+    - trivial -> `trivial.md` (writes scope inline + scope pointer, calls `p1.md`, no preflight artifact)
     - non-trivial -> TaskCreate tasks 6-9
   - Default to non-trivial when uncertain
 
@@ -189,13 +189,13 @@ Same chain serves main mode and teammate mode (under Path 2). `--teammate` flag 
 
 ## Path 2 (complex)
 
-Delegation to N teammates via plan mode (size N decided by planner from `complexity_hint` + scope size).
+Delegation to N teammates via plan mode (size N decided by planner from `complexity_hint` + scope size). The p2.0a/b/c chain is owned by `plan-mode.md` (skill).
 
 - **p2.0a Enter plan mode**
-  - Tool: `EnterPlanMode`
+  - Tool: `EnterPlanMode` (via `plan-mode.md`)
 
 - **p2.0b Embed delegation plan**
-  - Tool: `planner.md` (skill)
+  - Tool: `planner.md` (skill, called from `plan-mode.md`)
   - Inputs: `screened-{session}.json`, `preflight-{session}.json`, `{session}-hypothesis.json`
   - Outputs:
     - team size + per-teammate model (Opus or Sonnet from `complexity_hint` + scope size; high-effort fires when `complexity_hint == high`)
@@ -207,7 +207,7 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
   - First instruction: call `p2.md`
 
 - **p2.0c Exit plan mode**
-  - Tool: `ExitPlanMode`
+  - Tool: `ExitPlanMode` (via `plan-mode.md`)
   - User accepts -> context clears, plan survives
   - **On rejection**: orchestrator runs `session-end-hook.sh {session}` inline, exits cleanly
 
