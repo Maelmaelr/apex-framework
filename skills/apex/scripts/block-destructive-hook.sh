@@ -41,8 +41,10 @@ cmd = sys.stdin.read().strip()
 subcmds = re.split(r'\s*(?:&&|;|\|\|)\s*', cmd)
 for s in subcmds:
     s = s.strip()
-    # git show/cat-file at sub-command start, with ref:path, and output redirection
-    if re.match(r'git\s+(show|cat-file)\b', s) and re.search(r'\S+:\S+', s) and re.search(r'[>|]', s):
+    # git show/cat-file at sub-command start, with ref:path, and output redirection.
+    # The negative lookahead (?!&) on > excludes fd-dup tokens (n>&m, >&n like 2>&1, 1>&2)
+    # while still matching file-write redirections (>, >>, &>, n>file). \| matches pipes.
+    if re.match(r'git\s+(show|cat-file)\b', s) and re.search(r'\S+:\S+', s) and re.search(r'>(?!&)|\|', s):
         print('yes')
         sys.exit(0)
     # git archive at sub-command start with pipe to tar
