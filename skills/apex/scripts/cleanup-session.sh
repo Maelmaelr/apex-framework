@@ -6,6 +6,7 @@
 #   - .claude-tmp/scout/*{session}*                            (all session-keyed scout artifacts)
 #   - .claude-tmp/apex-active/{session}-*-scope.json           (main + teammate scopes)
 #   - .claude-tmp/apex-active/{session}-scopes/                (all scope-pointer files)
+#   - .claude-tmp/apex-active/{session}-plan-candidate.json    (planner draft consumed by validate-disjoint-scopes.py)
 #   - .claude-tmp/apex-active/{session}-*-task.md              (per-teammate task descriptions)
 #   - .claude-tmp/apex-active/{session}-traces/
 #   - .claude-tmp/apex-active/{session}.json                   (manifest)
@@ -107,6 +108,11 @@ rm_glob "$APEX_ACTIVE/${SESSION}-*-scope.json"
 # Scope-pointer dir wholesale: covers main, p2 (post-context-clear), and every
 # teammate pointer file written under {session}-scopes/.
 rm_target "$APEX_ACTIVE/${SESSION}-scopes"
+
+# Planner draft: written at p2.0b before ExitPlanMode, consumed by
+# validate-disjoint-scopes.py. Never mentioned in scope-glob (no -scope.json
+# suffix) so it needs an explicit single-rm target.
+rm_target "$APEX_ACTIVE/${SESSION}-plan-candidate.json"
 
 # Per-teammate task descriptions. No-op in path-1 sessions (none written);
 # included for parity with the shared script per spec.

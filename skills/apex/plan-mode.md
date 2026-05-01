@@ -13,6 +13,8 @@ Three sequential tasks in the entry-flow Claude Code session, immediately after 
 
 Call the `EnterPlanMode` tool. No parameters. After this returns, the orchestrator is in plan mode and any subsequent text becomes part of the plan body.
 
+If `EnterPlanMode` is not in the active toolset (deferred), load it first: `ToolSearch select:EnterPlanMode`.
+
 Do NOT call `EnterPlanMode` more than once per Path 2 run - re-entry has no defined semantics and would discard the planner's draft.
 
 ## p2.0b Embed delegation plan
@@ -24,19 +26,26 @@ Read and follow `~/.claude/skills/apex/planner.md`. Inputs (already on disk from
 
 Compose the plan body per `planner.md` "Plan embed template" - team size, per-teammate model, per-teammate `{teammate-id}` (`openssl rand -hex 2`), per-teammate task description, per-teammate `allowed_files`, and `shared_files`.
 
-Disjoint-scope validator (mandatory before exit):
+Disjoint-scope validator (mandatory before exit). Schema: `plan-candidate.schema.json`. The validator enforces three invariants: (1) per-teammate `allowed_files` pairwise disjoint excluding safety paths, (2) union of allowed_files is a subset of main scope, (3) `shared_files` (if present) disjoint from every teammate's allowed_files.
 
 ```
 plan_tmp=".claude-tmp/apex-active/{session}-plan-candidate.json"
-# (orchestrator writes JSON: {"teammates":[{"teammate_id":"...","allowed_files":[...]},...]})
+main_scope=".claude-tmp/apex-active/{session}-main-scope.json"
+# orchestrator writes JSON conforming to plan-candidate.schema.json:
+#   {"teammates":[{"teammate_id":"ab12","allowed_files":[...]},...],
+#    "shared_files":[...]}  # optional
 
 python3 ~/.claude/skills/apex/scripts/validate-disjoint-scopes.py \
-  --plan "$plan_tmp" --session "{session}"
+  --plan "$plan_tmp" --main-scope "$main_scope" --session "{session}"
 ```
 
-- exit 0 - disjoint, proceed to p2.0c
-- exit 1 - overlap; reassign each `OVERLAP <file>\t<a>\t<b>` per the planner heuristic (more findings = stronger owner; cross-cutting -> `shared_files`); re-run the validator
-- exit 2 - input malformed (planner bug); abort Path 2 + run `scripts/session-end-hook.sh {session}` inline
+- exit 0 - all invariants hold, proceed to p2.0c
+- exit 1 - violation; stdout lines:
+  - `OVERLAP <file>\t<a>\t<b>` -> reassign per planner heuristic (more findings = stronger owner; cross-cutting -> `shared_files`)
+  - `NOT_IN_MAIN_SCOPE <file>\t<teammate>` -> planner extends main scope first (single source of truth), then re-runs
+  - `SHARED_OVERLAP <file>\t<teammate>` -> remove from teammate `allowed_files` OR remove from `shared_files` (cannot be both)
+  - re-run the validator after any reassignment
+- exit 2 - input malformed (planner bug, schema violation); abort Path 2 + run `scripts/session-end-hook.sh {session}` inline
 
 After validator exit 0, the **first instruction** in the embedded plan body MUST be:
 
@@ -46,11 +55,11 @@ First instruction: read and follow ~/.claude/skills/apex/p2.md
 
 Without this, the post-context-clear session has no entry point into the Path 2 chain.
 
-The candidate-plan tmp (`{session}-plan-candidate.json`) is cleaned up by `cleanup-session.sh` along with other `{session}-*` artifacts at p2.6 / SessionEnd; no explicit rm needed.
+The candidate-plan tmp (`{session}-plan-candidate.json`) is cleaned up by an explicit `rm_target` in `cleanup-session.sh` (no `{session}-*` glob matches it because the `-scope.json` glob is suffix-anchored). Removed at p2.6 / SessionEnd; no inline cleanup needed here.
 
 ## p2.0c Exit plan mode
 
-Call the `ExitPlanMode` tool. The user is presented the plan and accepts or rejects:
+Call the `ExitPlanMode` tool. If not in the active toolset, load it first: `ToolSearch select:ExitPlanMode`. The user is presented the plan and accepts or rejects:
 
 | Outcome | Action |
 |---------|--------|

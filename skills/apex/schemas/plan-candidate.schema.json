@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "plan-candidate.schema.json",
+  "title": "{session}-plan-candidate.json",
+  "description": "Planner-driven candidate plan written at p2.0b before ExitPlanMode. Consumed by validate-disjoint-scopes.py to enforce three invariants: (1) per-teammate allowed_files pairwise disjoint (excluding safety paths), (2) union of teammate allowed_files is a subset of main scope, (3) shared_files disjoint from every teammate's allowed_files. See skills/apex/planner.md p2.0b and skills/apex/scripts/validate-disjoint-scopes.py.",
+  "type": "object",
+  "required": ["teammates"],
+  "properties": {
+    "teammates": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["teammate_id", "allowed_files"],
+        "properties": {
+          "teammate_id": { "type": "string", "pattern": "^[0-9a-f]{4}$", "description": "4-char lowercase hex (openssl rand -hex 2)." },
+          "allowed_files": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Repo-relative paths; pairwise disjoint with other teammates (safety paths excluded)."
+          }
+        }
+      }
+    },
+    "shared_files": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Cross-teammate files routed to p2.4 documentation.md integration pass. Disjoint from every allowed_files."
+    }
+  }
+}

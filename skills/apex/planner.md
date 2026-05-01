@@ -68,33 +68,21 @@ Team size should typically track shard count from 6.b (shards already partition 
 
 ## Disjoint-scope validator
 
-Run BEFORE embedding the plan. On overlap: reassign the file to the teammate that "owns" it more strongly (more findings cite it, primary edit responsibility), OR move it to `shared_files` if cross-cutting.
+Run BEFORE embedding the plan. The check is deterministic - delegated to `scripts/validate-disjoint-scopes.py`, which enforces three invariants against `plan-candidate.schema.json`:
 
-The check is deterministic - delegated to `scripts/validate-disjoint-scopes.py` so the planner does not re-implement set arithmetic in prose:
+1. per-teammate `allowed_files` pairwise disjoint (excluding safety paths)
+2. union of `allowed_files` is a subset of main scope (if `--main-scope` is supplied)
+3. `shared_files` (if present) is disjoint from every teammate's `allowed_files`
 
-```
-# Write the candidate plan to a tmp file (planner-driven; tmp-keyed so concurrent
-# planners do not collide).
-plan_tmp=".claude-tmp/apex-active/{session}-plan-candidate.json"
-cat > "$plan_tmp" <<'JSON'
-{"teammates": [
-  {"teammate_id": "ab12", "allowed_files": ["..."]},
-  {"teammate_id": "cd34", "allowed_files": ["..."]}
-]}
-JSON
+See `plan-mode.md` p2.0b for the canonical call snippet (passes `--plan`, `--main-scope`, `--session`). Stdout violations:
 
-python3 ~/.claude/skills/apex/scripts/validate-disjoint-scopes.py \
-  --plan "$plan_tmp" --session "{session}"
-```
-
-Exit codes:
-- `0` - all teammate scopes pairwise disjoint (excluding safety paths)
-- `1` - overlap detected; stdout lists `OVERLAP\t<file>\t<teammate-a>\t<teammate-b>` per offending pair. Planner reassigns each file (heuristic: keep in the teammate with more findings citing it; route to `shared_files` if unclear) and re-runs the validator
-- `2` - input malformed (planner bug); hard-fail and surface to user
+- `OVERLAP <file>\t<a>\t<b>` (check 1) - reassign to the teammate that "owns" the file more strongly (more findings cite it, primary edit responsibility) OR move to `shared_files` if cross-cutting.
+- `NOT_IN_MAIN_SCOPE <file>\t<teammate>` (check 2) - extend `{session}-main-scope.json` to include the file, then re-run. Main scope is the union; never narrow a teammate to bypass this.
+- `SHARED_OVERLAP <file>\t<teammate>` (check 3) - decide ownership: a file is in `shared_files` XOR exactly one teammate's `allowed_files`. Remove from one of the two lists.
 
 Safety paths (`.claude-tmp/`, `~/.claude/tmp/`, `/tmp/{session}-*`, `docs/**`, any `README*`) are excluded by the validator - they are shared by design and never count as overlap.
 
-After reassignment, re-validate. If still overlapping after one reassign pass, hard-fail: planner cannot produce a valid disjoint partition. The orchestrator surfaces the conflict via AskUserQuestion (continue with merged scope as a single teammate / abort Path 2).
+After reassignment, re-validate. If still violating after one reassign pass, hard-fail: planner cannot produce a valid disjoint partition. The orchestrator surfaces the conflict via AskUserQuestion (continue with merged scope as a single teammate / abort Path 2).
 
 ## Plan embed template
 

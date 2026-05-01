@@ -205,7 +205,7 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
     - per-teammate task description + `allowed_files`
     - `shared_files[]` (cross-teammate files routed to p2.4)
   - **Disjoint-scope rule**: per-teammate `allowed_files` pairwise disjoint (excl. safety paths)
-  - Validator: planner self-checks pairwise intersection; on overlap reassigns or moves to `shared_files`
+  - Validator: `scripts/validate-disjoint-scopes.py` (schema: `plan-candidate.schema.json`); enforces 3 invariants -- pairwise disjoint, subset-of-main-scope, shared-vs-teammate disjoint. On violation, planner reassigns or routes to `shared_files`.
   - First instruction: call `p2.md`
 
 - **p2.0c Exit plan mode**

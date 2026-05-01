@@ -71,6 +71,8 @@ Producers and consumers:
 
 `{session}-{teammate-id}-scope.json` - written only by `teammates.md` at p2.1.
 
+`{session}-plan-candidate.json` - written by `planner.md` at p2.0b before the disjoint-scope validator runs; consumed by `scripts/validate-disjoint-scopes.py` (schema: `plan-candidate.schema.json`). Cleaned by an explicit `rm_target` in `cleanup-session.sh` (no glob match because the suffix is `-plan-candidate.json`, not `-scope.json`).
+
 ## scope-check hook resolution
 
 PreToolUse on `Edit` / `Write` / `MultiEdit` / `NotebookEdit`. Resolves active scope via on-disk pointer `.claude-tmp/apex-active/{session}-scopes/{session_id}.txt` (single line: absolute path to scope JSON). Hook globs `.claude-tmp/apex-active/*-scopes/{session_id}.txt` to find the matching pointer. Pass-through if no pointer matches.
