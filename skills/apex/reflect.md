@@ -23,7 +23,7 @@ Teammate mode (`p1.md --teammate`) skips this skill entirely - central p2.5 owns
 
 ## Step 1: Run the heuristics script
 
-`reflect-traces.sh` is the script-first heuristic pass. It always exits 0 (best-effort contract per spec) and always appends a block - even when every count is zero - so step 2 can locate the `novel_traces:` line for focus routing. The `novel_flagged` count itself is now informational only (no longer a gate).
+`reflect-traces.sh` is best-effort: always exits 0, always appends a block (even when every count is zero) so the reflector spawn prompt can point at the latest `novel_traces:` paths. The `novel_flagged` count is informational only since v1.4.0 (no longer a gate); proceed unconditionally to step 2.
 
 ```
 case "$PHASE" in
@@ -35,7 +35,7 @@ bash $HOME/.claude/skills/apex/scripts/reflect-traces.sh \
   --session {session} --phase "$PHASE"
 ```
 
-The script appends one block to `~/.claude/tmp/apex-workflow-improvements.md` under `flock ~/.claude/tmp/apex-workflow-improvements.md.lock`:
+Appended block (under `flock ~/.claude/tmp/apex-workflow-improvements.md.lock`):
 
 ```
 ## {session} - {phase}-heuristics - {timestamp}
@@ -46,23 +46,9 @@ The script appends one block to `~/.claude/tmp/apex-workflow-improvements.md` un
 - novel_traces: <comma-separated trace paths, max 5>
 ```
 
-## Step 2: Locate the heuristics block for focus routing
+If the heuristics file is missing or the block is unparseable, the reflector still runs; the spawn prompt simply omits the `novel_traces:` focus list and points at the live trace globs.
 
-The reflector agent always fires (since v1.4.0); this step no longer gates -- it only locates the latest heuristics block so the spawn prompt in step 3 can point the reflector at the right `novel_traces` paths.
-
-Read the LAST block matching this session + phase (a previous re-run on exit-2 may have appended an older block). The block header is matched as a LITERAL STRING (not a regex) - the `+` in `entryflow+p1-heuristics` is a regex metacharacter and `awk $0 ~ hdr` would mis-match it. Use `index($0, hdr) == 1` and pass the header via `ENVIRON` so awk treats it as plain text.
-
-```
-target="$HOME/.claude/tmp/apex-workflow-improvements.md"
-# If the heuristics file is missing, the reflector still runs; the spawn
-# prompt simply points at the live trace globs without a focus list. The
-# reflector tolerates an absent novel_traces line (it falls through to
-# scanning the snapshot directly).
-```
-
-The `novel_flagged` count is no longer parsed for gating purposes; the heuristics block is now an advisory input rather than a control input. Proceed unconditionally to step 3.
-
-## Step 3: Spawn agents/reflector.md (Haiku)
+## Step 2: Spawn agents/reflector.md (Haiku)
 
 Foreground vs background is per the table above; choose the spawn modality at orchestrator level (`run_in_background: true` for `--phase entryflow`, default foreground for `entryflow+p1` and `p2`). One Agent tool call, model = haiku, no parallel sibling spawns - this is a single-agent gate.
 
@@ -115,21 +101,9 @@ Errors -> ~/.claude/tmp/reflector-errors.log (silent failure otherwise).
 Shut down silently (no main-session output).
 ```
 
-## Foreground vs background
+## Fail-silent contract
 
-| Phase | Modality | Why |
-|-------|----------|-----|
-| `entryflow` (step 10) | background (`run_in_background: true`) | step 10 is mid-pipeline; orchestrator continues into p2.0a/b/c without waiting on the reflector |
-| `entryflow+p1` (p1.4) | foreground | end-of-session in main mode; p1.5 cleanup blocks on p1.4 explicitly so there is nothing to overlap |
-| `p2` (p2.5) | foreground | end-of-session in Path 2; p2.6 cleanup blocks on p2.5 explicitly for the same reason |
-
-## Fail-silent contract (whole step)
-
-- `reflect-traces.sh` failure -> already best-effort (exits 0 with stderr); orchestrator proceeds to step 2 unconditionally.
-- Heuristics file unreadable / missing block / parse failure -> reflector still spawns; spawn prompt simply omits the `novel_traces` focus list and points the agent at the live trace globs.
-- Reflector agent failure -> agent itself fail-silents to `~/.claude/tmp/reflector-errors.log` per `agents/reflector.md` contract; returns success to the orchestrator so the chain (p1.5 / p2.6) is NOT blocked.
-
-This is intentional: reflection is a workflow-improvement signal, not a correctness gate. Hard-failing here would block cleanup and the inline summary for cosmetic gains.
+Reflection is an improvement signal, not a correctness gate -- hard-failing here would block cleanup for cosmetic gains. Both `reflect-traces.sh` and the reflector agent self-silence (errors -> `~/.claude/tmp/reflector-errors.log`); the chain (p1.5 / p2.6) is never blocked. Foreground vs background is per the "Invocation contexts" table above; no other modality decision lives here.
 
 ## Cleanup
 

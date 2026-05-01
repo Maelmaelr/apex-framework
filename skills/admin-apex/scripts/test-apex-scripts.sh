@@ -167,6 +167,50 @@ zero_paths_fixture() {
 }
 run_fixture "zero-layer-extract.sh zero-validated-paths" 10 zero_paths_fixture
 
+# 3. cleanup-run.sh: idempotent contract (always exit 0; warnings to stderr).
+run_fixture "cleanup-run.sh missing-arg" 0 \
+  bash "$REPO_ROOT/skills/admin-apex/scripts/cleanup-run.sh"
+run_fixture "cleanup-run.sh bad-token" 0 \
+  bash "$REPO_ROOT/skills/admin-apex/scripts/cleanup-run.sh" --run BADTOKEN
+
+# 4. session-end-hook.sh: empty stdin -> non-/admin-apex CC session, exit 0.
+session_end_empty_stdin_fixture() {
+  bash "$REPO_ROOT/skills/admin-apex/scripts/session-end-hook.sh" </dev/null
+}
+run_fixture "session-end-hook.sh empty-stdin" 0 session_end_empty_stdin_fixture
+
+# 5. admin-apex-finalize.sh: rejects missing args (exit 1).
+run_fixture "admin-apex-finalize.sh missing-args" 1 \
+  bash "$REPO_ROOT/skills/admin-apex/scripts/admin-apex-finalize.sh"
+
+# 6. admin-apex-finalize.sh: defensive validation - --bump=none with non-doc_only
+#    op in applied-ops.json must exit 1 (caller-side bump-rule misapplication).
+finalize_defensive_fixture() {
+  mkdir -p .claude-tmp/admin-apex-active
+  printf '%s' '[{"op":"create","target":"foo","doc_only":false}]' \
+    > .claude-tmp/admin-apex-active/abcdef01-applied-ops.json
+  bash "$REPO_ROOT/skills/admin-apex/scripts/admin-apex-finalize.sh" \
+    --run abcdef01 --bump none
+}
+run_fixture "admin-apex-finalize.sh bump=none-with-nondoc-op" 1 finalize_defensive_fixture
+
+# 7. Entry-flow 7-10 script argv contracts. Each rejects missing/invalid args
+#    with the documented exit code; reflect-traces.sh stays fail-silent (exit 0).
+run_fixture "verify-claims.sh missing-arg" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/verify-claims.sh"
+run_fixture "verify-claims.sh invalid-token" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/verify-claims.sh" --session BADTOKEN
+run_fixture "decide-path.sh missing-arg" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/decide-path.sh"
+run_fixture "decide-path.sh invalid-token" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/decide-path.sh" --session BADTOKEN
+run_fixture "reflect-traces.sh missing-args" 0 \
+  bash "$REPO_ROOT/skills/apex/scripts/reflect-traces.sh"
+run_fixture "reflect-traces.sh invalid-phase" 0 \
+  bash "$REPO_ROOT/skills/apex/scripts/reflect-traces.sh" --session aabbccdd --phase nope
+run_fixture "merge-scout-findings.py missing-args" 2 \
+  python3 "$REPO_ROOT/skills/apex/scripts/merge-scout-findings.py"
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

@@ -38,11 +38,13 @@ See `shared-guardrails.md` for trace path, JSON Schema validation.
 
 scout2 reads `screened-{session}.json` and the hypothesis (`original_prompt` + `hypothesis` + `alternatives`) and identifies regions the screener may have under-covered relative to user intent. Each region carries a `file`, optional `line_range`, and short `reason` -- the input contract for `agents/rescout.md`.
 
-Empty list when the screened scope already covers the hypothesis. Stage the missed-regions array to `/tmp/{session}-missed-regions.json` (single JSON array) before the gate dispatch below consumes it.
+Empty list when the screened scope already covers the hypothesis. Construct the missed-regions array as a JSON-string bash variable `$MISSED` (e.g., `MISSED='[{"file":"foo","reason":"bar"}]'`) -- the gate dispatch below reads it via `--argjson` directly, no `/tmp` staging.
 
 ## `effective_blast` computation (inline)
 
 Both terms required: shard count is pre-screen (from 6.b), kept-file count is post-screen. A wide pre-screen scope that screening culled to <= 15 still indicates non-trivial blast and routes to `large` / Path 2.
+
+`screened-{session}.json` and `shard-plan-{session}.json` are producer-validated upstream (6.c aggregator + 6.b shard-findings.sh); inline jq reads here are safe under the same-pipeline invariant.
 
 ```
 kept_count=$(jq '.kept | length' .claude-tmp/scout/screened-{session}.json)
@@ -58,7 +60,7 @@ fi
 ## Gate dispatch + write (inline)
 
 ```
-missed_count=$(jq 'length' /tmp/{session}-missed-regions.json)
+missed_count=$(printf '%s' "$MISSED" | jq 'length')
 
 if [[ "$missed_count" -eq 0 ]]; then
   if [[ "$effective_blast" == "small" ]]; then
@@ -70,17 +72,18 @@ else
   mode=complex      # -> TaskCreate 7.x first, then step 8
 fi
 
-# Compose preflight-{session}.json (validated against preflight.schema.json by
-# downstream consumer_load; producer-side schema check is recommended via jq pipe
-# or python wrapper around _validate.producer_validate before persisting).
+# Compose preflight-{session}.json + producer-validate before downstream reads.
+# Mandatory per shared-guardrails "Producer scripts validate before write".
 jq -n \
   --arg mode "$mode" \
   --arg blast "$effective_blast" \
-  --argjson missed "$(cat /tmp/{session}-missed-regions.json)" \
+  --argjson missed "$MISSED" \
   '{missed_regions: $missed, effective_blast: $blast, mode: $mode}' \
   > .claude-tmp/scout/preflight-{session}.json
 
-rm -f /tmp/{session}-missed-regions.json
+bash $HOME/.claude/skills/apex/scripts/validate-json.sh \
+  preflight.schema.json .claude-tmp/scout/preflight-{session}.json
+# exit 1 -> abort with explicit error (preflight malformed at producer source).
 ```
 
 ## 7.x TaskCreate (only when `missed_regions != []`)

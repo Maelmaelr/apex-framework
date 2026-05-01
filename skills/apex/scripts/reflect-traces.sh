@@ -183,5 +183,5 @@ except OSError as e:
     except OSError:
         pass
 PY
-
-exit 0
+# `|| true` on the python heredoc above already pins exit 0 per the fail-silent
+# contract; no trailing `exit 0` needed (would mask any future post-python step).
