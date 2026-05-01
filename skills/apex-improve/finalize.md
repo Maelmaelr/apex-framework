@@ -5,17 +5,19 @@ Called from `SKILL.md` after Step 4 (Apply ops). Returns to SKILL.md for Steps 7
 ## Step 5: Cleanup + version stamp (inline)
 
 ```
-# 5a. Archive consumed signals (next session reflect-traces.sh appends fresh blocks)
+# 5a. Archive consumed signals (next session reflect-traces.sh + apex-tech-watch append fresh blocks)
 ARCHIVE_DIR="$HOME/.claude/tmp/improvements-archive"; mkdir -p "$ARCHIVE_DIR"
 DATE=$(date -u +%Y-%m-%dT%H-%M-%SZ)
-TARGET="$HOME/.claude/tmp/apex-workflow-improvements.md"
-[[ -s "$TARGET" ]] && { cp "$TARGET" "$ARCHIVE_DIR/${DATE}-workflow-improvements.md"; : > "$TARGET"; }
+WORKFLOW="$HOME/.claude/tmp/apex-workflow-improvements.md"
+TECH="$HOME/.claude/tmp/tech-updates.md"
+[[ -s "$WORKFLOW" ]] && { cp "$WORKFLOW" "$ARCHIVE_DIR/${DATE}-workflow-improvements.md"; : > "$WORKFLOW"; }
+[[ -s "$TECH" ]]     && { cp "$TECH"     "$ARCHIVE_DIR/${DATE}-tech-updates.md";         : > "$TECH"; }
 
 # 5b. Stamp CC version (closes version-drift signal until next CC update)
 claude --version | awk '{print $1}' > "$HOME/.claude/tmp/apex-claude-code-version.txt"
 ```
 
-`tech-updates.md` is NOT truncated - apex-tech-watch's 30-day rotation owns its lifecycle. The CC-version stamp lives under `~/.claude/tmp/` (gitignored); local-state only, not committed. Add to `{run}-dirty-paths.txt` only if content changed (`git diff --quiet` check).
+Both signal files archive to `improvements-archive/` (timestamped) before truncation, so unapplied / deferred blocks remain recoverable. apex-tech-watch's 30-day rotation still bounds `tech-updates.md` between consumption runs (this archive is post-consumption, not a substitute for that rotation). The CC-version stamp lives under `~/.claude/tmp/` (gitignored); local-state only, not committed. Add to `{run}-dirty-paths.txt` only if content changed (`git diff --quiet` check).
 
 ## Step 6: Report (inline)
 
