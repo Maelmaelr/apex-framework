@@ -48,7 +48,7 @@ If a Path A semantic edit would push the target past 400 lines (or 150 for `skil
 
 ## Cap-reached / no-progress abort
 
-If after iterating every op in the plan, **zero** ops were applied (every Path A Edit failed AND every Path B structural op hit drift -> rollback / restart), exit with `apex-improve: 0 ops applied; signals preserved for next run`. Do NOT proceed to Step 5 (truncation would lose unconsumed signals). The next run gets the same inputs.
+If after iterating every op in the plan, **zero** ops were applied (every Path A Edit failed AND every Path B structural op hit drift -> rollback / restart), still proceed to Step 5 (archive + truncate + stamp + minimal report) and skip Steps 7-8. Signals were *seen* by analyze + plan - the failure was in apply, not the signal track - so consumed inputs reset normally; deferred findings live on in `{run}-deferred-findings.json` (preserved across SessionEnd by `cleanup-run.sh`) for the next run. Exit message: `apex-improve: 0 ops applied; consumed signals archived, deferred preserved`.
 
 ## What this step does NOT do
 

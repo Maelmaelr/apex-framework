@@ -76,7 +76,7 @@ PID=$PPID                                                 # parent claude PID (N
 
 Read and follow `~/.claude/skills/apex-improve/analyze.md`. Produces `{run}-findings.json`.
 
-If empty (zero findings across all three sources), exit cleanly with `apex-improve: no signals to consume`; skip Steps 3-6 (manifest swept by SessionEnd hook; do NOT truncate any input file).
+If empty (zero findings across all three sources), skip Steps 3-4 but still run Step 5 (archive + truncate consumed signal files + CC version stamp) so `apex-workflow-improvements.md` and `tech-updates.md` reset for the next session - leaving stale signal blocks in place re-feeds them as deja-vu noise on the next run, even though no ops were emitted. Print a minimal Step 6 line `apex-improve: no signals to consume` (no findings/ops table). Skip Steps 7-8 (no diff to commit). Manifest swept by SessionEnd hook.
 
 ## Step 3: Plan ops
 
@@ -86,7 +86,7 @@ Read and follow `~/.claude/skills/apex-improve/plan.md`. Produces `{run}-evolve-
 
 Read and follow `~/.claude/skills/apex-improve/apply.md`. Produces `{run}-applied-ops.json` + `{run}-dirty-paths.txt`.
 
-If 0 ops applied (every Edit failed and every structural op hit drift), exit with `apex-improve: 0 ops applied; signals preserved for next run`; skip Steps 5-6. Do NOT truncate `apex-workflow-improvements.md` - nothing was consumed.
+If 0 ops applied (every Edit failed and every structural op hit drift), still run Steps 5-6 (archive + truncate + stamp + minimal report). The signals were *seen* by analyze.md / plan.md - the failure is in apply, not in the signal track - so the consumed inputs reset normally; deferred findings remain in `{run}-deferred-findings.json` (preserved across SessionEnd by `cleanup-run.sh`) for the next run. Skip Steps 7-8 (no diff to commit).
 
 ## Steps 5-6: Cleanup + stamp + Report
 
