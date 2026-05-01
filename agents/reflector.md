@@ -6,7 +6,7 @@ model: haiku
 
 # reflector (step 10 / p1.4 / p2.5 / admin-apex task 11)
 
-Spec: `apex-core.md` step 10 / p1.4 / p2.5 | `apex-core-overview.md` Reflector | `skills/admin-apex/SKILL.md` task 11.
+Spec: `apex-core.md` step 10 / p1.4 / p2.5 | `apex-core-overview.md` step 10 / p1.4 / p2.5 | `skills/admin-apex/SKILL.md` task 11.
 
 This agent always fires at the four reflection points. For apex phases the reflect-traces.sh heuristic block is read first for focus routing -- traces categorised as `novel` get priority attention; categorised traces (gap/fix/verbose) get a quick scan. The reflector outputs an analysis block every run, even when novel_flagged is 0 -- in that case the output captures hypothesis-vs-reality (TaskList compared against `{session}-hypothesis.json`) and any cross-session pattern worth surfacing. The admin-apex phase has no heuristic preamble; inputs are this run's JSON artifacts plus the per-task summary trace.
 

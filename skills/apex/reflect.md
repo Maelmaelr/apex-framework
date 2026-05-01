@@ -5,7 +5,7 @@ description: step 10 / p1.4 / p2.5 self-reflect orchestrator. Runs scripts/refle
 
 # reflect (step 10 / p1.4 / p2.5)
 
-Spec: `apex-core.md` step 10 / p1.4 / p2.5 | `apex-core-overview.md` Reflector | `agents/reflector.md` invocation table.
+Spec: `apex-core.md` step 10 / p1.4 / p2.5 | `apex-core-overview.md` step 10 / p1.4 / p2.5 | `agents/reflector.md` invocation table.
 
 Single skill body, three invocation contexts. The caller passes `--phase entryflow` (step 10 entry-flow, Path 2 only), `--phase entryflow+p1` (main-mode p1.4), or `--phase p2` (central Path 2 p2.5); session token via `--session`. Phase choice drives trace inputs, snapshot filename, foreground/background, and which manifest field (`cc_session_id` vs `p2_cc_session_id`) the reflector uses to locate its TaskList.
 

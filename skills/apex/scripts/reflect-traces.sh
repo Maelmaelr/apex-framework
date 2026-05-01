@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Steps 10 / p1.4 / p2.5: heuristic-first script that runs BEFORE the reflector agent.
-# Spec: apex-core.md step 10 / p1.4 / p2.5 | apex-core-overview.md Reflector.
+# Spec: apex-core.md step 10 / p1.4 / p2.5 | apex-core-overview.md step 10 / p1.4 / p2.5.
 #
 # Heuristic categorisation of trace files:
 #   - gap_signals    : trace content matches /error|failed|skip/i

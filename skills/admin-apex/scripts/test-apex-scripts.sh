@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Purpose: Apex-scoped script + schema syntax / contract check.
-# Spec: skills/admin-apex/SKILL.md task 8
+# Spec: skills/admin-apex/SKILL.md task 8. Apex script-behavior spec lives in
+#       apex-core.md (detailed workflow) + apex-core-overview.md (execution steps).
 #
 # Runs:
 #   - bash -n on every skills/apex/scripts/*.sh AND skills/admin-apex/scripts/*.sh
