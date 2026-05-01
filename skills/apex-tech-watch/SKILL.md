@@ -34,45 +34,7 @@ TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
 ## Step 1: 30-day rotation (BEFORE fetching)
 
-Rotate before fetching so the target file's footprint stays bounded.
-
-```
-# Move blocks older than 30 days to a single dated archive file.
-# Implementation: parse `## <id> - <ISO-8601>` headers; cutoff = now - 30d.
-python3 - <<'PY'
-import datetime, os, pathlib, re, shutil
-
-target = pathlib.Path(os.path.expanduser("~/.claude/tmp/tech-updates.md"))
-archive_dir = pathlib.Path(os.path.expanduser("~/.claude/tmp/tech-updates-archive"))
-archive_dir.mkdir(parents=True, exist_ok=True)
-if not target.exists() or target.stat().st_size == 0:
-    raise SystemExit(0)
-
-content = target.read_text(encoding="utf-8")
-cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
-# Block headers: ## <id> - <ISO-8601-Z>
-header_re = re.compile(r"^## ([^\s]+) - (\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z)\b", re.MULTILINE)
-matches = list(header_re.finditer(content))
-if not matches:
-    raise SystemExit(0)
-
-keep_parts, archive_parts = [], []
-for i, m in enumerate(matches):
-    start = m.start()
-    end = matches[i + 1].start() if i + 1 < len(matches) else len(content)
-    block = content[start:end]
-    block_ts = datetime.datetime.fromisoformat(m.group(2).replace("Z", "+00:00"))
-    (archive_parts if block_ts < cutoff else keep_parts).append(block)
-
-if archive_parts:
-    archive_file = archive_dir / f"{datetime.date.today().isoformat()}-rotation.md"
-    archive_file.write_text("".join(archive_parts), encoding="utf-8")
-    target.write_text("".join(keep_parts), encoding="utf-8")
-    print(f"rotated {len(archive_parts)} block(s) to {archive_file}")
-else:
-    print("nothing to rotate")
-PY
-```
+Rotate before fetching so the target file's footprint stays bounded. Read and follow `~/.claude/skills/apex-tech-watch/rotation.md` for the canonical rotation Python block (and the aggressive 7-day variant called from Step 3's hard-cap fallback).
 
 ## Step 2: Fetch + summarize each source
 
@@ -89,7 +51,15 @@ Use `WebFetch` with the source's `url` and `summarize_prompt`. Append the block 
   {WebFetch result, indented 2 spaces, line-wrapped at ~100 chars}
 ```
 
-If WebFetch fails (404 / timeout / parse error), append a degraded block:
+**Redirect handling**: If `WebFetch` returns a `REDIRECT DETECTED` envelope (e.g. `docs.anthropic.com` -> `platform.claude.com`, or a docs URL that 307s to a GitHub raw file), do NOT write the redirect notice as the block summary. Instead:
+
+1. Re-fetch the redirect target URL with the same `summarize_prompt`.
+2. Use the second-fetch result as the block summary.
+3. Update `sources.json` in-place to replace the stale URL with the redirect target so the next run hits it on first try. Edit the JSON file directly (one Edit call per stale URL); do not commit or push - the cron / next manual run picks up the new URL.
+
+This applies to permanent (301) and temporary (307) redirects alike. If a follow-up redirect chain is encountered, follow up to two hops total before degrading to a `fetch failed:` block.
+
+If WebFetch fails (404 / timeout / parse error / redirect-loop), append a degraded block:
 
 ```
 ## {source.id} - {TS}
@@ -138,63 +108,9 @@ apex-tech-watch: <N> source(s) fetched, <M> failure(s), <K> block(s) rotated.
 
 If any source failed, append the failure list (source.id + one-line error) on subsequent lines.
 
-## Manual invocation
+## Manual + automated invocation
 
-```
-/apex-tech-watch
-```
-
-Useful for ad-hoc refreshes (e.g., right after a major Anthropic announcement). This is the **primary** invocation path until the user sets up an automated schedule (see below).
-
-## Automated weekly schedule (user-owned)
-
-The output file lives at `~/.claude/tmp/tech-updates.md` -- a path on the user's local machine. Anthropic's `/schedule` remote triggers run in cloud sandboxes and **cannot** write to local paths, so the remote-trigger route does not fit this skill's contract. Two viable options for automation, both user-owned:
-
-### Option A: macOS launchd (recommended for local-only setup)
-
-Create `~/Library/LaunchAgents/com.user.apex-tech-watch.plist`:
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>Label</key>
-    <string>com.user.apex-tech-watch</string>
-    <key>ProgramArguments</key>
-    <array>
-        <string>/usr/bin/env</string>
-        <string>bash</string>
-        <string>-lc</string>
-        <string>claude --print "/apex-tech-watch" >> ~/.claude/tmp/apex-tech-watch.log 2>&amp;1</string>
-    </array>
-    <key>StartCalendarInterval</key>
-    <dict>
-        <key>Weekday</key>
-        <integer>0</integer>
-        <key>Hour</key>
-        <integer>6</integer>
-        <key>Minute</key>
-        <integer>0</integer>
-    </dict>
-    <key>RunAtLoad</key>
-    <false/>
-</dict>
-</plist>
-```
-
-Load: `launchctl load ~/Library/LaunchAgents/com.user.apex-tech-watch.plist`. Adjust `Hour` for your local time (the plist is in local time, no UTC conversion needed). Verify with `launchctl list | grep apex-tech-watch`.
-
-### Option B: cron (if you prefer crontab over launchd)
-
-```
-# Sunday 06:00 local
-0 6 * * 0 /usr/bin/env bash -lc 'claude --print "/apex-tech-watch" >> ~/.claude/tmp/apex-tech-watch.log 2>&1'
-```
-
-### Why not /schedule?
-
-Anthropic's `/schedule` remote triggers spawn in cloud sandboxes that have no path back into the user's local `~/.claude/tmp/`. Workarounds (commit-and-pull a tech-updates artifact through a git repo) add complexity and noise to the public repo. The cron is intentionally separate from `/apex-improve` -- fetch failures should not block improve runs, and improve runs should not depend on fetching being fresh-of-this-second.
+See `~/.claude/skills/apex-tech-watch/automation.md` for the manual `/apex-tech-watch` slash-command path, the macOS launchd plist, the cron alternative, and why Anthropic's `/schedule` remote-trigger does not fit this skill's local-output contract.
 
 ## What this skill does NOT do
 

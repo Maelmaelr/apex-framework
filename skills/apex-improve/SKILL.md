@@ -43,8 +43,7 @@ If all three signals empty / current at Step 2 -> exit `apex-improve: no signals
 | 2 | `analyze.md` | Phase 1: signal extraction; produces `{run}-findings.json` |
 | 3 | `plan.md` | Phase 2: planning + schema validation; produces `{run}-evolve-plan.json` |
 | 4 | `apply.md` | Phase 3: apply ops (3a semantic Edit, 3b delegate to admin-apex/evolve.md) |
-| 5 | this skill | Cleanup + version stamp (inline) |
-| 6 | this skill | Structured report (inline) |
+| 5-6 | `finalize.md` | Cleanup + version stamp + structured report |
 | 7-8 | `sync-git.md` | VERSION + commit + mirror + push (standalone-mode only; mirrors admin-apex tasks 9+10) |
 
 ## Step 0: TaskCreate the chain
@@ -54,8 +53,7 @@ If all three signals empty / current at Step 2 -> exit `apex-improve: no signals
 2. Analyze signals              - analyze.md (early-exit on no signals)
 3. Plan ops                     - plan.md
 4. Apply ops                    - apply.md
-5. Cleanup + stamp              - inline
-6. Report                       - inline
+5-6. Cleanup + stamp + Report   - finalize.md
 7. VERSION + commit             - sync-git.md (standalone only)
 8. Mirror + push both           - sync-git.md (standalone only)
 ```
@@ -90,43 +88,9 @@ Read and follow `~/.claude/skills/apex-improve/apply.md`. Produces `{run}-applie
 
 If 0 ops applied (every Edit failed and every structural op hit drift), exit with `apex-improve: 0 ops applied; signals preserved for next run`; skip Steps 5-6. Do NOT truncate `apex-workflow-improvements.md` - nothing was consumed.
 
-## Step 5: Cleanup + version stamp (inline)
+## Steps 5-6: Cleanup + stamp + Report
 
-```
-# 5a. Archive consumed signals (next session reflect-traces.sh appends fresh blocks)
-ARCHIVE_DIR="$HOME/.claude/tmp/improvements-archive"; mkdir -p "$ARCHIVE_DIR"
-DATE=$(date -u +%Y-%m-%dT%H-%M-%SZ)
-TARGET="$HOME/.claude/tmp/apex-workflow-improvements.md"
-[[ -s "$TARGET" ]] && { cp "$TARGET" "$ARCHIVE_DIR/${DATE}-workflow-improvements.md"; : > "$TARGET"; }
-
-# 5b. Stamp CC version (closes version-drift signal until next CC update)
-claude --version | awk '{print $1}' > "$HOME/.claude/tmp/apex-claude-code-version.txt"
-```
-
-`tech-updates.md` is NOT truncated - apex-tech-watch's 30-day rotation owns its lifecycle. The CC-version stamp lives under `~/.claude/tmp/` (gitignored); local-state only, not committed. Add to `{run}-dirty-paths.txt` only if content changed (`git diff --quiet` check).
-
-## Step 6: Report (inline)
-
-Print a structured summary to stdout (apex-eod step 3 captures and prints this verbatim):
-
-```
-apex-improve run {run} complete.
-
-Findings consumed: <N> (workflow-improvements: <a>, tech-updates: <b>, version-drift: <c>)
-Operations applied: <N>
-  - semantic: <n>
-  - replace:  <n>
-  - structural: <n> (split: x, rename: y, retire: z, create: w)
-
-Per-file delta_lines (top 5 by absolute value):
-  +<n>  <path>
-  -<n>  <path>
-  ...
-
-Net delta_lines across run: <signed int>
-```
-
-If `Net delta_lines > +50` OR `additive` ops > 1, append a Principle 3 note: `this run grew the framework by N lines / created M new files; review whether the findings could have been satisfied semantically`. Informational only - the run still commits.
+Read and follow `~/.claude/skills/apex-improve/finalize.md`. Returns when the structured Step 6 summary has been printed; resume at Steps 7-8 below (standalone mode only).
 
 ## Steps 7-8: VERSION + commit + mirror + push
 
@@ -153,4 +117,4 @@ The "do NOT commit or push" line is the explicit signal that suppresses Steps 7+
 - Does NOT bypass the file-health hook - if a Step 4 semantic edit would push a file past 400 lines, the hook fires and apex-improve must AskUserQuestion (`split-now | reduce-edit | abort`). Same gate any apex skill respects.
 - Does NOT decide that a tech-update is irrelevant on its own - if uncertain whether to apply a tech-watch finding, defer it (write to `{run}-deferred-findings.json`) rather than guess.
 
-See `analyze.md`, `plan.md`, `apply.md` for per-step contracts; `~/.claude/skills/admin-apex/evolve.md` for the structural-ops engine; `~/.claude/skills/admin-apex/scripts/admin-apex-finalize.sh` + `mirror-to-dev.sh` for the shared commit + mirror drivers; `~/.claude/skills/apex/shared-guardrails.md` for safety paths and JSON-Schema validation; `~/.claude/skills/apex-tech-watch/SKILL.md` for the upstream tech-updates fetcher.
+See `analyze.md`, `plan.md`, `apply.md`, `finalize.md` for per-step contracts; `~/.claude/skills/admin-apex/evolve.md` for the structural-ops engine; `~/.claude/skills/admin-apex/scripts/admin-apex-finalize.sh` + `mirror-to-dev.sh` for the shared commit + mirror drivers; `~/.claude/skills/apex/shared-guardrails.md` for safety paths and JSON-Schema validation; `~/.claude/skills/apex-tech-watch/SKILL.md` for the upstream tech-updates fetcher.
