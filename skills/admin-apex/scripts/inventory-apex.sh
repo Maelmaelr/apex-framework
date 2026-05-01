@@ -3,13 +3,24 @@
 # Spec: skills/admin-apex/SKILL.md task 2 + schemas/inventory.schema.json
 #
 # Walks:
-#   skills/apex/*.md           -> skills[]
-#   agents/*.md                -> agents[]
-#   skills/apex/scripts/*.{sh,py} -> scripts[]
-#   skills/apex/schemas/*.json -> schemas[]
-#   settings.json              -> hooks[]
+#   skills/apex/*.md             -> skills[] (apex sub-skills)
+#   skills/apex-*/SKILL.md       -> skills[] (sibling apex skills: improve, tech-watch,
+#                                  eod, fix, init, lessons-extract, lessons-analyze,
+#                                  file-health)
+#   skills/admin-apex/*.md       -> skills[] (admin-apex sub-skills: SKILL, audit,
+#                                  evolve, sync-docs)
+#   agents/*.md                  -> agents[]
+#   skills/apex/scripts/*.{sh,py}       -> scripts[]
+#   skills/admin-apex/scripts/*.{sh,py} -> scripts[]
+#   skills/apex/schemas/*.json       -> schemas[]
+#   skills/admin-apex/schemas/*.json -> schemas[]
+#   settings.json                -> hooks[]
 #   apex-core.md, apex-core-overview.md, README.md, CLAUDE.md -> spec_docs[]
-#   VERSION                    -> version
+#   VERSION                      -> version
+#
+# Coverage rationale: the >150-line cap that audit.md applies to "skills/agents
+# sub-skills" needs sibling apex-* skills + admin-apex sub-skills in inventory
+# to fire (Principle 3: prevent silent bloat in framework files).
 #
 # Pure read; no mutation.
 #
@@ -163,10 +174,20 @@ def read_version():
 
 
 inventory = {
-    "skills": collect_md(os.path.join(repo, "skills/apex/*.md")),
+    "skills": (
+        collect_md(os.path.join(repo, "skills/apex/*.md"))
+        + collect_md(os.path.join(repo, "skills/apex-*/SKILL.md"))
+        + collect_md(os.path.join(repo, "skills/admin-apex/*.md"))
+    ),
     "agents": collect_md(os.path.join(repo, "agents/*.md")),
-    "scripts": collect_scripts(os.path.join(repo, "skills/apex/scripts/*")),
-    "schemas": collect_schemas(os.path.join(repo, "skills/apex/schemas/*.json")),
+    "scripts": (
+        collect_scripts(os.path.join(repo, "skills/apex/scripts/*"))
+        + collect_scripts(os.path.join(repo, "skills/admin-apex/scripts/*"))
+    ),
+    "schemas": (
+        collect_schemas(os.path.join(repo, "skills/apex/schemas/*.json"))
+        + collect_schemas(os.path.join(repo, "skills/admin-apex/schemas/*.json"))
+    ),
     "hooks": collect_hooks(),
     "spec_docs": collect_spec_docs(),
     "version": read_version(),

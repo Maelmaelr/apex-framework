@@ -7,8 +7,9 @@
 #   - fix_attempts   : filename matches fix-attempt-<N>.md
 #   - verbose_traces : >= VERBOSE_THRESHOLD lines (default 100)
 # A trace is "novel" when it falls into none of the above buckets - useful
-# reasoning that the heuristic cannot categorise. The reflector agent fires only
-# when novel_flagged >= 1; the orchestrator gates on that count.
+# reasoning that the heuristic cannot categorise. Since apex framework v1.4.0
+# the reflector agent always fires; novel_flagged is informational only and
+# drives focus selection (the novel_traces line lists the paths to read first).
 #
 # Appends a structured block to ~/.claude/tmp/apex-workflow-improvements.md under
 # fcntl LOCK_EX on ~/.claude/tmp/apex-workflow-improvements.md.lock (portable
@@ -36,7 +37,8 @@
 
 # `set -e` would abort on the first heuristic that finds nothing; this script is
 # best-effort and must always emit a block (even if all counts are zero) so the
-# orchestrator can read the novel_flagged line for its gate decision.
+# orchestrator can read the novel_traces line for focus routing (reflector
+# always fires - novel_flagged is no longer a gate).
 set -uo pipefail
 
 SESSION=""

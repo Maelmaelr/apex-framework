@@ -36,7 +36,7 @@ Empty `clusters: []` -> "clean" outcome (SKILL task 4 prints report path and exi
 
 | Kind | Detector |
 |------|---------|
-| `oversized-files` | Any inventory entry (skills, agents, scripts, spec_docs) with `lines > 500` OR (skills/agents/admin-apex sub-skills with `lines > 150`). Continuous-prose docs (apex-core.md, apex-core-overview.md, README.md, CLAUDE.md) only flagged at >800 lines. |
+| `oversized-files` | Any inventory entry (`skills[]`, `agents[]`, `scripts[]`, `spec_docs[]`) with `lines > 500` OR any `skills[]` / `agents[]` entry with `lines > 150` (covers apex sub-skills, sibling apex-* skills, admin-apex sub-skills, and all agents - Principle 3: prevent silent framework bloat). Continuous-prose docs (apex-core.md, apex-core-overview.md, README.md, CLAUDE.md) only flagged at >800 lines. |
 | `orphan-refs` | Spec docs (apex-core.md, apex-core-overview.md, README.md, CLAUDE.md) reference a `skills/apex/...` / `agents/...` / `scripts/...` path NOT present in the inventory. Detected by extracting `\b(skills/apex/[^ \t\n\)\`]+\|agents/[^ \t\n\)\`]+\|scripts/[^ \t\n\)\`]+)` substrings via grep on each spec doc, then set-differencing against the inventory. |
 | `missing-refs` | Inventory file present but appears in zero spec docs (best-effort: filename basename grep across spec_docs[]). Excluded: `__pycache__`, files starting with `_` (private helpers), `SKILL.md` itself. |
 | `stale-spec` | A spec doc names a file under skills/apex/scripts that did exist in the inventory at task 2 but does NOT exist on disk at task 3 read time (i.e., race / mid-flight rename). Flagged as a hard-stop cluster - SKILL gate downgrades to audit-only. |
