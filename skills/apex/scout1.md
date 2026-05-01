@@ -20,7 +20,7 @@ Routing:
 
 ## AskUserQuestion contracts (orchestrator-side)
 
-Surfaced by `scout1.md` / `scout2.md`; `SKILL.md` step 6 routing is the entry point. Both questions: dismiss / cancel = abort.
+Surfaced by `scout1.md` / `scout2.md`; `SKILL.md` step 6 routing is the entry point. All questions: dismiss / cancel = abort.
 
 ```
 AskUserQuestion at 6.a (zero-layer; exit code 10 from enumerate):
@@ -30,9 +30,25 @@ AskUserQuestion at 6.a (zero-layer; exit code 10 from enumerate):
                                   SKIP 6.b/6.c/7/8/9, call p1.md directly)
 0 validated paths after extraction -> abort like verify exit-1.
 
-AskUserQuestion at 6.b (> 8 shards):
-  - "continue"  (no max cap; proceed to 6.c with the wide plan)
-  - "refine"    (abort cleanly so user can re-prompt with narrower scope)
+AskUserQuestion at 6.b (> 8 shards; exit code 11 from shard-findings.sh):
+  Read shard-plan-{session}.json _meta to branch the option set.
+  Always present: "refine" (abort cleanly so user can re-prompt with narrower scope).
+
+  Branch A - _meta.ripgrep_poisoned == true (zero deterministic-layer files; the
+  hypothesis text fed generic words to ripgrep; the wide shard plan is noise):
+    - "refine"                       (recommended)
+    - "proceed-with-prompt-paths"    (reuse zero-layer-extract.sh per "Zero-layer
+                                      proceed" below; SKIP 6.b/6.c/7/8/9, call p1.md)
+    - "continue"                     (last resort; fans out N screeners on noise)
+
+  Branch B - _meta.ripgrep_poisoned == false (real deterministic signal AND
+  ripgrep noise AND too many shards):
+    - "refine"                       (recommended for highly oversized plans)
+    - "screen-deterministic-only"    (re-invoke shard-findings.sh with
+                                      --min-confidence medium; drops ripgrep-only
+                                      entries and re-shards; proceed to 6.c with
+                                      the narrowed plan)
+    - "continue"                     (run all shards; bypass the filter)
 ```
 
 Aggregation: read each shard-result JSON, merge per-shard kept/dropped, schema-validate, return artifact path to apex.
@@ -82,3 +98,17 @@ bash $HOME/.claude/skills/apex/scripts/zero-layer-extract.sh {session}
 The script reads `original_prompt` from `{session}-hypothesis.json`, regex-extracts paths (project-tree-shaped + quoted/backticked tokens), validates each on disk, writes `{session}-main-scope.json` + the scope pointer at `{session}-scopes/$CC_SESSION_ID.txt`. Exit codes: `0` = scope written, `10` = zero validated paths -> abort like verify exit-1.
 
 Then SKIP 6.b / 6.c / 7 / 8 / 9 (mark TaskList completed as no-op) and call `p1.md` directly with NO preflight artifact written. p1.0 reads absent preflight as no-findings-consultation branch.
+
+## Ripgrep-poisoned proceed (6.b exit code 11, branch A)
+
+Same flow as zero-layer: invoke `zero-layer-extract.sh {session}`, mark 6.b/6.c/7/8/9 completed as no-op, call `p1.md`. The shard plan (already written to disk by shard-findings.sh) is left for the reflector; the empty post-extract scope handles the "0 validated paths" abort identically to 6.a.
+
+## Screen-deterministic-only (6.b exit code 11, branch B)
+
+On user choice "screen-deterministic-only", re-invoke shard-findings.sh once with the same args plus `--min-confidence medium`. The script overwrites `shard-plan-{session}.json` with the filtered plan (also rewrites `_meta` telemetry). Exit-code dispatch on the re-run:
+
+- `0` -> proceed to 6.c (parallel screeners) with the narrowed plan.
+- `11` -> still > 8 shards even after dropping ripgrep-only entries; re-fire the same AskUserQuestion (refine | screen-deterministic-only with --min-confidence high | continue). Cap re-invocations at 2 (after `high` filter, no further escalation - if still oversized, only `refine` and `continue` remain).
+- `1` -> abort with explicit error (state corruption).
+
+Each re-shard is a fresh producer-validated artifact; downstream 6.c reads it without modification.

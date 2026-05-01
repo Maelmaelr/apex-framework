@@ -68,7 +68,11 @@ Legend:
   - **6.b Shard (preflight sizing)**
     - Tool: shard script
     - Mechanical: shard count = `ceil(files/15)`
-    - Routing: if >8 shards -> AskUserQuestion (continue / refine); dismiss = abort
+    - Telemetry: `_meta.{findings_count, shard_count, deterministic_count, ripgrep_only_count, ripgrep_poisoned}` always written
+    - Routing: if >8 shards -> AskUserQuestion branched on `_meta.ripgrep_poisoned`:
+      - poisoned=true (zero deterministic-layer findings): refine | proceed-with-prompt-paths (reuse `zero-layer-extract.sh`, SKIP 6.b/6.c/7/8/9) | continue
+      - poisoned=false (real signal + too many shards): refine | screen-deterministic-only (re-invoke shard with `--min-confidence medium`) | continue
+      - dismiss = abort
     - Writes `shard-plan-{session}.json`
 
   - **6.c Parallel screen**

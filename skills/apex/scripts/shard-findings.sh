@@ -4,21 +4,31 @@
 #
 # Behavior:
 #   - Read findings-{session}.json -> kept files list
+#   - Optional --min-confidence drops entries below threshold BEFORE sharding
+#     (used by scout1.md 6.b "screen-deterministic-only" branch)
 #   - Mechanical: shard count = ceil(files / 15) (15 keeps Sonnet context comfortable)
 #   - Boundary: top-level dir; when any dir holds > 15 files, sub-shard that dir
 #     by file extension (file-type fallback per "top-level dir, file-type, or
 #     import-edge cluster" enum). Resulting shards capped at 15 files each;
 #     remainder folds into a final shard if oversize.
+#   - Always emits poisoning telemetry to _meta: findings_count, shard_count,
+#     deterministic_count, ripgrep_only_count, ripgrep_poisoned (true when zero
+#     deterministic-layer files; surfaces from generic-keyword ripgrep fallout).
 #   - If shard count > 8: append warning to _meta.warnings, exit 11 (orchestrator
-#     surfaces AskUserQuestion: continue / refine; dismiss = abort)
+#     reads _meta.ripgrep_poisoned to branch the AskUserQuestion contract per
+#     scout1.md "AskUserQuestion contracts (orchestrator-side)")
 #   - Read hypothesis from {session}-hypothesis.json (path passed as arg);
 #     inject `original_prompt` + `hypothesis` verbatim into shared screening prompt
 #   - Generate shard-plan-{session}.json (validated against shard-plan.schema.json)
 #
 # Args:
-#   --session <token>     (required, 8-hex)
-#   --findings <path>     (required) - .claude-tmp/scout/findings-{session}.json
-#   --hypothesis <path>   (required) - .claude-tmp/apex-active/{session}-hypothesis.json
+#   --session <token>          (required, 8-hex)
+#   --findings <path>          (required) - .claude-tmp/scout/findings-{session}.json
+#   --hypothesis <path>        (required) - .claude-tmp/apex-active/{session}-hypothesis.json
+#   --min-confidence <level>   (optional) - drop findings entries with confidence
+#                              below this level before sharding. One of
+#                              low|medium|high (default: low = no filter).
+#                              medium drops "low"; high drops "low"+"medium".
 #
 # Exit codes: 0 = success | 11 = shard count > 8 | 1 = unrecoverable error
 
@@ -30,14 +40,21 @@ SCOUT_DIR=".claude-tmp/scout"
 SESSION=""
 FINDINGS=""
 HYPOTHESIS=""
+MIN_CONFIDENCE="low"
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --session)    SESSION="${2:-}";    shift 2 ;;
-    --findings)   FINDINGS="${2:-}";   shift 2 ;;
-    --hypothesis) HYPOTHESIS="${2:-}"; shift 2 ;;
+    --session)        SESSION="${2:-}";        shift 2 ;;
+    --findings)       FINDINGS="${2:-}";       shift 2 ;;
+    --hypothesis)     HYPOTHESIS="${2:-}";     shift 2 ;;
+    --min-confidence) MIN_CONFIDENCE="${2:-}"; shift 2 ;;
     *) echo "shard-findings.sh: unknown arg: $1" >&2; exit 1 ;;
   esac
 done
+
+case "$MIN_CONFIDENCE" in
+  low|medium|high) ;;
+  *) echo "shard-findings.sh: --min-confidence must be one of low|medium|high" >&2; exit 1 ;;
+esac
 
 if [[ -z "$SESSION" || ! "$SESSION" =~ ^[0-9a-f]{8}$ ]]; then
   echo "shard-findings.sh: --session required (8-hex)" >&2; exit 1
@@ -52,7 +69,7 @@ fi
 mkdir -p "$SCOUT_DIR"
 OUTPUT="$SCOUT_DIR/shard-plan-${SESSION}.json"
 
-python3 - "$FINDINGS" "$HYPOTHESIS" "$OUTPUT" "$SCRIPT_DIR" <<'PY'
+python3 - "$FINDINGS" "$HYPOTHESIS" "$OUTPUT" "$SCRIPT_DIR" "$MIN_CONFIDENCE" <<'PY'
 import json
 import math
 import os
@@ -62,7 +79,7 @@ from collections import defaultdict
 sys.path.insert(0, sys.argv[4])
 import _validate
 
-findings_path, hypothesis_path, output_path, _script_dir = sys.argv[1:5]
+findings_path, hypothesis_path, output_path, _script_dir, min_confidence = sys.argv[1:6]
 
 # Consumer-validate findings (treats invalid as missing -> abort 1).
 findings_doc = _validate.consumer_load(findings_path, "findings")
@@ -73,15 +90,57 @@ if findings_doc is None:
     )
     sys.exit(1)
 
-files = [entry["file"] for entry in findings_doc.get("findings", [])]
+# Poisoning telemetry (computed against the FULL findings list before any
+# --min-confidence filter, so the gate sees the unfiltered ground truth).
+all_entries = findings_doc.get("findings", [])
+deterministic_layers = {"static-imports", "ast-grep", "lsp", "framework"}
+
+
+def is_deterministic(entry: dict) -> bool:
+    return any(r.get("layer") in deterministic_layers for r in entry.get("reasons", []))
+
+
+def is_ripgrep_only(entry: dict) -> bool:
+    layers = {r.get("layer") for r in entry.get("reasons", [])}
+    return bool(layers) and layers.issubset({"ripgrep"})
+
+
+findings_count = len(all_entries)
+deterministic_count = sum(1 for e in all_entries if is_deterministic(e))
+ripgrep_only_count = sum(1 for e in all_entries if is_ripgrep_only(e))
+ripgrep_poisoned = findings_count > 0 and deterministic_count == 0
+
+# Optional --min-confidence filter (used by scout1.md "screen-deterministic-only"
+# branch). Order: low < medium < high. Setting min=medium drops "low"; min=high
+# drops "low"+"medium". Default min=low keeps everything.
+order = {"low": 0, "medium": 1, "high": 2}
+min_rank = order[min_confidence]
+filtered_entries = [e for e in all_entries if order.get(e.get("confidence", "low"), 0) >= min_rank]
+filter_drop_count = findings_count - len(filtered_entries)
+
+files = [entry["file"] for entry in filtered_entries]
 if not files:
     # Zero-layer / empty findings should have been caught at 6.a (exit 10).
-    # If we got here, treat as a non-event: write an empty shard plan with
-    # a warning and exit 0 (downstream 6.c will produce empty screened.json).
+    # Also reachable when --min-confidence dropped every entry. Treat as a
+    # non-event: write an empty shard plan with a warning + telemetry and
+    # exit 0 (downstream 6.c will produce empty screened.json).
+    warnings = ["empty findings; no shards produced"]
+    if filter_drop_count > 0:
+        warnings.append(
+            f"--min-confidence={min_confidence} dropped all {filter_drop_count} entries"
+        )
     doc = {
         "shards": [],
         "screening_prompt": "",
-        "_meta": {"warnings": ["empty findings; no shards produced"]},
+        "_meta": {
+            "warnings": warnings,
+            "findings_count": findings_count,
+            "shard_count": 0,
+            "deterministic_count": deterministic_count,
+            "ripgrep_only_count": ripgrep_only_count,
+            "ripgrep_poisoned": ripgrep_poisoned,
+            "min_confidence": min_confidence,
+        },
     }
     _validate.producer_validate(doc, "shard-plan")
     with open(output_path, "w", encoding="utf-8") as f:
@@ -212,10 +271,26 @@ Return: JSON path + one-line status (e.g., "kept: 7, dropped: 3"). Never the fin
 warnings: list[str] = []
 if len(shards) > 8:
     warnings.append(f"scope likely overshot - {len(shards)} shards needed")
+if ripgrep_poisoned:
+    warnings.append(
+        f"ripgrep-poisoned: {findings_count} findings, 0 deterministic-layer entries "
+        f"(all from ripgrep keyword fallback - hypothesis text likely contained generic words)"
+    )
+if filter_drop_count > 0:
+    warnings.append(
+        f"--min-confidence={min_confidence} dropped {filter_drop_count} of {findings_count} entries before sharding"
+    )
 
-doc: dict = {"shards": shards, "screening_prompt": screening_prompt}
-if warnings:
-    doc["_meta"] = {"warnings": warnings}
+meta: dict = {
+    "warnings": warnings,
+    "findings_count": findings_count,
+    "shard_count": len(shards),
+    "deterministic_count": deterministic_count,
+    "ripgrep_only_count": ripgrep_only_count,
+    "ripgrep_poisoned": ripgrep_poisoned,
+    "min_confidence": min_confidence,
+}
+doc: dict = {"shards": shards, "screening_prompt": screening_prompt, "_meta": meta}
 
 try:
     _validate.producer_validate(doc, "shard-plan")
