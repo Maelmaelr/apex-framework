@@ -165,7 +165,7 @@ Same chain serves main mode and teammate mode (under Path 2). `--teammate` flag 
   - Subagents (all Sonnet, foreground):
     - `learn.md` - reads `git diff {baseline.head_sha}`; appends to `.claude-tmp/lessons-tmp.md`
     - `documentation.md` - reads baseline-pinned diff; updates project docs/architecture
-    - `git.md` - per-file `git add` after dotenv-secret denylist (`{.env, .env.local, .env.production, .env.development}`) + `git check-ignore` filter; commits, no push; fail-silent (errors -> `~/.claude/tmp/git-agent-errors.log`)
+    - `git.md` - per-file `git add` after dotenv pre-filter (block basename matching `.env*` except templates `{.env.example, .env.sample, .env.template}` - aligns with `protect-env-hook.sh`) + `git check-ignore` filter; commits, no push; fail-silent (errors -> `~/.claude/tmp/git-agent-errors.log`)
 
 - **p1.4 Self-reflect** - **main mode only** (teammate skips, p2.5 owns)
   - Tool: `reflect-traces.sh` (script) + `reflector.md` (Haiku, foreground)
@@ -250,7 +250,7 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
 
 - **p2.4 Tail (learn / docs / git)**
   - Tool: `detect-tail-mode.sh` (script) -> agents (same as p1.3 logic)
-  - **Integration pass**: `documentation.md` owns first-write on planner's `shared_files` list (cross-teammate docs/READMEs excluded from teammate scopes)
+  - **Integration pass**: `documentation.md` owns first-write on planner's `shared_files` list (cross-teammate docs/READMEs excluded from teammate scopes); orchestrator passes the list via spawn prompt's `Shared files:` line
   - `git.md` stages teammate-modified tracked + teammate-newly-created untracked files
 
 - **p2.5 Self-reflect**

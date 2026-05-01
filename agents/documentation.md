@@ -11,6 +11,7 @@ Spec: `apex-core.md` p1.3 / p2.4 | `apex-core-overview.md` p1.3.
 ## Inputs
 
 - `git diff {baseline.head_sha}` for context. `head_sha` from `.claude-tmp/apex-active/{session}-baseline.json`. Baseline-pinned for the same race-avoidance reason as `learn.md` (independent of git.md commit timing).
+- (`--phase p2` only) `Shared files:` line in the spawn prompt: comma-separated repo-relative paths from the planner's `shared_files` list. The orchestrator at p2.4 fills this from the embedded plan body before spawning. Empty / absent at `--phase p1` and `--phase teammate`. The integration pass owns first-write on each path in this list; at other phases there is no shared_files input.
 
 ## Behavior
 

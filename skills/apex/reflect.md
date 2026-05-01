@@ -54,51 +54,15 @@ Foreground vs background is per the table above; choose the spawn modality at or
 
 ### Spawn-prompt template
 
-Substitute `{session}`, `{phase}`, `{snapshot_suffix}` (see table: `entryflow` | `p1` | `p2`), `{manifest_field}` (`cc_session_id` for entryflow / entryflow+p1, `p2_cc_session_id` for p2).
+Substitute `{session}`, `{phase}` (`entryflow` | `entryflow+p1` | `p2`), and `{snapshot_suffix}` (`entryflow` | `p1` | `p2` per the invocation-contexts table).
 
 ```
 You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and follow it.
 
-Session: {session}
-Phase:   {phase}                 # entryflow | entryflow+p1 | p2
+Session:  {session}
+Phase:    {phase}             # entryflow | entryflow+p1 | p2
 Manifest: .claude-tmp/apex-active/{session}.json
-  - read {manifest_field} from this file; load the TaskList at
-    ~/.claude/todos/<id>-agent-<id>.json where <id> is that field's value.
-
-Heuristics block (already appended by scripts/reflect-traces.sh):
-  ~/.claude/tmp/apex-workflow-improvements.md
-  - parse the LATEST `## {session} - {phase}-heuristics - <ts>` block
-  - the `novel_traces:` line lists the trace paths to focus on (max 5)
-
-First action - snapshot defends against the p1.5 / p2.6 cleanup race
-(cap 50KB for Haiku context bound). Use the trace globs that match {phase}:
-  entryflow      -> .claude-tmp/apex-active/{session}-traces/entryflow/*.md
-  entryflow+p1   -> .claude-tmp/apex-active/{session}-traces/entryflow/*.md
-                    .claude-tmp/apex-active/{session}-traces/p1/*.md
-  p2             -> .claude-tmp/apex-active/{session}-traces/p2/*.md
-
-  TOTAL=$(cat <trace globs> | wc -c)
-  N=$(ls <trace globs> | wc -l)
-  cat <trace globs> | head -c 51200 > /tmp/{session}-{snapshot_suffix}-snapshot.txt
-  [ "$TOTAL" -gt 51200 ] && echo "[snapshot truncated, $N traces total]" >> /tmp/{session}-{snapshot_suffix}-snapshot.txt
-
-Then process the snapshot file - NOT the live trace files (cleanup may race).
-
-Additional inputs for entryflow+p1 / p2 (omit for entryflow):
-  - git diff --stat <baseline.head_sha>     (head_sha from {session}-baseline.json)
-  - git ls-files --others --exclude-standard
-
-Output: structured append (NO prose) to
-  ~/.claude/tmp/apex-workflow-improvements.md
-under `flock ~/.claude/tmp/apex-workflow-improvements.md.lock`:
-
-  ## {session} - {phase} - <timestamp>
-  - gaps: <one-line per gap, max 3>
-  - fixes-observed: <one-line per p1.2/p2.3 fix-attempt observed in traces, max 3>
-  - improvements: <one-line per suggestion, max 3>
-
-Errors -> ~/.claude/tmp/reflector-errors.log (silent failure otherwise).
-Shut down silently (no main-session output).
+Snapshot: /tmp/{session}-{snapshot_suffix}-snapshot.txt
 ```
 
 ## Fail-silent contract

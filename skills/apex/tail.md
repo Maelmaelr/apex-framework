@@ -52,26 +52,15 @@ fi
 
 The orchestrator MUST issue ONE message containing the relevant Agent tool calls in parallel (per CLAUDE.md "Parallel execution for independent changes"). All agents are Sonnet, foreground, no traces (tail agents are non-trace per `shared-guardrails.md`).
 
-For each agent in `AGENTS`, use the spawn-prompt template below. Substitute `{session}` and `{phase}` (`p1` | `p2` - omit for teammate-mode docs spawn).
+For each agent in `AGENTS`, use the spawn-prompt template below. Substitute `{session}` and (where the template includes a `Phase:` line) `{phase}` (`p1` | `p2` | `teammate`). For the p2 documentation.md spawn, also substitute `{shared_files}` (comma-separated repo-relative paths from the planner's `shared_files` list, read from the embedded plan body).
 
 ### learn.md spawn prompt
 
 ```
 You are agents/learn.md. Read it at $HOME/.claude/agents/learn.md and follow it.
 
-Session: {session}
-Baseline: .claude-tmp/apex-active/{session}-baseline.json (read head_sha here)
-
-Inputs:
-- git diff <head_sha>   (baseline-pinned; independent of git.md commit timing)
-- git ls-files --others --exclude-standard   (untracked apex-created files)
-
-Output:
-- Append novel patterns / lessons to .claude-tmp/lessons-tmp.md.
-- Curation into project lessons-index is OUT OF SCOPE for /apex.
-
-Skipped if `economy` mode or teammate phase (the orchestrator already gates this).
-Return one-line summary; NO trace.
+Session:  {session}
+Baseline: .claude-tmp/apex-active/{session}-baseline.json
 ```
 
 ### documentation.md spawn prompt
@@ -79,23 +68,10 @@ Return one-line summary; NO trace.
 ```
 You are agents/documentation.md. Read it at $HOME/.claude/agents/documentation.md and follow it.
 
-Session: {session}
-Phase:   {phase}    # p1 | p2 | teammate
-Baseline: .claude-tmp/apex-active/{session}-baseline.json (read head_sha here)
-
-Inputs:
-- git diff <head_sha>   (baseline-pinned; independent of git.md commit timing)
-
-Behavior by phase:
-- p1 / teammate: update project docs / architecture notes when structural changes warrant; teammate scope is the teammate's allowed-files list.
-- p2 (central):  ALSO own first-write on the planner's `shared_files` list (cross-teammate docs / READMEs excluded from every teammate scope by the disjoint-scope rule at p2.0b). Per-teammate scope-internal doc edits already happened in each teammate's own p1.3.
-
-Scope: docs + architecture only. NOT security audits, NOT PRD generation.
-
-Hooks active:
-- scope-check (PreToolUse Edit/Write/MultiEdit/NotebookEdit) - safety paths include docs/** and any README* at any depth.
-
-Return one-line summary; NO trace.
+Session:      {session}
+Phase:        {phase}        # p1 | p2 | teammate
+Baseline:     .claude-tmp/apex-active/{session}-baseline.json
+Shared files: {shared_files}   # p2 only; comma-separated repo-relative paths from planner's shared_files list. Empty/absent on p1 / teammate.
 ```
 
 ### git.md spawn prompt
@@ -103,23 +79,8 @@ Return one-line summary; NO trace.
 ```
 You are agents/git.md. Read it at $HOME/.claude/agents/git.md and follow it.
 
-Session: {session}
-Baseline: .claude-tmp/apex-active/{session}-baseline.json (read head_sha here)
-
-Behavior:
-1. Compute change set: (git diff --name-only <head_sha>; git ls-files --others --exclude-standard) | sort -u.
-2. Per-file pre-filter (closed sets, NOT globs):
-   - skip if basename in dotenv-secret set: {.env, .env.local, .env.production, .env.development}
-   - skip if `git check-ignore <path>` returns 0
-3. Per-file `git add` (NOT `git add -A`).
-4. Read `git diff --staged --stat` + `git diff --staged` for commit-message context.
-5. `git commit` with derived message. NO push.
-
-Fail-silent contract: errors -> ~/.claude/tmp/git-agent-errors.log; return success to orchestrator so the step does NOT fail.
-
-"Process as normal file" rule: pre-/apex dirty files surviving the p1.0 / p2.0 conflict check are staged alongside apex's edits.
-
-Return one-line summary; NO trace.
+Session:  {session}
+Baseline: .claude-tmp/apex-active/{session}-baseline.json
 ```
 
 ## Fail-silent contract (whole step)
