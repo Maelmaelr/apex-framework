@@ -127,6 +127,23 @@ while IFS= read -r line; do
   [[ -n "$line" ]] && SEED_TERMS+=("$line")
 done < <(python3 -c "import json; print('\n'.join(json.load(open('$SEEDS_FILE'))['seed_terms']))")
 
+# Filter stdin paths to those whose path contains at least one SEED_TERM
+# (case-insensitive fixed-string match). Empty SEED_TERMS = pass-through. Used
+# by layer 4 to bound framework enumeration to seed-relevant route/component
+# files; without this, a typical Next.js project floods 200 route files into
+# findings regardless of the user's prompt.
+filter_by_seeds() {
+  if [[ ${#SEED_TERMS[@]} -eq 0 ]]; then
+    cat
+    return 0
+  fi
+  local args=()
+  for term in "${SEED_TERMS[@]}"; do
+    args+=(-e "$term")
+  done
+  grep -iF "${args[@]}" || true
+}
+
 # --- Layer 1: static-imports ------------------------------------------------
 layer1() {
   local produced=0
@@ -137,10 +154,15 @@ layer1() {
       local out
       out=$(madge --json "$seed" 2>/dev/null || true)
       [[ -z "$out" ]] && continue
-      python3 - "$LAYER_DIR/static-imports.jsonl" "$seed" <<PY
+      # Quoted heredoc + argv passing: $out can contain ''' or backslash-special
+      # sequences that would break a triple-quoted string literal interpolation.
+      python3 - "$LAYER_DIR/static-imports.jsonl" "$seed" "$out" <<'PY'
 import json, os, sys
-out_path, seed = sys.argv[1:3]
-data = json.loads('''$out''')
+out_path, seed, raw = sys.argv[1:4]
+try:
+    data = json.loads(raw)
+except json.JSONDecodeError:
+    sys.exit(0)
 seen = set()
 with open(out_path, "a", encoding="utf-8") as f:
     for k, vs in data.items():
@@ -198,13 +220,14 @@ layer2() {
     local out
     out=$("$sg_bin" run --pattern "$term" --json=stream 2>/dev/null || true)
     [[ -z "$out" ]] && continue
-    python3 - "$LAYER_DIR/ast-grep.jsonl" "$term" <<PY
+    # Quoted heredoc + argv passing: ast-grep's --json=stream output can carry
+    # arbitrary source-code fragments which would break triple-quoted interpolation.
+    python3 - "$LAYER_DIR/ast-grep.jsonl" "$term" "$out" <<'PY'
 import json, os, sys
-out_path, term = sys.argv[1:3]
+out_path, term, raw = sys.argv[1:4]
 seen = set()
-lines = '''$out'''.splitlines()
 with open(out_path, "a", encoding="utf-8") as f:
-    for ln in lines:
+    for ln in raw.splitlines():
         ln = ln.strip()
         if not ln:
             continue
@@ -231,51 +254,104 @@ PY
 }
 
 # --- Layer 3: LSP references ------------------------------------------------
-# Probe for an LSP CLI usable from a one-shot bash invocation. Most LSP servers
-# require JSON-RPC over stdio with init/shutdown handshakes -- not feasible from
-# bash. We probe for tools that ship references-via-CLI shortcuts. None today
-# in common shape, so this layer is reserved; spec's "when an LSP server is up
-# and responsive" graceful-degrades it. See TODO.
+# Hybrid integration per apex-core.md step 6.a layer 3:
+# 1. Deterministic path (this layer): scripts/_lsp_query.py spawns an LSP server
+#    over stdio (typescript-language-server --stdio for TS/JS), runs the
+#    JSON-RPC handshake with workspace pre-load, queries textDocument/references
+#    for each (TS seed_path x seed_term), emits {file, detail, line_range}
+#    JSONL into LAYER_DIR/lsp.jsonl. Per-invocation timeout 15s; cap workspace
+#    pre-load at 200 files (in _lsp_query.py).
+# 2. Agent fallback (orchestrator-side, not this script): agents/lsp-scout.md
+#    is spawned by scout1.md when (a) seed_paths include non-TS languages
+#    (Python, Go, Rust...) covered by MCP LSP plugins, or (b) deterministic
+#    LSP returned 0 references. The agent uses mcp__*lsp__find_references
+#    against the long-running plugin-managed servers (no per-invocation spawn
+#    cost) and writes lsp-agent-{session}.json which scout1.md merges before
+#    6.b shard.
 layer3() {
-  # Probe presence of common LSP CLIs to surface the layer when env supports it.
-  if command -v gopls >/dev/null 2>&1; then
-    # gopls has `gopls references` but requires a position arg; without seed
-    # positions we can't query meaningfully. Skip with a stderr breadcrumb
-    # rather than emit empty noise.
-    echo "enumerate-scout.sh: layer 3 LSP gopls detected but no seed positions; skipping" >&2
+  local ts_seeds=()
+  for seed in "${SEED_PATHS[@]+"${SEED_PATHS[@]}"}"; do
+    [[ "$seed" =~ \.(ts|tsx|js|jsx|mjs|cjs|mts|cts)$ ]] && ts_seeds+=("$seed")
+  done
+  if [[ ${#ts_seeds[@]} -eq 0 ]] || ! command -v typescript-language-server >/dev/null 2>&1; then
+    return 0
   fi
-  # No findings emitted; layer remains "not-ran" per spec.
+  for seed in "${ts_seeds[@]}"; do
+    for term in "${SEED_TERMS[@]+"${SEED_TERMS[@]}"}"; do
+      python3 "$SCRIPT_DIR/_lsp_query.py" \
+        --server "typescript-language-server --stdio" \
+        --root "$PWD" \
+        --file "$seed" \
+        --term "$term" \
+        2>/dev/null \
+        >> "$LAYER_DIR/lsp.jsonl" || true
+    done
+  done
   return 0
 }
 
 # --- Layer 4: framework-conv ------------------------------------------------
+# Two principles: (1) match real framework conventions (App-Router has a strict
+# set of route filenames; Pages-Router treats any file as a route); (2) bound
+# emissions to seed-relevant files via filter_by_seeds, except for canonical
+# entry-point files (config/routes.rb, urls.py, settings.py) which are always
+# relevant to any change in their domain.
 layer4() {
-  # Next.js: app/ + pages/ directories. Find route files matching seed terms.
-  if [[ -d "app" || -d "pages" || -d "src/app" || -d "src/pages" ]]; then
-    local roots=()
-    [[ -d "app" ]]      && roots+=("app")
-    [[ -d "pages" ]]    && roots+=("pages")
-    [[ -d "src/app" ]]  && roots+=("src/app")
-    [[ -d "src/pages" ]] && roots+=("src/pages")
-    for root in "${roots[@]}"; do
-      while IFS= read -r f; do
-        emit "framework" "$f" "next.js route under $root"
-      done < <(find "$root" -type f \( -name "page.*" -o -name "layout.*" -o -name "route.*" -o -name "*.tsx" -o -name "*.jsx" \) 2>/dev/null | head -200)
-    done
-  fi
-  # Rails: config/routes.rb + app/controllers, app/models.
+  # Next.js App Router (app/, src/app/): strict route conventions only,
+  # seed-filtered. The previous "*.tsx -o *.jsx" wildcard treated every
+  # component as a route and flooded findings.
+  local app_dirs=()
+  [[ -d "app" ]]     && app_dirs+=("app")
+  [[ -d "src/app" ]] && app_dirs+=("src/app")
+  for root in "${app_dirs[@]+"${app_dirs[@]}"}"; do
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
+      emit "framework" "$f" "next.js app-router route under $root"
+    done < <(
+      find "$root" -type f \( \
+        -name 'page.*' -o -name 'layout.*' -o -name 'route.*' \
+        -o -name 'error.*' -o -name 'loading.*' -o -name 'not-found.*' \
+        -o -name 'template.*' -o -name 'default.*' \
+      \) 2>/dev/null | filter_by_seeds | head -200
+    )
+  done
+  # Next.js Pages Router (pages/, src/pages/): every .tsx/.jsx/.ts/.js IS a
+  # route by convention - the broad pattern is correct here, but we still
+  # seed-filter to bound the scope.
+  local pages_dirs=()
+  [[ -d "pages" ]]     && pages_dirs+=("pages")
+  [[ -d "src/pages" ]] && pages_dirs+=("src/pages")
+  for root in "${pages_dirs[@]+"${pages_dirs[@]}"}"; do
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
+      emit "framework" "$f" "next.js pages-router route under $root"
+    done < <(
+      find "$root" -type f \( \
+        -name '*.tsx' -o -name '*.jsx' -o -name '*.ts' -o -name '*.js' \
+      \) 2>/dev/null | filter_by_seeds | head -200
+    )
+  done
+  # Rails: config/routes.rb is the canonical route map (always relevant; emit
+  # unconditionally). App dirs are seed-filtered to bound scope.
   if [[ -f "config/routes.rb" ]]; then
     emit "framework" "config/routes.rb" "rails routes"
     while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
       emit "framework" "$f" "rails $(dirname "$f" | sed 's|app/||')"
-    done < <(find app/controllers app/models app/views 2>/dev/null -type f | head -200)
+    done < <(
+      find app/controllers app/models app/views 2>/dev/null -type f \
+      | filter_by_seeds | head -200
+    )
   fi
-  # Django: any urls.py + settings.py.
+  # Django: urls.py + settings.py are canonical entry points (typically <=5
+  # per project; emit unconditionally).
   while IFS= read -r f; do
+    [[ -z "$f" ]] && continue
     emit "framework" "$f" "django urls"
   done < <(find . -name urls.py -not -path '*/.*' 2>/dev/null | head -50)
   if [[ -f "manage.py" ]]; then
     while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
       emit "framework" "$f" "django settings"
     done < <(find . -name settings.py -not -path '*/.*' 2>/dev/null | head -10)
   fi

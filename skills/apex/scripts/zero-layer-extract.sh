@@ -81,10 +81,12 @@ if [[ ${#validated[@]} -eq 0 ]]; then
   exit 10
 fi
 
-# Write {session}-main-scope.json (allowed_files = validated paths + safety paths).
+# Write {session}-main-scope.json (allowed_files = validated paths + canonical
+# safety paths; canonical set defined in shared-guardrails.md "Standard safety
+# paths" - keep in sync with _verify_claims.py:_safety_paths).
 jq -n --argjson files "$(printf '%s\n' "${validated[@]}" | jq -R . | jq -s .)" \
   --arg session "$SESSION" \
-  '{session: $session, produced_by: "step6a_zero_layer", allowed_files: ($files + [".claude-tmp/", "~/.claude/tmp/", "docs/"])}' \
+  '{session: $session, produced_by: "step6a_zero_layer", allowed_files: ($files + [".claude-tmp/", "~/.claude/tmp/", "/tmp/\($session)-*", "docs/", "README*"])}' \
   > "$MAIN_SCOPE"
 
 # Write the scope pointer for the calling Claude Code session.

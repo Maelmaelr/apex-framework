@@ -14,7 +14,8 @@ TaskCreate (insert before task 7) the 3 sub-tasks:
 
 Routing:
 - 6.a exit code 10 (zero-layer): orchestrator AskUserQuestion - see "AskUserQuestion contracts" below.
-- 6.b > 8 shards: orchestrator AskUserQuestion - see "AskUserQuestion contracts" below.
+- 6.a layer 3 LSP fallback: after `enumerate-scout.sh` returns 0 (non-zero-layer), inspect `findings-{session}.json`. Spawn `agents/lsp-scout.md` (Sonnet, low effort) IN PARALLEL with 6.b shard when (a) seed_paths include any non-TS-family extension (`.py`, `.go`, `.rs`, `.java`, `.rb`, `.kt`, ...) AND a corresponding `mcp__*lsp__*` plugin tool is available, OR (b) zero entries in findings carry `reasons[].layer == "lsp"` (deterministic Python client returned nothing). lsp-scout writes `lsp-agent-{session}.json`; merger folds it into findings before 6.c screening (merger details TBD - reserved for follow-up admin-apex run, see lsp-scout.md "Output").
+- 6.b exit code 11 (>8 shards): orchestrator AskUserQuestion - see "AskUserQuestion contracts" below.
 - 6.c: each screener writes trace at `{session}-traces/entryflow/screener-{shard-id}-attempt-N.md`.
 
 ## AskUserQuestion contracts (orchestrator-side)

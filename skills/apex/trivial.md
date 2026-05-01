@@ -31,10 +31,8 @@ The orchestrator's Step 1 read of `<project-root>/docs/project-context.md` is al
    ```
    `allowed_files` = the detected single file PLUS the standard safety paths (`.claude-tmp/`, `~/.claude/tmp/`, `/tmp/{session}-*`, project `docs/**`, any `README*`; see `shared-guardrails.md`). The schema's `session` field MUST match the manifest's `{session}` token.
 
-2. **Write the scope-check pointer** at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` via the `Write` tool. The file is a single line containing the absolute path to the scope JSON written in step 1. Required so the PreToolUse scope-check hook can resolve the active scope for any subsequent `Edit` / `Write` (see `shared-guardrails.md` / scope-check hook).
+2. **Write the scope-check pointer** at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` via the `Write` tool. The file is a single line containing the absolute path to the scope JSON written in step 1. `cc_session_id` is resolved via `bash scripts/get-cc-session-id.sh` - the canonical helper used by SKILL.md Step 2 manifest creation and `zero-layer-extract.sh`; never re-derive from working memory. Required so the PreToolUse scope-check hook can resolve the active scope for any subsequent `Edit` / `Write` (see `shared-guardrails.md` / scope-check hook).
 
-3. **Mark queued tasks 6-9 as completed** (skipped, no-op) on the TaskList - they were never queued in the trivial branch (SKILL Step 0 only enqueues 6-9 on non-trivial), so this is a no-op when only tasks 1-5 exist. If the orchestrator pre-emptively queued them, mark them completed now so the TaskList reflects reality.
-
-4. **Call `p1.md`** - read `~/.claude/skills/apex/p1.md` and follow its instructions. The trivial branch writes NO preflight artifact; p1.0 reads an absent `preflight-{session}.json` and runs the no-findings-consultation branch.
+3. **Call `p1.md`** - read `~/.claude/skills/apex/p1.md` and follow its instructions. The trivial branch writes NO preflight artifact; p1.0 reads an absent `preflight-{session}.json` and runs the no-findings-consultation branch.
 
 See `shared-guardrails.md` for safety paths, scope-write producers, JSON Schema validation; `p1.md` for the downstream chain.

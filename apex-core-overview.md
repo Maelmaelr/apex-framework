@@ -56,8 +56,8 @@ Legend:
     - Deterministic layers (priority order):
       1. Static imports (madge / pydeps / etc.)
       2. ast-grep structural queries
-      3. LSP references
-      4. Framework-convention scans
+      3. LSP references - hybrid: deterministic Python LSP client (`scripts/_lsp_query.py`, TS via typescript-language-server when on PATH) + agent fallback (`agents/lsp-scout.md`, MCP LSP plugins for non-TS / 0-result cases)
+      4. Framework-convention scans (App Router strict route conventions; Pages Router all .ts/.tsx/.js/.jsx; seed-term-filtered)
     - Ripgrep fallback (only when all 4 deterministic layers produce 0)
     - Each finding carries `reasons[]` with layer attribution + `confidence: high|medium|low` (3+ deterministic = high; 1-2 = medium; ripgrep-only = low)
     - **Zero-layer case** (all 4 deterministic layers AND ripgrep fallback produce 0): exit code 10
@@ -112,7 +112,7 @@ Legend:
 - **10. Self-reflect entry-flow** (Path 2 only)
   - Tool: `reflect-traces.sh` (script) + `reflector.md` (Haiku, background)
   - reflect-traces.sh: heuristic regex (`error|failed|skip`), count `fix-attempt-N.md`, list verbose traces; appends block to `~/.claude/tmp/apex-workflow-improvements.md` under `flock`
-  - reflector fires only if `novel_flagged >= 1`; parameter = `entryflow`
+  - reflector always fires (v1.4.0+); parameter = `entryflow`. `novel_flagged` is informational; `novel_traces` drives focus selection
   - Snapshots entryflow traces (50KB cap) before reading; errors -> silent log
 
 ---
@@ -169,7 +169,7 @@ Same chain serves main mode and teammate mode (under Path 2). `--teammate` flag 
 
 - **p1.4 Self-reflect** - **main mode only** (teammate skips, p2.5 owns)
   - Tool: `reflect-traces.sh` (script) + `reflector.md` (Haiku, foreground)
-  - reflector fires only if `novel_flagged >= 1`; parameter = `entryflow+p1` (matches heuristics block name and the cross-phase trace inputs)
+  - reflector always fires (v1.4.0+); parameter = `entryflow+p1` (matches heuristics block name and the cross-phase trace inputs)
   - Reads entryflow + p1 traces (snapshot 50KB cap)
 
 - **p1.5 Cleanup session** - **main mode only** (teammate skips, p2.6 owns)
@@ -255,7 +255,7 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
 
 - **p2.5 Self-reflect**
   - Tool: `reflect-traces.sh` (script) + `reflector.md` (Haiku, foreground)
-  - reflector fires only if `novel_flagged >= 1`; parameter = `p2`
+  - reflector always fires (v1.4.0+); parameter = `p2`
   - Reads `p2_cc_session_id` from manifest to locate p2 TaskList
   - Reads p2 traces only (entryflow already covered by step 10)
 
@@ -333,10 +333,11 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
   - Appends structured block to `~/.claude/tmp/apex-workflow-improvements.md` under `flock`
   - Flags novel patterns in `novel_traces:` line
 - **`reflector.md`** (Haiku):
-  - Fires only when `novel_flagged >= 1`
+  - Always fires since v1.4.0 (`novel_flagged` is informational; `novel_traces` drives focus selection)
   - Background at step 10 (entryflow); foreground at p1.4 / p2.5 (no critical user-facing follow-up)
   - Snapshots traces (50KB cap) before reading - defends against cleanup race
   - Errors -> `~/.claude/tmp/reflector-errors.log` (silent failure)
+- **Consumer chain (out-of-band)**: `~/.claude/tmp/apex-workflow-improvements.md` is consumed by `/apex-improve` (semantic-first edit pass; auto-fired at `/apex-eod` step 3). `~/.claude/tmp/tech-updates.md` is produced by `/apex-tech-watch` (weekly cron / launchd) and consumed by the same `/apex-improve` run. The pair closes the self-improvement loop: per-session reflector signals + weekly tech currency -> framework edits at EOD.
 
 ### Artifact validation
 
