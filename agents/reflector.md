@@ -60,6 +60,8 @@ Structured append (no prose) to `~/.claude/tmp/apex-workflow-improvements.md` un
 - improvements: <one-line per suggestion, max 3>
 ```
 
+Exactly ONE append per invocation. Do not re-emit the block as a "verification" or "self-check" step - prior logs show two adjacent byte-identical blocks for the same {token}+{phase}+{timestamp} (root cause: agent emitted the structured output twice in a single tool-call sequence). The flock guarantees atomicity per-write, not per-invocation; the once-only contract is on the agent.
+
 `{token}` is the session token for apex phases and the run token for admin-apex - same block shape, same log file, so `/apex-improve` consumes both uniformly.
 
 ## Failure mode

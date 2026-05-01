@@ -17,19 +17,19 @@
     {
       "id": "anthropic-api-changelog",
       "kind": "webfetch",
-      "url": "https://docs.anthropic.com/en/release-notes/api",
+      "url": "https://platform.claude.com/docs/en/release-notes/api",
       "summarize_prompt": "Extract API changelog entries from the last 7 days. Flag breaking changes vs additive changes. Up to 5 bullets. If empty, say so."
     },
     {
       "id": "claude-code-changelog",
       "kind": "webfetch",
-      "url": "https://docs.anthropic.com/en/release-notes/claude-code",
+      "url": "https://raw.githubusercontent.com/anthropics/claude-code/main/CHANGELOG.md",
       "summarize_prompt": "Extract Claude Code changelog entries from the last 7 days. Up to 5 bullets. If empty, say so."
     },
     {
       "id": "anthropic-models-overview",
       "kind": "webfetch",
-      "url": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+      "url": "https://platform.claude.com/docs/en/docs/about-claude/models/overview",
       "summarize_prompt": "List the currently-recommended Claude models (Opus/Sonnet/Haiku) with their model IDs and any deprecation warnings. One short block per family."
     },
     {
