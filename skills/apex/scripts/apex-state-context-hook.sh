@@ -1,12 +1,20 @@
 #!/usr/bin/env bash
-# PreCompact + PostCompact + StopFailure hook: state preservation across compaction.
+# SessionStart hook: apex state context injection at session boundaries.
 # See user-global CLAUDE.md "Compaction Preservation" rule.
 #
-# Behavior:
-#   - PreCompact:  emit additionalContext block listing apex-critical state so the
-#                  compactor cannot drop it.
-#   - PostCompact: re-emit the same block (re-derived from on-disk artifacts).
-#   - StopFailure: defensive snapshot for retry context.
+# Wired in settings.json under hooks.SessionStart with matcher="compact|resume":
+#   - matcher=compact: fires after auto/manual compaction completes; re-injects
+#     apex critical state so it survives the compaction summary.
+#   - matcher=resume:  fires on /resume, --resume, --continue; re-injects state
+#     so a resumed session has the apex artifact pointers immediately.
+#   (matcher=startup and matcher=clear are NOT wired - no apex session active
+#    at brand-new startup, and /clear explicitly drops state.)
+#
+# Why SessionStart and not PreCompact/PostCompact: per https://code.claude.com/
+# docs/en/hooks.md, only PreToolUse / UserPromptSubmit / PostToolUse accept
+# hookSpecificOutput.additionalContext. PreCompact has only top-level decision:
+# block; PostCompact has no decision control at all; StopFailure ignores output.
+# SessionStart matcher=compact is the canonical post-compaction injection point.
 #
 # State source: live read of .claude-tmp/apex-active/{session}.json (manifest),
 # {session}-hypothesis.json, {session}-main-scope.json, plus
@@ -17,20 +25,21 @@
 # cc_session_id or p2_cc_session_id matches -> apex {session} 8-hex token.
 # No match -> pass-through (entry-flow before manifest, or non-apex session).
 #
-# Hook protocol: always exit 0. State preservation is advisory; never blocks.
+# Hook protocol: always exit 0. Context injection is advisory; never blocks.
 
 set -euo pipefail
 
 APEX_ACTIVE=".claude-tmp/apex-active"
 
-# Fast-path: skip the python parse on every PreCompact/PostCompact/StopFailure
-# outside an apex session. No manifest can match without the dir; emit no
-# output (matches existing passthrough behaviour for non-matching events).
+# Fast-path: skip the python parse on every SessionStart outside an apex
+# session. No manifest can match without the dir; emit no output (matches
+# pass-through behaviour for non-matching events).
 [[ -d "$APEX_ACTIVE" ]] || exit 0
 
 INPUT=$(cat 2>/dev/null || true)
 
-# Parse hook event name + cc session_id in one Python pass.
+# Parse hook event name + cc session_id + source in one Python pass.
+# `source` is SessionStart's matcher trigger: startup|resume|clear|compact.
 PARSED=$(printf '%s' "$INPUT" | python3 -c "
 import json, sys
 try:
@@ -39,17 +48,18 @@ except Exception:
     sys.exit(0)
 print(d.get('hook_event_name') or d.get('event_name') or '')
 print(d.get('session_id', ''))
+print(d.get('source', ''))
 " 2>/dev/null || true)
 
 EVENT=$(printf '%s\n' "$PARSED" | sed -n '1p')
 SESSION_ID=$(printf '%s\n' "$PARSED" | sed -n '2p')
+SOURCE=$(printf '%s\n' "$PARSED" | sed -n '3p')
 
-passthrough() {
-  local evt="${1:-}"
-  if [[ -n "$evt" ]]; then
-    printf '{"hookSpecificOutput":{"hookEventName":"%s"}}\n' "$evt"
-  fi
-}
+# Only act on SessionStart with matcher compact|resume. Other matchers
+# (startup, clear) and other events are pass-through.
+if [[ "$EVENT" != "SessionStart" ]] || [[ "$SOURCE" != "compact" && "$SOURCE" != "resume" ]]; then
+  exit 0
+fi
 
 # Locate matching apex manifest. The manifest filename pattern is exactly 8 hex
 # chars + .json (e.g. 1a2b3c4d.json); a stricter glob avoids -hypothesis.json,
@@ -78,8 +88,8 @@ if d.get('cc_session_id') == sid or d.get('p2_cc_session_id') == sid:
   shopt -u nullglob
 fi
 
+# No matching manifest -> non-apex SessionStart. Exit silently.
 if [[ -z "$APEX_SESSION" ]]; then
-  passthrough "$EVENT"
   exit 0
 fi
 
@@ -88,7 +98,7 @@ MAIN_SCOPE="$APEX_ACTIVE/$APEX_SESSION-main-scope.json"
 PREFLIGHT=".claude-tmp/scout/preflight-$APEX_SESSION.json"
 SCREENED=".claude-tmp/scout/screened-$APEX_SESSION.json"
 
-OUTPUT=$(EVENT="$EVENT" \
+OUTPUT=$(SOURCE="$SOURCE" \
          APEX_SESSION="$APEX_SESSION" \
          MANIFEST="$MANIFEST" \
          HYPOTHESIS="$HYPOTHESIS" \
@@ -98,7 +108,7 @@ OUTPUT=$(EVENT="$EVENT" \
          python3 <<'PY'
 import json, os, time
 
-event = os.environ.get("EVENT") or "PreCompact"
+source = os.environ.get("SOURCE") or "compact"
 session = os.environ["APEX_SESSION"]
 manifest = os.environ["MANIFEST"]
 hypothesis = os.environ["HYPOTHESIS"]
@@ -107,10 +117,9 @@ preflight = os.environ["PREFLIGHT"]
 screened = os.environ["SCREENED"]
 
 prefix = {
-    "PreCompact":  "Preserving apex state before compaction:",
-    "PostCompact": "Re-injecting apex state after compaction:",
-    "StopFailure": "Apex state snapshot (defensive on stop-failure):",
-}.get(event, "Apex state snapshot:")
+    "compact": "Re-injecting apex state after compaction:",
+    "resume":  "Re-injecting apex state on session resume:",
+}.get(source, "Apex state snapshot:")
 
 def load(p):
     try:
@@ -185,7 +194,7 @@ block = "\n".join([
 
 print(json.dumps({
     "hookSpecificOutput": {
-        "hookEventName": event,
+        "hookEventName": "SessionStart",
         "additionalContext": block,
     }
 }))
@@ -193,7 +202,6 @@ PY
 ) || true
 
 if [[ -z "$OUTPUT" ]]; then
-  passthrough "$EVENT"
   exit 0
 fi
 

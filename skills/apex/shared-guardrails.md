@@ -127,6 +127,6 @@ Wired in `settings.json` alongside the spec hooks. Layered on top of `scope-chec
 | `block-destructive-hook.sh` | PreToolUse Bash | Blocks `git checkout --`, `git show`/`cat-file > file`, `rm -rf`, shell credential reads (CLAUDE.md Git Safety enforcement). |
 | `protect-env-hook.sh` | PreToolUse Read/Edit/Write | Blocks `.env*`, `credentials.json`, service-account keys, `.npmrc`, `.pypirc`. Allows `.env.example` / `.sample` / `.template`. |
 | `file-health-hook.sh` | PreToolUse Edit/Write | Enforces 400-line/10-line threshold and 500-line hard block per CLAUDE.md file-health rule. |
-| `precompact-state-hook.sh` | PreCompact / PostCompact / StopFailure | Preserves apex-critical fields across context compaction. |
+| `apex-state-context-hook.sh` | SessionStart matcher=compact\|resume | Re-injects apex-critical fields after compaction or on session resume (via `additionalContext`). PreCompact/PostCompact/StopFailure cannot inject context per Claude Code hook API; SessionStart matcher=compact is the canonical post-compaction hook. |
 
 These are non-contradictory with v1.0 - `scope-check-hook.sh` remains the canonical scope guard; the project-specific hooks add orthogonal safety gates (destructive ops, secrets, file size, context preservation).

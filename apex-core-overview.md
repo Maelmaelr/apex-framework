@@ -33,7 +33,7 @@ Legend:
 
 - **3. Hypothesis**
   - Tool: inline; producer-validated via `validate-json.sh hypothesis.schema.json` after Write
-  - Persists: `original_prompt` (verbatim user prompt - consumed by precompact-state-hook, reflectors, and p1.6/p2.7 summary)
+  - Persists: `original_prompt` (verbatim user prompt - consumed by apex-state-context-hook, reflectors, and p1.6/p2.7 summary)
   - Emits: `complexity_hint: low|medium|high`, `alternatives[]` (1-3 kept/rejected with reason - structured anti-bias check, schema-required `minItems: 1`)
   - Writes: `{session}-hypothesis.json`
 

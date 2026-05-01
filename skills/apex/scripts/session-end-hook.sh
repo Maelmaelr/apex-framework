@@ -43,7 +43,7 @@ except Exception:
   [[ -d "$APEX_ACTIVE" ]] || return 1
   shopt -s nullglob
   for manifest in "$APEX_ACTIVE"/*.json; do
-    # Same positive 8-hex regex create-session.sh + precompact-state-hook.sh use;
+    # Same positive 8-hex regex create-session.sh + apex-state-context-hook.sh use;
     # excludes -hypothesis.json, -baseline.json, -*-scope.json, etc. by shape.
     [[ "$(basename "$manifest")" =~ ^[0-9a-f]{8}\.json$ ]] || continue
     local matched
