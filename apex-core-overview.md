@@ -288,7 +288,7 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
   - normal path -> `verify-claims.sh` (default mode or `--apply-resolved`)
 - **Teammate scope writer** (`{session}-{teammate-id}-scope.json`, one per teammate): `teammates.md` at p2.1
 - **Standard safety paths** (always allowed in any scope):
-  - `.claude-tmp/`, `~/.claude/tmp/`, `/tmp/{session}-*`, project `docs/**`, any `README*` at any depth
+  - `.claude-tmp/`, `~/.claude/tmp/`, `~/.claude/plans/`, `/tmp/{session}-*`, project `docs/**`, any `README*` at any depth
   - Closed set; never includes `.env*` or `.git/`
 
 ### Project context (architecture entry point)

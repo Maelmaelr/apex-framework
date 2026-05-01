@@ -52,7 +52,7 @@ def _now() -> str:
 def _safety_paths(session: str) -> list[str]:
     # Standard safety paths per shared-guardrails.md / apex-core.md Conventions.
     # Closed set; never includes .env* or .git/.
-    return [".claude-tmp/", "~/.claude/tmp/", f"/tmp/{session}-*", "docs/", "README*"]
+    return [".claude-tmp/", "~/.claude/tmp/", "~/.claude/plans/", f"/tmp/{session}-*", "docs/", "README*"]
 
 
 def _resolve(project_root: str, file_path: str) -> str:

@@ -12,6 +12,7 @@ Cross-cutting reference for apex skill / agent files. Authoritative spec is `ape
 Closed set:
 - `.claude-tmp/`
 - `~/.claude/tmp/`
+- `~/.claude/plans/` (plan-mode artifacts; orchestrator-owned, not part of any apex scope)
 - `/tmp/{session}-*`
 - project `docs/**`
 - any `README*` file at any depth

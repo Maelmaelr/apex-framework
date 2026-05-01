@@ -86,7 +86,7 @@ fi
 # paths" - keep in sync with _verify_claims.py:_safety_paths).
 jq -n --argjson files "$(printf '%s\n' "${validated[@]}" | jq -R . | jq -s .)" \
   --arg session "$SESSION" \
-  '{session: $session, produced_by: "zero-layer-inline", allowed_files: ($files + [".claude-tmp/", "~/.claude/tmp/", "/tmp/\($session)-*", "docs/", "README*"])}' \
+  '{session: $session, produced_by: "zero-layer-inline", allowed_files: ($files + [".claude-tmp/", "~/.claude/tmp/", "~/.claude/plans/", "/tmp/\($session)-*", "docs/", "README*"])}' \
   > "$MAIN_SCOPE"
 
 # Write the scope pointer for the calling Claude Code session.

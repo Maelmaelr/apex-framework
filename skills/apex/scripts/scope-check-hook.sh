@@ -16,6 +16,7 @@
 # Standard safety paths (closed set, always allowed):
 #   - .claude-tmp/
 #   - ~/.claude/tmp/
+#   - ~/.claude/plans/  (plan-mode artifacts; orchestrator-owned, not scoped)
 #   - /tmp/{session}-*  (any session token; the directory is shared)
 #   - project docs/**
 #   - any README* file at any depth
@@ -113,6 +114,9 @@ is_safety_path() {
   # ~/.claude/tmp/ - both literal $HOME and tilde-prefixed forms
   [[ "$target" == "$HOME/.claude/tmp/"* ]] && return 0
   [[ "$target" == "~/.claude/tmp/"* ]] && return 0
+  # ~/.claude/plans/ - plan-mode artifacts; same dual-form treatment
+  [[ "$target" == "$HOME/.claude/plans/"* ]] && return 0
+  [[ "$target" == "~/.claude/plans/"* ]] && return 0
   # /tmp/{session}-* - any session token; /tmp is shared
   [[ "$target" == /tmp/*-* ]] && return 0
   # project docs/**
