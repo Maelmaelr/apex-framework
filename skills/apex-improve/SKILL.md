@@ -9,7 +9,7 @@ triggers:
 
 Self-improvement engine. Reads accumulated session-reflection signals + weekly tech-watch updates, proposes edits to the apex framework, applies semantic adjustments inline (preferred), delegates structural mutations to `~/.claude/skills/admin-apex/evolve.md`. Out-of-band - not part of /apex hot path; no project app code, no project lint/build.
 
-Shares `.claude-tmp/admin-apex-active/` with admin-apex (8-hex token collisions negligible); Step 4 structural ops produce the same `{run}-applied-ops.json` + `{run}-dirty-paths.txt` shape admin-apex expects. **No push** - commit owned by `apex-eod` step 5 when run from EOD; standalone runs leave the commit to the user (or admin-apex task 9/10 if invoked under that flow).
+Shares `.claude-tmp/admin-apex-active/` with admin-apex (8-hex token collisions negligible); Step 4 structural ops produce the same `{run}-applied-ops.json` + `{run}-dirty-paths.txt` shape admin-apex expects. **Standalone runs sync git at session end** (Steps 7+8: VERSION bump + commit + mirror to public repo + push both, mirroring admin-apex tasks 9+10). **Subagent runs under apex-eod skip Steps 7+8** (apex-eod step 5 owns the inline commit; the subagent prompt explicitly instructs the skill to skip).
 
 ## Guiding principle (Principle 3)
 
@@ -45,19 +45,22 @@ If all three signals empty / current at Step 2 -> exit `apex-improve: no signals
 | 4 | `apply.md` | Phase 3: apply ops (3a semantic Edit, 3b delegate to admin-apex/evolve.md) |
 | 5 | this skill | Cleanup + version stamp (inline) |
 | 6 | this skill | Structured report (inline) |
+| 7-8 | `sync-git.md` | VERSION + commit + mirror + push (standalone-mode only; mirrors admin-apex tasks 9+10) |
 
 ## Step 0: TaskCreate the chain
 
 ```
-TaskCreate "1. Mint run + manifest"   - inline
-TaskCreate "2. Analyze signals"       - blockedBy [1] - analyze.md (early-exit on no signals)
-TaskCreate "3. Plan ops"              - blockedBy [2] - plan.md
-TaskCreate "4. Apply ops"             - blockedBy [3] - apply.md
-TaskCreate "5. Cleanup + stamp"       - blockedBy [4] - inline
-TaskCreate "6. Report"                - blockedBy [5] - inline
+1. Mint run + manifest          - inline
+2. Analyze signals              - analyze.md (early-exit on no signals)
+3. Plan ops                     - plan.md
+4. Apply ops                    - apply.md
+5. Cleanup + stamp              - inline
+6. Report                       - inline
+7. VERSION + commit             - sync-git.md (standalone only)
+8. Mirror + push both           - sync-git.md (standalone only)
 ```
 
-Steps 3-6 are conditional on Step 2 producing non-empty findings.
+Each task `blockedBy` the previous. Steps 3-6 conditional on Step 2 non-empty findings; Steps 7-8 conditional on standalone mode AND >=1 op applied.
 
 ## Step 1: Mint run + manifest (inline)
 
@@ -125,6 +128,10 @@ Net delta_lines across run: <signed int>
 
 If `Net delta_lines > +50` OR `additive` ops > 1, append a Principle 3 note: `this run grew the framework by N lines / created M new files; review whether the findings could have been satisfied semantically`. Informational only - the run still commits.
 
+## Steps 7-8: VERSION + commit + mirror + push
+
+Read and follow `~/.claude/skills/apex-improve/sync-git.md`. Standalone-mode only (skipped under apex-eod and when Step 4 applied zero ops); reuses admin-apex's `admin-apex-finalize.sh` + `mirror-to-dev.sh`.
+
 ## Subagent invocation contract
 
 When `apex-eod` step 3 runs apex-improve as a subagent, the prompt template is:
@@ -136,15 +143,14 @@ as a subagent under apex-eod - do NOT commit or push (apex-eod step 5
 owns the inline commit). Report the Step 6 summary verbatim.
 ```
 
-apex-eod's subagent harness is the only commit driver in EOD context. Standalone `/apex-improve` invocations leave the commit to the user (`git status` shows dirty paths; user can `/admin-apex` audit+apply or commit manually).
+The "do NOT commit or push" line is the explicit signal that suppresses Steps 7+8. apex-eod step 5 remains the only commit driver in EOD context; standalone `/apex-improve` runs execute Steps 7+8 (mirrors admin-apex tasks 9+10).
 
 ## What this skill does NOT do
 
 - Does NOT scout, plan teammates, or run /apex's verify-fix loop - this is an out-of-band meta-task on the apex framework itself, not on user code.
 - Does NOT touch project app code, run project lint/build, or modify `.env*`.
-- Does NOT push - standalone runs leave commit to user; under apex-eod step 3, apex-eod step 5 owns the commit.
-- Does NOT mirror to the public repo - mirroring is admin-apex task 10 only. apex-improve runs that touch publicly-mirrored files (apex-core.md, agents/**, skills/apex/**) leave them dirty for the next admin-apex run to mirror.
+- Does NOT commit or push under apex-eod (Steps 7-8 skipped via subagent-prompt directive); standalone runs DO commit + mirror + push at session end (mirrors admin-apex tasks 9+10).
 - Does NOT bypass the file-health hook - if a Step 4 semantic edit would push a file past 400 lines, the hook fires and apex-improve must AskUserQuestion (`split-now | reduce-edit | abort`). Same gate any apex skill respects.
 - Does NOT decide that a tech-update is irrelevant on its own - if uncertain whether to apply a tech-watch finding, defer it (write to `{run}-deferred-findings.json`) rather than guess.
 
-See `analyze.md`, `plan.md`, `apply.md` for per-step contracts; `~/.claude/skills/admin-apex/evolve.md` for the structural-ops engine; `~/.claude/skills/apex/shared-guardrails.md` for safety paths and JSON-Schema validation; `~/.claude/skills/apex-tech-watch/SKILL.md` for the upstream tech-updates fetcher.
+See `analyze.md`, `plan.md`, `apply.md` for per-step contracts; `~/.claude/skills/admin-apex/evolve.md` for the structural-ops engine; `~/.claude/skills/admin-apex/scripts/admin-apex-finalize.sh` + `mirror-to-dev.sh` for the shared commit + mirror drivers; `~/.claude/skills/apex/shared-guardrails.md` for safety paths and JSON-Schema validation; `~/.claude/skills/apex-tech-watch/SKILL.md` for the upstream tech-updates fetcher.
