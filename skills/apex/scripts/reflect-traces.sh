@@ -35,10 +35,11 @@
 #
 # Exit code: 0 always. Failure modes are silent per spec ("errors logged").
 
-# `set -e` would abort on the first heuristic that finds nothing; this script is
-# best-effort and must always emit a block (even if all counts are zero) so the
-# orchestrator can read the novel_traces line for focus routing (reflector
-# always fires - novel_flagged is no longer a gate).
+# Fail-silent: this script is best-effort and must always emit a block (even
+# if all counts are zero) so the orchestrator can read the novel_traces line
+# for focus routing. The python heredoc below is wrapped with `|| true` so the
+# real heuristic logic cannot abort the script regardless of `set -e`; we use
+# `set -uo pipefail` (no -e) to keep arg-parse errors from masking that.
 set -uo pipefail
 
 SESSION=""

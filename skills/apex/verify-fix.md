@@ -65,16 +65,18 @@ while :; do
   # spawn agents/executor.md (Sonnet) with the prompt template below
 
   # 2d. Persist counter for audit + crash-recovery (producer-validates; aborts on schema fail).
-  # Args via argv (no $-interpolation into the python source); UTC-aware datetime.
+  # Args via argv (no $-interpolation into the python source); UTC-aware datetime
+  # via datetime.timezone.utc for Python 3.2+ portability (the `from datetime import UTC`
+  # form is 3.11+ only and end-users on older interpreters would hit ImportError).
   count=$attempt
   PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$COUNTER" "$count" "$ERRORS_FILE" <<'PY'
 import json, sys
-from datetime import datetime, UTC
+import datetime
 from _validate import producer_validate, ValidationError
 counter_path, count_str, errors_path = sys.argv[1], sys.argv[2], sys.argv[3]
 data = {
     "count": int(count_str),
-    "last_attempt_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "last_attempt_at": datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
     "last_errors_path": errors_path,
 }
 try:

@@ -261,7 +261,7 @@ Delegation to N teammates via plan mode (size N decided by planner from `complex
 
 - **p2.6 Cleanup session**
   - Tool: `cleanup-session.sh` (idempotent)
-  - Cleans all session artifacts: all scopes (main + teammate), scope-pointer dir, all `task.md` files, all fix-attempt counters (main + p2), traces, manifest, baseline, verify-errors, verify-rerun, `/tmp/{session}-*`
+  - Cleans all session artifacts: all scopes (main + teammate), scope-pointer dir, planner draft (`{session}-plan-candidate.json`), all `task.md` files, all fix-attempt counters (main + p2), traces, manifest, baseline, verify-errors, verify-rerun, `/tmp/{session}-*`
   - Preserves `{session}-hypothesis.json` for p2.7
 
 - **p2.7 Inline summary**

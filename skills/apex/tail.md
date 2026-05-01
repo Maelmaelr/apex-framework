@@ -14,7 +14,7 @@ Single skill body, three invocation contexts. The caller passes `--phase p1` (ma
 | Caller | Phase arg | Detection | Agents spawned (parallel batch) | Notes |
 |--------|-----------|-----------|---------------------------------|-------|
 | `p1.md` p1.3 (main mode) | `--phase p1` | yes | `economy` -> `git.md`; `full` -> `learn.md` + `documentation.md` + `git.md` | apex-driven change set is captured by `{session}-baseline.json` head_sha |
-| `p2.md` p2.4 (central) | `--phase p2` | yes | same as p1 by mode | `documentation.md` runs the integration pass: first-write on planner's `shared_files` list (read by the agent itself, not by tail.md) |
+| `p2.md` p2.4 (central) | `--phase p2` | yes | same as p1 by mode | `documentation.md` runs the integration pass: first-write on planner's `shared_files` list (orchestrator reads the list from the embedded plan body and substitutes it into the spawn prompt's `Shared files:` line; the agent receives the list, does not re-read the plan body) |
 | `p1.md --teammate` p1.3 | `--phase teammate` | NO | `documentation.md` only | learn + git centralised at p2.4; teammate `documentation.md` is scoped to that teammate's allowed-files |
 
 ## Step 1: Resolve phase + detect mode
