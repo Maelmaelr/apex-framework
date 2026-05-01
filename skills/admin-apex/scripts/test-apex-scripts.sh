@@ -179,6 +179,80 @@ session_end_empty_stdin_fixture() {
 }
 run_fixture "session-end-hook.sh empty-stdin" 0 session_end_empty_stdin_fixture
 
+# 4a. session-end-hook.sh happy path: manifest with cc_session_id X + stdin
+#     {session_id:X} -> manifest + siblings removed. Closes regression risk in
+#     stdin parsing, the {run}.json vs {run}-*.json name guard, and the
+#     cleanup-run.sh dispatch from the hook.
+session_end_happy_fixture() {
+  mkdir -p .claude-tmp/admin-apex-active
+  printf '{"run":"deadbe01","cc_session_id":"FIXTURE-SID","producer":"admin-apex"}\n' \
+    > .claude-tmp/admin-apex-active/deadbe01.json
+  printf 'inv\n'      > .claude-tmp/admin-apex-active/deadbe01-inventory.json
+  printf 'summary\n'  > .claude-tmp/admin-apex-active/deadbe01-summary.md
+  printf '{"session_id":"FIXTURE-SID"}' \
+    | bash "$REPO_ROOT/skills/admin-apex/scripts/session-end-hook.sh"
+  # Assert all three artifacts gone (exit 1 if any survives -> fixture fails).
+  for f in deadbe01.json deadbe01-inventory.json deadbe01-summary.md; do
+    [[ -e ".claude-tmp/admin-apex-active/$f" ]] && return 1
+  done
+  return 0
+}
+run_fixture "session-end-hook.sh happy-path" 0 session_end_happy_fixture
+
+# 4b. session-end-hook.sh sibling-preserve: stdin session_id NOT matching any
+#     manifest -> all manifests left intact (no cross-session collateral damage).
+session_end_sibling_preserve_fixture() {
+  mkdir -p .claude-tmp/admin-apex-active
+  printf '{"run":"deadbe02","cc_session_id":"OWNED-BY-OTHER","producer":"admin-apex"}\n' \
+    > .claude-tmp/admin-apex-active/deadbe02.json
+  printf '{"session_id":"UNRELATED-SID"}' \
+    | bash "$REPO_ROOT/skills/admin-apex/scripts/session-end-hook.sh"
+  [[ -f .claude-tmp/admin-apex-active/deadbe02.json ]] || return 1
+  rm -f .claude-tmp/admin-apex-active/deadbe02.json
+  return 0
+}
+run_fixture "session-end-hook.sh sibling-preserve" 0 session_end_sibling_preserve_fixture
+
+# 4c. sweep-stale-runs.sh: manifest with dead PID -> cleaned. Manifest with
+#     alive PID + comm=claude -> preserved. Use `: &; pid=$!; wait $!` to mint
+#     a guaranteed-dead PID; use $$ as alive (but comm will be "bash", not
+#     "claude" - so $$ is treated as stale via comm-mismatch). This means we
+#     cannot exercise the "alive + comm=claude -> preserve" branch from inside
+#     the test harness without spawning a real claude binary. Test focuses on
+#     the dead-PID branch (high-value: false positives in this branch would
+#     orphan everything; correctness here is non-negotiable).
+sweep_stale_dead_pid_fixture() {
+  mkdir -p .claude-tmp/admin-apex-active
+  # Mint a guaranteed-dead PID by forking a no-op subshell and waiting on it.
+  local dead_pid
+  ( true ) &
+  dead_pid=$!
+  wait "$dead_pid" 2>/dev/null || true
+  printf '{"run":"deadbe03","cc_session_id":"X","pid":%d,"producer":"admin-apex"}\n' "$dead_pid" \
+    > .claude-tmp/admin-apex-active/deadbe03.json
+  printf 'inv\n' > .claude-tmp/admin-apex-active/deadbe03-inventory.json
+  bash "$REPO_ROOT/skills/admin-apex/scripts/sweep-stale-runs.sh"
+  for f in deadbe03.json deadbe03-inventory.json; do
+    [[ -e ".claude-tmp/admin-apex-active/$f" ]] && return 1
+  done
+  return 0
+}
+run_fixture "sweep-stale-runs.sh dead-pid-cleaned" 0 sweep_stale_dead_pid_fixture
+
+# 4d. sweep-stale-runs.sh: manifest WITHOUT a pid field -> SKIPPED (legacy
+#     graceful-degradation contract). Without this guard the sweep would
+#     collateral-damage manifests written before the PID-capture upgrade.
+sweep_stale_no_pid_fixture() {
+  mkdir -p .claude-tmp/admin-apex-active
+  printf '{"run":"deadbe04","cc_session_id":"X","producer":"admin-apex"}\n' \
+    > .claude-tmp/admin-apex-active/deadbe04.json
+  bash "$REPO_ROOT/skills/admin-apex/scripts/sweep-stale-runs.sh"
+  [[ -f .claude-tmp/admin-apex-active/deadbe04.json ]] || return 1
+  rm -f .claude-tmp/admin-apex-active/deadbe04.json
+  return 0
+}
+run_fixture "sweep-stale-runs.sh no-pid-preserved" 0 sweep_stale_no_pid_fixture
+
 # 5. admin-apex-finalize.sh: rejects missing args (exit 1).
 run_fixture "admin-apex-finalize.sh missing-args" 1 \
   bash "$REPO_ROOT/skills/admin-apex/scripts/admin-apex-finalize.sh"

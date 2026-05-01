@@ -39,9 +39,11 @@ RUN=$(openssl rand -hex 4)
 ROOT=".claude-tmp/admin-apex-active"
 mkdir -p "$ROOT"
 echo "$RUN" > "/tmp/${RUN}-apex-improve.txt"   # token-prefix so cleanup-run.sh sweeps it
+CC_ID=$(bash skills/apex/scripts/get-cc-session-id.sh)   # env-then-jsonl resolver; abort on failure
+PID=$PPID                                                 # parent claude PID (NOT $$)
 ```
 
-Then **Write** `$ROOT/$RUN.json` with `{"run":"<RUN>","cc_session_id":"$CC_SESSION_ID","producer":"apex-improve"}`. The manifest arms `skills/admin-apex/scripts/session-end-hook.sh` to sweep this run's artifacts when the CC session ends (covers no-signals exit, cap-reached / no-progress abort, and standalone-without-commit runs). `{run}-deferred-findings.json` is preserved across SessionEnd by `cleanup-run.sh` for a future run to pick up.
+Then **Write** `$ROOT/$RUN.json` with `{"run":"<RUN>","cc_session_id":"<CC_ID>","pid":<PID>,"producer":"apex-improve"}`. NEVER write `cc_session_id:""` - an empty value makes `session-end-hook.sh` unable to ever match this manifest, leaking the entire run. The `cc_session_id` arms `skills/admin-apex/scripts/session-end-hook.sh` to sweep this run's artifacts when the CC session ends (covers no-signals exit, cap-reached / no-progress abort, and standalone-without-commit runs); the `pid` arms `skills/admin-apex/scripts/sweep-stale-runs.sh` to drain orphans from prior crashed sessions. `{run}-deferred-findings.json` is preserved across SessionEnd by `cleanup-run.sh` for a future run to pick up.
 
 apex-improve shares `.claude-tmp/admin-apex-active/` with admin-apex (token collisions are statistically negligible at 8-hex). Phase 3 structural ops produce the same `{run}-applied-ops.json` + `{run}-dirty-paths.txt` shape that admin-apex expects, so apex-eod step 5's commit can stage them with the existing logic.
 

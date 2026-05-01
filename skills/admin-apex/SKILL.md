@@ -41,7 +41,9 @@ Tasks 5-8 are conditional on task 4's gate (skipped on audit-only outcome). Task
 
 AskUserQuestion (header: "admin-apex mode"; options: `audit-only`, `audit+apply`; dismiss/cancel = abort). Then run `bash skills/admin-apex/scripts/check-deps.sh` - exit 1 means strict Python deps (currently `jsonschema`) are missing; surface the script's stderr install one-liner to the user and abort cleanly (no manifest written yet, no session-end-hook needed). Exit 0 -> proceed.
 
-Mint `{run}` (`openssl rand -hex 4`), `mkdir -p .claude-tmp/admin-apex-active`, capture `$CC_SESSION_ID`, and **Write** `.claude-tmp/admin-apex-active/{run}.json` with `{"run":"{run}","cc_session_id":"<captured>","producer":"admin-apex"}`. The manifest arms `scripts/session-end-hook.sh` to sweep this run's artifacts when the CC session ends (covers hard-stops, soft-skips, mid-flight rollback, abort, dismiss).
+Mint `{run}` (`openssl rand -hex 4`), `mkdir -p .claude-tmp/admin-apex-active`, resolve `cc_session_id` via `bash skills/apex/scripts/get-cc-session-id.sh` (env-then-jsonl resolver - aborts on failure; NEVER default to empty, since an empty `cc_session_id` makes `session-end-hook.sh` unable to ever match this manifest), and capture parent Claude Code PID as `$PPID`. **Write** `.claude-tmp/admin-apex-active/{run}.json` with `{"run":"{run}","cc_session_id":"<resolved>","pid":<PPID>,"producer":"admin-apex"}`. The `cc_session_id` arms `scripts/session-end-hook.sh` to sweep this run's artifacts when the CC session ends (covers hard-stops, soft-skips, mid-flight rollback, abort, dismiss); the `pid` arms `scripts/sweep-stale-runs.sh` to drain orphans from prior crashed sessions.
+
+Then run `bash skills/admin-apex/scripts/sweep-stale-runs.sh` (best-effort; idempotent). It cleans only sibling manifests where the recorded PID is dead OR `ps -o comm=` does not match `claude` - active sibling sessions are preserved (mirrors `apex/scripts/create-session.sh` PID classification).
 
 ## Task 2: Inventory snapshot
 
