@@ -32,7 +32,7 @@ For each cluster the gate marked `apply`, translate items into ops:
 | `schema-mismatch` | `rename` (rename schema file to match `$id`) OR edit `$id` to match basename - prefer rename (safer; refs less coupled). |
 | `dead-hook` | `hook-remove` (settings.json entry deletion) |
 
-Set `doc_only: true` for any op that does NOT touch `skills/apex/`, `agents/`, or `settings.json` (only README/apex-core/overview/CLAUDE.md edits). Drives task 9 patch-vs-minor bump rule.
+Set `doc_only: true` for any op that does NOT touch `skills/apex/`, `skills/admin-apex/`, `agents/`, or `settings.json` (only README/apex-core/overview/CLAUDE.md edits). Drives task 9 patch-vs-minor bump rule. The `skills/admin-apex/` inclusion is what makes structural mutations to admin-apex itself (e.g., split `evolve.md`, retire a sub-skill) correctly classify as non-doc_only and bump minor.
 
 Validate the plan before write. Admin-apex schemas live at `skills/admin-apex/schemas/` (siblings of apex schemas). Two equivalent invocation paths:
 

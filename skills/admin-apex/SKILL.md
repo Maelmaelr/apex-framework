@@ -113,41 +113,25 @@ To inspect without pushing during development: `APEX_MIRROR_NO_PUSH=1 bash skill
 
 ## Task 11: Self-reflect
 
-Spawn `agents/reflector.md` (Haiku, foreground) with `--phase admin-apex` and the run token. The reflector reads `.claude-tmp/admin-apex-active/{run}-summary.md` plus this run's JSON artifacts (drift-report, evolve-plan, applied-ops, dirty-paths, docs-changed - whichever exist), `git diff --stat HEAD~1`, and `git log -1 --pretty=%B`; it appends a `## {run} - admin-apex - {ts}` block to `~/.claude/tmp/apex-workflow-improvements.md` under flock. `/apex-improve` consumes that log on its next run and can target `skills/admin-apex/**` paths in `target_files` - closing the self-improvement loop.
+Spawn `agents/reflector.md` (Haiku, foreground) with the admin-apex phase. The agent reads its own contract for input/output shape (table row `admin-apex task 11`); this skill supplies only the run-specific context. The reflector's appended block in `~/.claude/tmp/apex-workflow-improvements.md` is consumed by `/apex-improve`'s next run, which can target `skills/admin-apex/**` in `target_files` - closing the self-improvement loop.
 
 Spawn-prompt template (substitute `{run}`):
 
 ```
-You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and follow it.
+You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and
+follow the `admin-apex task 11` row of the invocation table. No reflect-traces.sh
+heuristic block exists for this phase; inputs are this run's summary trace + JSON
+artifacts plus `git diff --stat HEAD~1` and `git log -1 --pretty=%B`.
 
-Token:    {run}                  # run token (8-hex), used in place of {session}
+Token:    {run}             # 8-hex; used in place of {session}
 Phase:    admin-apex
 Manifest: .claude-tmp/admin-apex-active/{run}.json   # context only; no TaskList lookup
-
-No reflect-traces.sh heuristic block exists for this phase - skip the focus-routing
-step. Inputs are the per-task summary trace + JSON artifacts under
-.claude-tmp/admin-apex-active/{run}-* (read whichever exist), plus
-`git diff --stat HEAD~1` and `git log -1 --pretty=%B` for the just-made commit.
-
-Snapshot (50KB cap, defends against cleanup-run.sh race):
-  cat .claude-tmp/admin-apex-active/{run}-summary.md \
-      .claude-tmp/admin-apex-active/{run}-applied-ops.json \
-      .claude-tmp/admin-apex-active/{run}-drift-report.json \
-      2>/dev/null | head -c 51200 > /tmp/{run}-admin-apex-snapshot.txt
-
-Output: structured append (NO prose) to ~/.claude/tmp/apex-workflow-improvements.md
-under flock ~/.claude/tmp/apex-workflow-improvements.md.lock:
-
-  ## {run} - admin-apex - <timestamp>
-  - gaps: <one-line per gap, max 3>
-  - fixes-observed: <one-line per auto-fix loop / mid-flight drift recovery, max 3>
-  - improvements: <one-line per suggestion, max 3>
 
 Errors -> ~/.claude/tmp/reflector-errors.log (silent failure otherwise).
 Shut down silently (no main-session output).
 ```
 
-After reflector returns, invoke `bash skills/admin-apex/scripts/cleanup-run.sh --run {run}` (sweeps `.claude-tmp/admin-apex-active/{run}-*`, the manifest, and the `/tmp/{run}-*` snapshot). Reflector failure does NOT block cleanup - the agent self-silences to `reflector-errors.log` per its contract.
+After reflector returns, invoke `bash skills/admin-apex/scripts/cleanup-run.sh --run {run}`. Reflector failure does NOT block cleanup - the agent self-silences per its contract.
 
 ## Out of scope
 
