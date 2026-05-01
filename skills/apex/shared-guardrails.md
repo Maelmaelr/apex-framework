@@ -99,8 +99,12 @@ Trace writers: `executor.md`, `screener.md`, `rescout.md`. Non-trace: shard, ver
 Schemas at `skills/apex/schemas/*.schema.json` (this dev repo) - canonical install path is `~/.claude/skills/apex/schemas/`. Producer validates before write; consumer validates before read.
 
 Helpers (uniform call sites for script + inline-LLM producers):
-- `scripts/_validate.py` - python module; `producer_validate(data, schema_name)` raises `ValidationError`, `consumer_load(path, schema_name)` returns `None` on missing/invalid. When `jsonschema` is not importable, both fall back to JSON-parse-only with a one-line stderr warning.
-- `scripts/validate-json.sh [--admin] <schema-name> <json-path>` - thin shell wrapper around `producer_validate`. Used by `create-session.sh` after manifest write and by orchestrator inline-LLM producers (Step 3 hypothesis) immediately after `Write` to enforce the rule across all producer types.
+- `scripts/_validate.py` - python module; `producer_validate(data, schema_name)` raises `ValidationError`, `consumer_load(path, schema_name)` returns `None` on missing/invalid. Schema dir resolves via `APEX_SCHEMA_DIR` env var if set + non-empty; otherwise defaults to `skills/apex/schemas/` (relative to the module).
+- `scripts/validate-json.sh [--admin] <schema-name> <json-path>` - thin shell wrapper around `producer_validate`. Used by `create-session.sh` after manifest write and by orchestrator inline-LLM producers (Step 3 hypothesis) immediately after `Write` to enforce the rule across all producer types. The `--admin` flag exports `APEX_SCHEMA_DIR=skills/admin-apex/schemas/` before invoking python (no runtime monkey-patch).
+
+Strict-mode enforcement (admin-apex only):
+- Apex hot path keeps lenient parse-only fallback when `jsonschema` is missing (one-line stderr warning per process). Rationale: end-user environments without the dep should not be blocked from `/apex` runs.
+- Admin-apex runs `scripts/check-deps.sh` at task 1; missing `jsonschema` aborts with the install one-liner. Rationale: admin-apex owns mutation and must validate before write - parse-only is not an acceptable degradation for the maintenance path.
 
 Validation failure handling:
 - Producer: aborts with explicit error to stderr (catches malformed output at source)

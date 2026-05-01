@@ -45,15 +45,15 @@ if [[ ! -f "$JSON_PATH" ]]; then
   exit 1
 fi
 
-ADMIN="$ADMIN" PYTHONPATH="$SCRIPT_DIR" python3 - "$SCHEMA" "$JSON_PATH" <<'PY'
-import json, os, sys
-schema_name, json_path = sys.argv[1], sys.argv[2]
+if [[ "$ADMIN" -eq 1 ]]; then
+  # Resolve admin-apex schema dir once and export so _validate.py picks it up
+  # at module load via APEX_SCHEMA_DIR (no runtime monkey-patch).
+  export APEX_SCHEMA_DIR="$(cd "$SCRIPT_DIR/../../admin-apex/schemas" && pwd)"
+fi
 
-# Optional override for admin-apex schemas (siblings of apex schemas).
-if os.environ.get("ADMIN") == "1":
-    import _validate
-    here = os.path.dirname(os.path.abspath(_validate.__file__))
-    _validate._SCHEMA_DIR = os.path.normpath(os.path.join(here, "..", "..", "admin-apex", "schemas"))
+PYTHONPATH="$SCRIPT_DIR" python3 - "$SCHEMA" "$JSON_PATH" <<'PY'
+import json, sys
+schema_name, json_path = sys.argv[1], sys.argv[2]
 
 from _validate import producer_validate, ValidationError
 

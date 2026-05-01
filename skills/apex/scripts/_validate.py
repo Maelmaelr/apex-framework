@@ -15,7 +15,10 @@ fails on non-serialisable input, json.load fails on bad bytes), but schema
 violations slip through. Emits a one-line warning to stderr the first time the
 fallback fires per process.
 
-Schema directory resolution: relative to this file (skills/apex/schemas/).
+Schema directory resolution:
+  1. `APEX_SCHEMA_DIR` env var if set + non-empty (consumers wanting to point at a
+     sibling schema dir like skills/admin-apex/schemas/ export it before invoking).
+  2. Default: skills/apex/schemas/ (relative to this file).
 """
 from __future__ import annotations
 import json
@@ -23,8 +26,17 @@ import os
 import sys
 from typing import Any, Optional
 
-_SCHEMA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "schemas")
-_SCHEMA_DIR = os.path.normpath(_SCHEMA_DIR)
+
+def _resolve_schema_dir() -> str:
+    override = os.environ.get("APEX_SCHEMA_DIR")
+    if override:
+        return os.path.normpath(override)
+    return os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "schemas")
+    )
+
+
+_SCHEMA_DIR = _resolve_schema_dir()
 
 _FALLBACK_WARNED = False
 

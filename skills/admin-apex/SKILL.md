@@ -9,11 +9,11 @@ Apex internals administrator. Out-of-band - not part of /apex hot path. No proje
 
 Two-repo model: `~/.claude` is the **private** working tree (personal config + apex framework). `/Users/mael/dev/apex-framework` is the **public** mirror (apex framework only). Every commit produced by this skill is replicated to the public mirror via task 10 (allowlisted paths only) and both repos are pushed alongside. Pushes happen ONLY via task 10.
 
-Per-run artifacts live under `.claude-tmp/admin-apex-active/{run}-*` (mirrors apex-active). `{run}` token = `openssl rand -hex 4`, minted at task 1; cleaned by task 10 after successful push (or by task 9 if task 10 is skipped); left in place on abort.
+Per-run artifacts live under `.claude-tmp/admin-apex-active/{run}-*` (mirrors apex-active). `{run}` token = `openssl rand -hex 4`, minted at task 1; swept by `scripts/cleanup-run.sh` at SessionEnd (manifest-matched), task 10 (post mirror+push), or task 9's no-commit branch.
 
 Inputs: `skills/apex/**`, `agents/**`, `apex-core.md`, `apex-core-overview.md`, `README.md`, `settings.json`, repo-root `CLAUDE.md`, `VERSION`.
 
-Private-tracked roots (auto-staged by task 9 in addition to evolve dirty paths; private to `~/.claude`, NEVER mirrored to public): `plugins/`, `statusline/`, `tmp/`. The closed allowlist in `scripts/mirror-to-dev.sh` already excludes these from public; task 9 uses `git add` (which respects `.gitignore`) so transient files - flock targets, runtime caches - stay out.
+Private-tracked roots auto-staged by task 9 in addition to evolve dirty paths (private to `~/.claude`, NEVER mirrored to public): `plugins/`, `statusline/`, `tmp/`. The closed allowlist in `scripts/mirror-to-dev.sh` excludes these from public.
 
 ## Step 0: TaskCreate the chain
 
@@ -34,7 +34,9 @@ Tasks 5-8 are conditional on task 4's gate (skipped on audit-only outcome). Task
 
 ## Task 1: Mode select
 
-AskUserQuestion (header: "admin-apex mode"; options: `audit-only`, `audit+apply`; dismiss/cancel = abort). Then mint `{run}` and `mkdir -p .claude-tmp/admin-apex-active`.
+AskUserQuestion (header: "admin-apex mode"; options: `audit-only`, `audit+apply`; dismiss/cancel = abort). Then run `bash skills/admin-apex/scripts/check-deps.sh` - exit 1 means strict Python deps (currently `jsonschema`) are missing; surface the script's stderr install one-liner to the user and abort cleanly (no manifest written yet, no session-end-hook needed). Exit 0 -> proceed.
+
+Mint `{run}` (`openssl rand -hex 4`), `mkdir -p .claude-tmp/admin-apex-active`, capture `$CC_SESSION_ID`, and **Write** `.claude-tmp/admin-apex-active/{run}.json` with `{"run":"{run}","cc_session_id":"<captured>","producer":"admin-apex"}`. The manifest arms `scripts/session-end-hook.sh` to sweep this run's artifacts when the CC session ends (covers hard-stops, soft-skips, mid-flight rollback, abort, dismiss).
 
 ## Task 2: Inventory snapshot
 
@@ -60,10 +62,7 @@ Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | a
 
 Read and follow `skills/admin-apex/evolve.md`. Task 5 composes `{run}-evolve-plan.json`; task 6 applies ops, producing `{run}-applied-ops.json` + `{run}-dirty-paths.txt`.
 
-Mid-flight drift surfaces AskUserQuestion (`restart | commit-partial | rollback`) per evolve.md:
-- `restart` -> abort current run (user re-invokes `/admin-apex`)
-- `commit-partial` -> proceed to task 7 with ops-so-far
-- `rollback` -> `git restore` on `{run}-dirty-paths.txt`, exit cleanly (only admin-apex codepath that runs `git restore`; explicit user gate)
+Mid-flight drift: see `evolve.md` lines 53-57 for the `restart | commit-partial | rollback` contract (rollback is the only admin-apex codepath that runs `git restore`).
 
 ## Task 7: Sync docs
 
@@ -85,46 +84,25 @@ Bump rule (only applies when evolve ran in tasks 5-8 and produced applied ops):
 - no bump: soft-skip outcome (only private-tracked-root deltas, no evolve ops) OR nothing staged (no commit)
 
 ```
-# Bump VERSION only if evolve ran and applied ops exist
-if [[ -s .claude-tmp/admin-apex-active/{run}-applied-ops.json ]]; then
-  new=$(bash skills/admin-apex/scripts/_bump-version.sh patch)   # or minor
-  echo VERSION >> .claude-tmp/admin-apex-active/{run}-dirty-paths.txt
-fi
-
-# Stage evolve dirty paths (if any)
-[[ -s .claude-tmp/admin-apex-active/{run}-dirty-paths.txt ]] && \
-  xargs git add -- < .claude-tmp/admin-apex-active/{run}-dirty-paths.txt
-[[ -s .claude-tmp/admin-apex-active/{run}-docs-changed.txt ]] && \
-  xargs git add -- < .claude-tmp/admin-apex-active/{run}-docs-changed.txt
-
-# Stage private-tracked roots (always; respects .gitignore so transient files stay out)
-git add -- plugins/ statusline/ tmp/
-
-# Commit only if anything is staged
-if ! git diff --cached --quiet; then
-  git commit -m "admin-apex: <one-line summary>" -m "- <op>: <target> [-> <rename_to>]"
-fi
+bash skills/admin-apex/scripts/admin-apex-finalize.sh \
+  --run {run} --bump {kind} --message "<one-liner>" --body "<op-list>"
 ```
 
-VERSION is appended to `{run}-dirty-paths.txt` (not staged separately) so task 10's mirror sees it without a special-case. `xargs ... < file` (input redirection) used instead of `xargs -a file` for macOS BSD-xargs portability. The `git add -- plugins/ statusline/ tmp/` line covers both modified-tracked and untracked files; `.gitignore` keeps lock targets / runtime caches out.
+Caller decides `{kind}` per the bump rule above (read `{run}-applied-ops.json` to classify). Branch on exit code:
+- `0` -> commit created; proceed to task 10
+- `10` -> nothing staged; finalize.sh already invoked `cleanup-run.sh`; skip task 10
+- `1` -> bad args / defensive-validation failure; surface to user
+- `2` -> commit failure; artifacts left for inspection; surface to user
 
-NO push here (task 10 owns pushes). On commit failure: leave artifacts; surface to user. Cleanup of `.claude-tmp/admin-apex-active/{run}-*` defers to task 10 (after successful mirror+push) so the mirror script can read the run's dirty-paths/docs-changed files.
-
-If task 9 produced no commit (nothing staged after both evolve + private-roots staging), skip task 10 and clean up artifacts here instead.
+NO push here (task 10 owns pushes). VERSION is appended to `{run}-dirty-paths.txt` so task 10's mirror sees it without a special-case.
 
 ## Task 10: Mirror + push both
-
-Replicates this run's allowlisted changes from `~/.claude` into the public mirror at `/Users/mael/dev/apex-framework`, commits there with the same message as the task 9 commit, then pushes the public repo first and `~/.claude` second.
 
 ```
 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"
 ```
 
-The script applies an allowlist (see header docstring): `skills/apex/**`, `skills/admin-apex/**`, `agents/**`, `VERSION`, `apex-core.md`, `apex-core-overview.md`. Anything else (including `settings.json`, `CLAUDE.md`, `skills/README.md`, and the private orchestration skills `skills/apex-eod/**`, `skills/apex-fix/**`, `skills/apex-init/**`, `skills/apex-file-health/**`, `skills/apex-lessons-analyze/**`, `skills/apex-lessons-extract/**`) is private to `~/.claude` and silently skipped.
-
-Path mapping is identity (`~/.claude/<path>` -> `/Users/mael/dev/apex-framework/<path>`). Deletions in `~/.claude` propagate as deletions in the public mirror. Untouched files in the public mirror are left alone (per-run mirror, NOT a full reconciliation - one-time reconciliations happen out-of-band).
-
-On script success: `rm -rf .claude-tmp/admin-apex-active/{run}-*`. On script failure: leave artifacts; surface to user with the script's exit code (3 = mirror dir missing, 4 = git add failed in public, 5 = git commit failed in public, 6 = push failed in public, 7 = push failed in private).
+See `scripts/mirror-to-dev.sh:13-54` for allowlist, path mapping, and exit codes (3-7). On success: invoke `bash skills/admin-apex/scripts/cleanup-run.sh --run {run}`. On failure: leave artifacts; surface the script's exit code to the user.
 
 To inspect without pushing during development: `APEX_MIRROR_NO_PUSH=1 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"`.
 

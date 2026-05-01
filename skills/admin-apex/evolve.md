@@ -34,15 +34,21 @@ For each cluster the gate marked `apply`, translate items into ops:
 
 Set `doc_only: true` for any op that does NOT touch `skills/apex/`, `agents/`, or `settings.json` (only README/apex-core/overview/CLAUDE.md edits). Drives task 9 patch-vs-minor bump rule.
 
-Validate the plan via `_validate.py producer_validate(data, "evolve-plan")` before write. Schema lives at `skills/admin-apex/schemas/evolve-plan.schema.json` - admin-apex schemas are siblings of apex schemas; the validator helper resolves any directory it is pointed at. Pass schema name + dir override:
+Validate the plan before write. Admin-apex schemas live at `skills/admin-apex/schemas/` (siblings of apex schemas). Two equivalent invocation paths:
 
 ```
-PYTHONPATH="$HOME/.claude/skills/apex/scripts" \
-  ADMIN_SCHEMA_DIR=".../skills/admin-apex/schemas" \
-  python3 -c "..."
+# Preferred: shell wrapper (sets APEX_SCHEMA_DIR internally under --admin)
+bash skills/apex/scripts/validate-json.sh --admin evolve-plan {path}
+
+# Direct python (e.g., from inline scripts that already build the data dict)
+APEX_SCHEMA_DIR=$HOME/.claude/skills/admin-apex/schemas \
+  PYTHONPATH=$HOME/.claude/skills/apex/scripts \
+  python3 -c "from _validate import producer_validate; ..."
 ```
 
-If `jsonschema` unavailable, fall back to JSON-parse-only (matches apex `_validate.py` contract).
+`APEX_SCHEMA_DIR` is the canonical override read by `_validate.py` at module load. Exit 0 = valid; exit 1 = malformed (abort with explicit error).
+
+Strict-mode: admin-apex task 1 calls `scripts/check-deps.sh`, which hard-fails if `jsonschema` is missing. So evolve never reaches the lenient parse-only fallback (that fallback exists only for apex hot path).
 
 ## Task 6: Apply ops
 
