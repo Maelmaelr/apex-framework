@@ -21,18 +21,20 @@ Private-tracked roots auto-staged by task 9 in addition to evolve dirty paths (p
 
 ## Step 0: TaskCreate the chain
 
+Each line is one `TaskCreate(subject, description)`. Tasks run in TaskCreate order; `TaskCreate` has no `blockedBy` parameter (sequential by construction).
+
 ```
-TaskCreate "1. Mode select"          - inline AskUserQuestion
-TaskCreate "2. Inventory snapshot"   - blockedBy [1] - scripts/inventory-apex.sh
-TaskCreate "3. Audit drift"          - blockedBy [2] - audit.md
-TaskCreate "4. Audit gate"           - blockedBy [3] - inline AskUserQuestion per cluster
-TaskCreate "5. Evolve plan"          - blockedBy [4] - evolve.md (task 5)
-TaskCreate "6. Apply evolve"         - blockedBy [5] - evolve.md (task 6)
-TaskCreate "7. Sync docs"            - blockedBy [6] - sync-docs.md
-TaskCreate "8. Test apex scripts"    - blockedBy [7] - scripts/test-apex-scripts.sh
-TaskCreate "9. VERSION + commit"     - blockedBy [8] - scripts/_bump-version.sh + git
-TaskCreate "10. Mirror + push both"  - blockedBy [9] - scripts/mirror-to-dev.sh
-TaskCreate "11. Self-reflect"        - blockedBy [10] - agents/reflector.md (--phase admin-apex)
+TaskCreate "1. Mode select"          (inline AskUserQuestion)
+TaskCreate "2. Inventory snapshot"   (scripts/inventory-apex.sh)
+TaskCreate "3. Audit drift"          (audit.md)
+TaskCreate "4. Audit gate"           (inline AskUserQuestion per cluster)
+TaskCreate "5. Evolve plan"          (evolve.md task 5)
+TaskCreate "6. Apply evolve"         (evolve.md task 6)
+TaskCreate "7. Sync docs"            (sync-docs.md)
+TaskCreate "8. Test apex scripts"    (scripts/test-apex-scripts.sh)
+TaskCreate "9. VERSION + commit"     (scripts/_bump-version.sh + git)
+TaskCreate "10. Mirror + push both"  (scripts/mirror-to-dev.sh)
+TaskCreate "11. Self-reflect"        (agents/reflector.md --phase admin-apex)
 ```
 
 Tasks 5-8 are conditional on task 4's gate (skipped on audit-only outcome). Task 9 still runs to capture private-tracked-root deltas; if nothing ends up staged, task 9 produces no commit and task 10 is skipped. Task 11 fires only on task 10 success (the no-commit and hard-stop branches let `cleanup-run.sh` sweep without reflection - those branches lack the post-commit git context the reflector reads).

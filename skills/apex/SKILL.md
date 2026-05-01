@@ -34,17 +34,19 @@ See `shared-guardrails.md` for: scope enforcement, safety paths, manifest schema
 
 ## Step 0: TaskCreate the entry chain
 
+Each line below is one `TaskCreate(subject, description)`. Tasks run in TaskCreate order; `TaskCreate` has no `blockedBy` / `blocks` parameter - if a parallel branch needs an explicit merge dependency, set it after the fact via `TaskUpdate addBlockedBy`.
+
 ```
-TaskCreate "1. Analyze"            - inline; AskUserQuestion if ambiguous
-TaskCreate "2. Session manifest"   - blockedBy [1] - scripts/create-session.sh
-TaskCreate "3. Hypothesis"         - blockedBy [2] - inline; writes {session}-hypothesis.json
-TaskCreate "4. Load lessons"       - blockedBy [3] - scripts/grep-lessons.sh + scripts/update-hit.sh
-TaskCreate "5. Trivial detection"  - blockedBy [4] - inline; trivial -> trivial.md, non-trivial -> tasks 6-9
+TaskCreate "1. Analyze"            (inline; AskUserQuestion if ambiguous)
+TaskCreate "2. Session manifest"   (scripts/create-session.sh)
+TaskCreate "3. Hypothesis"         (inline; writes {session}-hypothesis.json)
+TaskCreate "4. Load lessons"       (scripts/grep-lessons.sh + scripts/update-hit.sh)
+TaskCreate "5. Trivial detection"  (inline; trivial -> trivial.md, non-trivial -> tasks 6-9)
 ```
 
-Append on non-trivial: `6. scout1.md`, `7. scout2.md`, `8. verify-claims.sh`, `9. decide-path.sh` (each `blockedBy` the previous).
+Append on non-trivial: `6. scout1.md`, `7. scout2.md`, `8. verify-claims.sh`, `9. decide-path.sh`.
 
-Append on `decide-path.sh = complex`: `10. reflect.md --phase entryflow` (background; reflector via `reflect-traces.sh`), then `p2.0a / p2.0b / p2.0c` per `plan-mode.md`.
+Append on `decide-path.sh = complex`: `10. reflect.md --phase entryflow` (background; via `reflect-traces.sh`), then `p2.0a / p2.0b / p2.0c` per `plan-mode.md`. On `decide-path.sh = medium`: NO append; orchestrator dispatches into `p1.md` per "Step 9 path dispatch" below.
 
 ## Step 1: Analyze (inline)
 
@@ -122,6 +124,17 @@ Exit-code priority 1 > 2 > 3 > 0. Read `abort_cause` from stderr on exit 1.
 On exit 0 (default mode OR `--apply-resolved`): the script wrote `{session}-main-scope.json`. The orchestrator MUST then write the scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single line: absolute path to the scope JSON) via the `Write` tool, mirroring the trivial / zero-layer branches (`shared-guardrails.md` / scope-check hook). Without the pointer, the PreToolUse hook is pass-through and downstream `Edit` / `Write` are unguarded.
 
 On exit 1: run `scripts/session-end-hook.sh {session}` inline before exiting (mid-abort cleanup).
+
+## Step 9 path dispatch
+
+`scripts/decide-path.sh` echoes `medium` or `complex`. Branch on the value:
+
+| Mode | Action |
+|------|--------|
+| `medium` | Read and follow `~/.claude/skills/apex/p1.md` directly (p1.md TaskCreates p1.1 -> p1.6 inline at its Step 3). No entry-flow task append. Mirrors trivial -> `trivial.md` -> p1.md. |
+| `complex` | Tasks 10 + p2.0a/b/c queued per Step 0 append; proceed. p2.0c `ExitPlanMode` clears context; the embedded plan routes the post-clear session into `p2.md`. |
+
+Without an explicit medium dispatch the model finishes task 9 with no pending tasks and silently terminates - p1.X never gets created.
 
 ## Path 2 plan-mode chain (p2.0a / p2.0b / p2.0c)
 
