@@ -52,7 +52,7 @@ Append on `decide-path.sh = complex`: `10. reflect.md --phase entryflow` (backgr
 
 Read the user's prompt. Identify the task type, files / modules implied, action verbs. If the prompt is ambiguous, surface via AskUserQuestion. **Assuming is forbidden** - prefer asking over guessing.
 
-Then read `<project-root>/docs/project-context.md` if it exists (best-effort; absent = skip silently). This is the canonical entry point to the codebase architecture - module names, conventions, security-sensitive paths, architectural boundaries. The read pre-biases Step 3 hypothesis (architecture terms surface in `hypothesis` and `alternatives`) and propagates by **inheritance** through working memory to the trivial / zero-layer branches. The read is NOT pushed into scout / screener / git / learn / reflector prompts (token cost, no decision benefit). Architecture-sensitive downstream consumers (`planner.md` at p2.0b, `agents/executor.md` on slice spans, `agents/documentation.md` at p1.3 / p2.4) re-read directly when their work requires it. See `shared-guardrails.md` "Project context" for the closed hybrid contract.
+Then read `<project-root>/docs/project-context.md` (best-effort; absent = silent skip). The read pre-biases Step 3 hypothesis and propagates by inheritance to trivial / zero-layer branches. See `shared-guardrails.md` "Project context" for the closed hybrid contract (which downstream consumers re-read directly).
 
 ## Step 2: Create session manifest
 

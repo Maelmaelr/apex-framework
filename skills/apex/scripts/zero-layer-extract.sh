@@ -89,6 +89,14 @@ jq -n --argjson files "$(printf '%s\n' "${validated[@]}" | jq -R . | jq -s .)" \
   '{session: $session, produced_by: "zero-layer-inline", allowed_files: ($files + [".claude-tmp/", "~/.claude/tmp/", "~/.claude/plans/", "/tmp/\($session)-*", "docs/", "README*"])}' \
   > "$MAIN_SCOPE"
 
+# Producer-validates-before-write: closes the spec gap (shared-guardrails.md
+# JSON Schema validation: applies to script + inline-LLM producers).
+if ! "$SCRIPT_DIR/validate-json.sh" main-scope.schema.json "$MAIN_SCOPE"; then
+  rm -f "$MAIN_SCOPE"
+  echo "zero-layer-extract.sh: main-scope failed schema validation; aborting" >&2
+  exit 1
+fi
+
 # Write the scope pointer for the calling Claude Code session.
 mkdir -p "$APEX_ACTIVE/$SESSION-scopes"
 printf '%s\n' "$(realpath "$MAIN_SCOPE")" \

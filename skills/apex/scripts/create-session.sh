@@ -129,13 +129,17 @@ printf '{"session":"%s","pid":%d,"cc_session_id":"%s"}\n' "$SESSION" "$PPID" "$C
 # Producer-validates-before-write: shells the manifest through validate-json.sh
 # (jsonschema-fallback is parse-only when the lib is missing, but the call
 # point uniformly enforces the rule across script + inline-LLM producers).
+# validate-json.sh ships in this script's dir; missing = corrupt install -> hard fail.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -x "$SCRIPT_DIR/validate-json.sh" ]]; then
-  if ! "$SCRIPT_DIR/validate-json.sh" manifest.schema.json "$MANIFEST"; then
-    rm -f "$MANIFEST"
-    echo "create-session.sh: manifest failed schema validation; aborting" >&2
-    exit 1
-  fi
+if [[ ! -x "$SCRIPT_DIR/validate-json.sh" ]]; then
+  rm -f "$MANIFEST"
+  echo "create-session.sh: validate-json.sh missing or non-executable at $SCRIPT_DIR (install corruption); aborting" >&2
+  exit 1
+fi
+if ! "$SCRIPT_DIR/validate-json.sh" manifest.schema.json "$MANIFEST"; then
+  rm -f "$MANIFEST"
+  echo "create-session.sh: manifest failed schema validation; aborting" >&2
+  exit 1
 fi
 
 echo "$SESSION"
