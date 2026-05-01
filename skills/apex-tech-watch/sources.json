@@ -1,0 +1,54 @@
+{
+  "version": 1,
+  "description": "Closed list of fetch targets for apex-tech-watch. Edit this file to add/remove sources without touching SKILL.md.",
+  "sources": [
+    {
+      "id": "claude-code-releases",
+      "kind": "webfetch",
+      "url": "https://github.com/anthropics/claude-code/releases",
+      "summarize_prompt": "Extract releases from the last 7 days: version, key new features, breaking changes, deprecations, new hook/skill/MCP primitives. Return up to 5 short bullets. If no releases in the window, say 'no releases this week' on a single line."
+    },
+    {
+      "id": "anthropic-news",
+      "kind": "webfetch",
+      "url": "https://www.anthropic.com/news",
+      "summarize_prompt": "Extract posts from the last 7 days that affect API users or Claude Code: model releases, deprecations, new capabilities, pricing changes. Skip marketing/research posts. Up to 5 bullets. If no relevant posts, say 'no relevant news this week'."
+    },
+    {
+      "id": "anthropic-api-changelog",
+      "kind": "webfetch",
+      "url": "https://docs.anthropic.com/en/release-notes/api",
+      "summarize_prompt": "Extract API changelog entries from the last 7 days. Flag breaking changes vs additive changes. Up to 5 bullets. If empty, say so."
+    },
+    {
+      "id": "claude-code-changelog",
+      "kind": "webfetch",
+      "url": "https://docs.anthropic.com/en/release-notes/claude-code",
+      "summarize_prompt": "Extract Claude Code changelog entries from the last 7 days. Up to 5 bullets. If empty, say so."
+    },
+    {
+      "id": "anthropic-models-overview",
+      "kind": "webfetch",
+      "url": "https://docs.anthropic.com/en/docs/about-claude/models/overview",
+      "summarize_prompt": "List the currently-recommended Claude models (Opus/Sonnet/Haiku) with their model IDs and any deprecation warnings. One short block per family."
+    },
+    {
+      "id": "web-best-practices",
+      "kind": "websearch",
+      "query": "claude code best practices",
+      "summarize_prompt": "Top 5 results from the last 30 days. For each: title, URL, one-line takeaway. Filter out marketing pages and AI-generated SEO spam."
+    },
+    {
+      "id": "web-agent-patterns",
+      "kind": "websearch",
+      "query": "claude agent SDK design patterns 2026",
+      "summarize_prompt": "Top 5 results from the last 30 days that describe agent architecture / orchestration patterns relevant to apex (multi-agent, scope-checking, self-reflection). Title, URL, one-line takeaway."
+    },
+    {
+      "id": "github-trending-weekly",
+      "kind": "webfetch",
+      "url": "https://github.com/trending?since=weekly",
+      "summarize_prompt": "Top 10 trending repos this week. Filter to AI / dev-tooling / agent-framework relevant entries. Return: repo (org/name), stars-this-week, one-line description. Skip cryptocurrency, gaming, generic UI starters."
+    }
+  ]
+}

@@ -13,6 +13,8 @@
 # Allowlist (mirrored to public; identity path mapping):
 #   - skills/apex/**
 #   - skills/admin-apex/**
+#   - skills/apex-improve/**            (self-improvement engine; closes the reflector loop)
+#   - skills/apex-tech-watch/**         (weekly tech-watch fetcher; produces tech-updates.md)
 #   - agents/**
 #   - VERSION
 #   - apex-core.md
@@ -28,8 +30,6 @@
 #   - skills/apex-file-health/**        (private orchestration)
 #   - skills/apex-lessons-analyze/**    (private orchestration)
 #   - skills/apex-lessons-extract/**    (private orchestration)
-#   - skills/apex-improve/**            (private orchestration: consumes ~/.claude/tmp/* signals; per-user)
-#   - skills/apex-tech-watch/**         (private orchestration: WebFetch/WebSearch fetcher; per-user cron)
 #   - plugins/**                        (private; installed_plugins.json + known_marketplaces.json are user-specific)
 #   - statusline/**                     (private; user-specific config + cached state)
 #   - tmp/**                            (private; reflector log + per-machine scratch)
@@ -71,7 +71,7 @@ DOCS="$ACTIVE/${RUN}-docs-changed.txt"
 
 allowed() {
   case "$1" in
-    skills/apex/*|skills/admin-apex/*|agents/*|VERSION|apex-core.md|apex-core-overview.md)
+    skills/apex/*|skills/admin-apex/*|skills/apex-improve/*|skills/apex-tech-watch/*|agents/*|VERSION|apex-core.md|apex-core-overview.md)
       return 0 ;;
     *) return 1 ;;
   esac
