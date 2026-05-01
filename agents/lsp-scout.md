@@ -29,7 +29,7 @@ ALSO covers TS/JS files when the deterministic Python client (scripts/_lsp_query
 
 ## Output
 
-`.claude-tmp/scout/lsp-agent-{session}.json` (validated against `schemas/lsp-agent.schema.json` once schema is added):
+`.claude-tmp/scout/lsp-agent-{session}.json` (validated against `skills/apex/schemas/lsp-agent.schema.json`):
 
 ```
 {
@@ -40,7 +40,7 @@ ALSO covers TS/JS files when the deterministic Python client (scripts/_lsp_query
 }
 ```
 
-The `found[]` shape mirrors `findings-{session}.json` entries' `reasons[].layer == "rescout"` style so scout1.md's merger can fold these into `findings-{session}.json` as additional `layer: lsp` reasons before 6.b sharding.
+scout1.md (sequential, BEFORE 6.b shard) immediately invokes `skills/apex/scripts/merge-lsp-agent.py --findings findings-{session}.json --lsp-agent lsp-agent-{session}.json`, which folds entries into findings as `layer=lsp` reasons (dedup by detail, recompute confidence per the same rule as `_enumerate_merge.py`).
 
 ## Trace
 

@@ -56,7 +56,7 @@ Legend:
     - Deterministic layers (priority order):
       1. Static imports (madge / pydeps / etc.)
       2. ast-grep structural queries
-      3. LSP references - hybrid: deterministic Python LSP client (`scripts/_lsp_query.py`, TS via typescript-language-server when on PATH) + agent fallback (`agents/lsp-scout.md`, MCP LSP plugins for non-TS / 0-result cases)
+      3. LSP references - hybrid: deterministic Python LSP client (`scripts/_lsp_query.py`, TS via typescript-language-server when on PATH) + agent fallback (`agents/lsp-scout.md`, MCP LSP plugins for non-TS / 0-result cases; agent output merged into findings by `scripts/merge-lsp-agent.py` before 6.b shard)
       4. Framework-convention scans (App Router strict route conventions; Pages Router all .ts/.tsx/.js/.jsx; seed-term-filtered)
     - Ripgrep fallback (only when all 4 deterministic layers produce 0)
     - Each finding carries `reasons[]` with layer attribution + `confidence: high|medium|low` (3+ deterministic = high; 1-2 = medium; ripgrep-only = low)

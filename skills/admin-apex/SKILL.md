@@ -11,7 +11,11 @@ Two-repo model: `~/.claude` is the **private** working tree (personal config + a
 
 Per-run artifacts live under `.claude-tmp/admin-apex-active/{run}-*` (mirrors apex-active). `{run}` token = `openssl rand -hex 4`, minted at task 1; swept by `scripts/cleanup-run.sh` at SessionEnd (manifest-matched), task 10 (post mirror+push), or task 9's no-commit branch.
 
-Inputs: `skills/apex/**`, `agents/**`, `apex-core.md`, `apex-core-overview.md`, `README.md`, `settings.json`, repo-root `CLAUDE.md`, `VERSION`.
+Inputs: `skills/apex/**`, `skills/admin-apex/**`, `agents/**`, `apex-core.md`, `apex-core-overview.md`, `README.md`, `settings.json`, repo-root `CLAUDE.md`, `VERSION`.
+
+Self-coverage: admin-apex's own files (`skills/admin-apex/**`) are subject to the same audit + evolve rules as the apex hot path. The 150-line cap on `.md`, the orphan-refs / missing-refs / schema-mismatch / dead-hook detectors, and the doc_only / structural classification used by task 9's bump rule all apply to admin-apex too. Task 11 closes the loop by feeding reflection signals into `~/.claude/tmp/apex-workflow-improvements.md`, which `/apex-improve` consumes to evolve admin-apex like any other apex file.
+
+Per-task summary trace: every task that runs (1-10) appends one line to `.claude-tmp/admin-apex-active/{run}-summary.md` in the format `task-{N}: <outcome>` (e.g., `task-3: drift 2 clusters (oversized, orphan)`, `task-6: applied 4 ops, drift=none`, `task-8: test pass`). Captures friction the JSON artifacts do not (gate dismissals, mid-flight drift `restart`, test failure auto-fix loops). Read by task 11's reflector.
 
 Private-tracked roots auto-staged by task 9 in addition to evolve dirty paths (private to `~/.claude`, NEVER mirrored to public): `plugins/`, `statusline/`, `tmp/`. The closed allowlist in `scripts/mirror-to-dev.sh` excludes these from public.
 
@@ -28,9 +32,10 @@ TaskCreate "7. Sync docs"            - blockedBy [6] - sync-docs.md
 TaskCreate "8. Test apex scripts"    - blockedBy [7] - scripts/test-apex-scripts.sh
 TaskCreate "9. VERSION + commit"     - blockedBy [8] - scripts/_bump-version.sh + git
 TaskCreate "10. Mirror + push both"  - blockedBy [9] - scripts/mirror-to-dev.sh
+TaskCreate "11. Self-reflect"        - blockedBy [10] - agents/reflector.md (--phase admin-apex)
 ```
 
-Tasks 5-8 are conditional on task 4's gate (skipped on audit-only outcome). Task 9 still runs to capture private-tracked-root deltas; if nothing ends up staged, task 9 produces no commit and task 10 is skipped.
+Tasks 5-8 are conditional on task 4's gate (skipped on audit-only outcome). Task 9 still runs to capture private-tracked-root deltas; if nothing ends up staged, task 9 produces no commit and task 10 is skipped. Task 11 fires only on task 10 success (the no-commit and hard-stop branches let `cleanup-run.sh` sweep without reflection - those branches lack the post-commit git context the reflector reads).
 
 ## Task 1: Mode select
 
@@ -79,8 +84,8 @@ Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.t
 ## Task 9: VERSION + commit
 
 Bump rule (only applies when evolve ran in tasks 5-8 and produced applied ops):
-- `patch` (0.2.1 -> 0.2.2): every applied op has `doc_only: true`
-- `minor` (0.2.1 -> 0.3.0): any structural mutation (file create/rename/split/merge/retire, schema add/remove, hook add/remove)
+- `patch` (0.2.1 -> 0.2.2): every applied op has `doc_only: true` (regardless of kind)
+- `minor` (0.2.1 -> 0.3.0): any structural-mutation kind (create/rename/split/merge/retire, schema-add/schema-remove, hook-add/hook-remove) OR any `edit` op with `doc_only: false` (touches skills/agents/scripts/schemas/settings)
 - no bump: soft-skip outcome (only private-tracked-root deltas, no evolve ops) OR nothing staged (no commit)
 
 ```
@@ -102,9 +107,47 @@ NO push here (task 10 owns pushes). VERSION is appended to `{run}-dirty-paths.tx
 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"
 ```
 
-See `scripts/mirror-to-dev.sh:13-54` for allowlist, path mapping, and exit codes (3-7). On success: invoke `bash skills/admin-apex/scripts/cleanup-run.sh --run {run}`. On failure: leave artifacts; surface the script's exit code to the user.
+See `scripts/mirror-to-dev.sh:13-54` for allowlist, path mapping, and exit codes (3-7). On success: proceed to task 11 (reflector); cleanup is deferred until after task 11 returns. On failure: leave artifacts; surface the script's exit code to the user; skip task 11 (no successful run to reflect on).
 
 To inspect without pushing during development: `APEX_MIRROR_NO_PUSH=1 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"`.
+
+## Task 11: Self-reflect
+
+Spawn `agents/reflector.md` (Haiku, foreground) with `--phase admin-apex` and the run token. The reflector reads `.claude-tmp/admin-apex-active/{run}-summary.md` plus this run's JSON artifacts (drift-report, evolve-plan, applied-ops, dirty-paths, docs-changed - whichever exist), `git diff --stat HEAD~1`, and `git log -1 --pretty=%B`; it appends a `## {run} - admin-apex - {ts}` block to `~/.claude/tmp/apex-workflow-improvements.md` under flock. `/apex-improve` consumes that log on its next run and can target `skills/admin-apex/**` paths in `target_files` - closing the self-improvement loop.
+
+Spawn-prompt template (substitute `{run}`):
+
+```
+You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and follow it.
+
+Token:    {run}                  # run token (8-hex), used in place of {session}
+Phase:    admin-apex
+Manifest: .claude-tmp/admin-apex-active/{run}.json   # context only; no TaskList lookup
+
+No reflect-traces.sh heuristic block exists for this phase - skip the focus-routing
+step. Inputs are the per-task summary trace + JSON artifacts under
+.claude-tmp/admin-apex-active/{run}-* (read whichever exist), plus
+`git diff --stat HEAD~1` and `git log -1 --pretty=%B` for the just-made commit.
+
+Snapshot (50KB cap, defends against cleanup-run.sh race):
+  cat .claude-tmp/admin-apex-active/{run}-summary.md \
+      .claude-tmp/admin-apex-active/{run}-applied-ops.json \
+      .claude-tmp/admin-apex-active/{run}-drift-report.json \
+      2>/dev/null | head -c 51200 > /tmp/{run}-admin-apex-snapshot.txt
+
+Output: structured append (NO prose) to ~/.claude/tmp/apex-workflow-improvements.md
+under flock ~/.claude/tmp/apex-workflow-improvements.md.lock:
+
+  ## {run} - admin-apex - <timestamp>
+  - gaps: <one-line per gap, max 3>
+  - fixes-observed: <one-line per auto-fix loop / mid-flight drift recovery, max 3>
+  - improvements: <one-line per suggestion, max 3>
+
+Errors -> ~/.claude/tmp/reflector-errors.log (silent failure otherwise).
+Shut down silently (no main-session output).
+```
+
+After reflector returns, invoke `bash skills/admin-apex/scripts/cleanup-run.sh --run {run}` (sweeps `.claude-tmp/admin-apex-active/{run}-*`, the manifest, and the `/tmp/{run}-*` snapshot). Reflector failure does NOT block cleanup - the agent self-silences to `reflector-errors.log` per its contract.
 
 ## Out of scope
 

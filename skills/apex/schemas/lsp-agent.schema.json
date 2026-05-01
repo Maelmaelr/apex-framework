@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lsp-agent.schema.json",
+  "title": "lsp-agent-{session}.json",
+  "description": "Step 6.a layer-3 LSP agent fallback output. Produced by agents/lsp-scout.md, consumed by skills/apex/scripts/merge-lsp-agent.py which folds entries into findings-{session}.json as layer=lsp reasons. See apex-core.md step 6.a (LSP layer; hybrid integration).",
+  "type": "object",
+  "required": ["found"],
+  "properties": {
+    "found": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["file", "detail"],
+        "properties": {
+          "file": { "type": "string", "description": "Canonicalized via realpath" },
+          "detail": { "type": "string", "description": "One-line LSP-derived rationale, e.g. \"lsp 'symName' from seed/path.py\"." },
+          "line_range": {
+            "oneOf": [
+              { "type": "null" },
+              { "type": "array", "minItems": 2, "maxItems": 2, "items": { "type": "integer", "minimum": 1 } }
+            ]
+          }
+        }
+      }
+    },
+    "_meta": {
+      "type": "object",
+      "properties": {
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "languages_covered": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

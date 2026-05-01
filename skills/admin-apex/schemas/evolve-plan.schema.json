@@ -14,8 +14,8 @@
         "required": ["kind", "rationale"],
         "properties": {
           "kind": {
-            "enum": ["create", "rename", "split", "merge", "retire", "schema-add", "schema-remove", "hook-add", "hook-remove"],
-            "description": "create=new file (skill/agent/script/schema). rename=path change (mirror update of refs). split=one file -> N files. merge=N files -> one. retire=delete + ref removal. schema-add/remove=schemas/*.json add or delete. hook-add/remove=settings.json hook entry add/remove."
+            "enum": ["create", "rename", "split", "merge", "retire", "edit", "schema-add", "schema-remove", "hook-add", "hook-remove"],
+            "description": "create=new file (skill/agent/script/schema). rename=path change (mirror update of refs). split=one file -> N files. merge=N files -> one. retire=delete + ref removal. edit=inline modification of an existing file (no structural mutation; e.g., schema enum extension, prose tightening, contract clarification). schema-add/remove=schemas/*.json add or delete. hook-add/remove=settings.json hook entry add/remove."
           },
           "target": { "type": "string", "description": "Primary path (existing for rename/split/merge/retire/schema-remove/hook-remove; new for create/schema-add/hook-add)." },
           "rename_to": { "type": "string", "description": "Required for kind=rename." },
