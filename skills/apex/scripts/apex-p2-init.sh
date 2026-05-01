@@ -14,14 +14,18 @@
 #   $1  -- {session} 8-hex token (required)
 #
 # Env (required):
-#   CC_SESSION_ID -- post-context-clear Claude Code session id (Claude Code
-#                    exports this in subprocesses; orchestrator passes through).
+#   CC_SESSION_ID -- post-context-clear Claude Code session id. Optional: if
+#                    unset, falls back to get-cc-session-id.sh (canonical
+#                    resolver per shared-guardrails.md "cc_session_id resolution").
+#                    Claude Code does NOT export this var by default.
 #
 # Exit codes:
 #   0  -- both side effects succeeded
 #   1  -- bad args, missing env, missing manifest, jq missing, or producer-validate failure
 
 set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 SESSION="${1:-}"
 
@@ -36,7 +40,11 @@ if ! [[ "$SESSION" =~ ^[0-9a-f]{8}$ ]]; then
 fi
 
 if [[ -z "${CC_SESSION_ID:-}" ]]; then
-  echo "apex-p2-init.sh: CC_SESSION_ID env var is required" >&2
+  CC_SESSION_ID="$(bash "$SCRIPT_DIR/get-cc-session-id.sh" 2>/dev/null || true)"
+fi
+
+if [[ -z "$CC_SESSION_ID" ]]; then
+  echo "apex-p2-init.sh: CC_SESSION_ID unresolvable (env unset and get-cc-session-id.sh failed)" >&2
   exit 1
 fi
 

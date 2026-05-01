@@ -27,25 +27,22 @@ For each teammate, the orchestrator does three things in order:
 
 Single producer for `{session}-{teammate-id}-scope.json` (`schemas/teammate-scope.schema.json`). Subset of `{session}-main-scope.json`; the planner already extended main scope first if the teammate needed files outside it (p2.0b "Main scope is the union" rule).
 
-```
-PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 -c "
-import sys, json, datetime
-from _validate import producer_validate, ValidationError
-data = {
-    'session': '{session}',
-    'teammate_id': '{teammate-id}',
-    'allowed_files': ${ALLOWED_FILES_JSON},   # JSON array literal substituted by orchestrator
-    'produced_at': datetime.datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%SZ'),
-}
-try:
-    producer_validate(data, 'teammate-scope')
-except ValidationError as e:
-    print(f'teammate-scope producer-validate failed: {e}', file=sys.stderr)
-    sys.exit(1)
-with open('.claude-tmp/apex-active/{session}-{teammate-id}-scope.json', 'w') as f:
-    json.dump(data, f)
-"
-```
+1. **Write** `.claude-tmp/apex-active/{session}-{teammate-id}-scope.json` via the `Write` tool:
+   ```json
+   {
+     "session": "{session}",
+     "teammate_id": "{teammate-id}",
+     "allowed_files": ["<file 1>", "<file 2>", "..."],
+     "produced_at": "<ISO-8601 UTC now>"
+   }
+   ```
+
+2. **Producer-validate** via the canonical wrapper (per `shared-guardrails.md` "JSON Schema validation"):
+   ```
+   bash $HOME/.claude/skills/apex/scripts/validate-json.sh teammate-scope \
+     .claude-tmp/apex-active/{session}-{teammate-id}-scope.json
+   ```
+   Exit 0 = valid; exit 1 = malformed (abort with explicit error - the planner's `allowed_files` for this teammate is broken).
 
 ### Step 2: Write the teammate task description
 
@@ -66,9 +63,10 @@ The teammate is a fresh Claude Code subagent with its own `cc_session_id`. Two-c
 ```
 TeamCreate
   team_name: "apex-{session}"
-  agent_type: "apex-teammate"
   description: "Path 2 teammate pool for apex session {session}"
 ```
+
+`agent_type` (per TeamCreate tool docs) labels the team LEAD's role and is intentionally omitted - the orchestrator IS the lead and its role is already established by `/apex`. Spawned teammates' types are set per-Agent below via `subagent_type`.
 
 **3b. Spawn each teammate via the `Agent` tool** -- one Agent tool call per teammate, all in a single parallel batch (single message, multiple Agent tool uses):
 
