@@ -67,7 +67,7 @@ Producers and consumers:
 
 `{session}-main-scope.json` - exactly one fires per session:
 - trivial path -> `trivial.md` (inline orchestrator `Write`)
-- zero-layer proceed -> `scout1.md` 6.a (inline orchestrator `Write`)
+- zero-layer proceed (and 6.b ripgrep-poisoned proceed, same writer) -> `scripts/zero-layer-extract.sh` (script writes scope + pointer)
 - normal path -> `verify-claims.sh` (default mode or `--apply-resolved`)
 
 **Anti-rule.** Writing `{session}-main-scope.json` outside these three producers is a contract violation. Concretely forbidden: freehand inline `Write` at 6.b post-shard (the ripgrep-poisoned gate's only proceed path is `zero-layer-extract.sh`, never freehand), freehand inline `Write` at any non-trivial step, and manual scope synthesis from grep results in lieu of running scout / verify. The `verify-claims.sh` exit-0 is the canonical normal-path producer; trivial / zero-layer are the only legitimate short-circuits. If the orchestrator is tempted to write scope freehand because scout returned noise, the correct response is the 6.b AskUserQuestion gate (refine | proceed-with-prompt-paths | continue) - not bypassing the gate.
