@@ -17,12 +17,12 @@ Fires only when `preflight-{session}.json.missed_regions != []`.
 
 ## Behavior
 
-For each missed region (file + optional line_range + reason), re-enumerate to surface files that the deterministic 6.a + screener 6.c missed. Use the same deterministic-layer toolkit (static imports, ast-grep, LSP refs, framework conventions) but scoped to the missed region.
+For each missed region (file + optional line_range + reason), re-enumerate to surface files that the deterministic 6.a + screener 6.c missed. Use the same deterministic-layer toolkit (static imports, ast-grep, framework conventions) but scoped to the missed region.
 
 ## Outputs
 
 1. `.claude-tmp/scout/rescout-{session}.json` (validated against `schemas/rescout.schema.json`):
-   - `found[]`: `{file, reason, line_range?}` - include `line_range` whenever the layer that surfaced the file reports one (ast-grep, lsp, framework, rescout match locations); merge promotes confidence to `high` when `line_range` is present, else `medium`
+   - `found[]`: `{file, reason, line_range?}` - include `line_range` whenever the layer that surfaced the file reports one (ast-grep, framework, rescout match locations); merge promotes confidence to `high` when `line_range` is present, else `medium`
 2. `.claude-tmp/apex-active/{session}-traces/entryflow/rescout-attempt-N.md` - regions queried, files newly found, why prior pass missed them. N = 1 initially; N = 2 on exit-2 6c+7 re-run.
 
 ## Final action: run merge

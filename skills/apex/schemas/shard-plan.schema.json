@@ -14,7 +14,7 @@
         "properties": {
           "shard_id": { "type": "string" },
           "files": { "type": "array", "items": { "type": "string" } },
-          "boundary_kind": { "enum": ["top-level-dir", "file-type", "import-edge-cluster"] }
+          "boundary_kind": { "enum": ["top-level-dir", "file-type"] }
         }
       }
     },
@@ -26,7 +26,7 @@
         "warnings": { "type": "array", "items": { "type": "string" } },
         "findings_count": { "type": "integer", "minimum": 0, "description": "Total findings entries before any --min-confidence filter." },
         "shard_count": { "type": "integer", "minimum": 0, "description": "Length of shards[] (post-filter)." },
-        "deterministic_count": { "type": "integer", "minimum": 0, "description": "Findings entries with at least one non-ripgrep layer (static-imports/ast-grep/lsp/framework)." },
+        "deterministic_count": { "type": "integer", "minimum": 0, "description": "Findings entries with at least one non-ripgrep layer (static-imports/ast-grep/framework)." },
         "ripgrep_only_count": { "type": "integer", "minimum": 0, "description": "Findings entries whose only layer is ripgrep." },
         "ripgrep_poisoned": { "type": "boolean", "description": "True when findings_count > 0 AND deterministic_count == 0 (ripgrep keyword fallback poisoned by generic words; gate routes to proceed-with-prompt-paths)." },
         "min_confidence": { "enum": ["low", "medium", "high"], "description": "--min-confidence flag passed to shard-findings.sh (default low = no filter)." }

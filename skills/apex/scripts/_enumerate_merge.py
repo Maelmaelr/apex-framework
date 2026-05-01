@@ -4,7 +4,7 @@
 Spec: apex-core.md step 6.a (merge / dedupe / confidence / zero-layer).
 
 Reads per-layer JSONL files from <layer_dir>:
-    static-imports.jsonl, ast-grep.jsonl, lsp.jsonl, framework.jsonl, ripgrep.jsonl
+    static-imports.jsonl, ast-grep.jsonl, framework.jsonl, ripgrep.jsonl
 Each line: {"file": <realpath>, "detail": <str>, "line_range": null | [int, int]}.
 
 Dedupe rules:
@@ -12,13 +12,13 @@ Dedupe rules:
   - Same-layer duplicates collapsed by (layer, detail) tuple.
 
 Confidence:
-  - 3+ deterministic layers (static-imports/ast-grep/lsp/framework) -> high
-  - 1-2 deterministic                                                -> medium
-  - ripgrep-only                                                     -> low
+  - 3 deterministic layers (static-imports/ast-grep/framework) -> high
+  - 1-2 deterministic                                          -> medium
+  - ripgrep-only                                               -> low
   - rescout layer is reserved for 7.x merge; never appears here.
 
 _meta.warnings:
-  - "no deterministic layers ran - ripgrep-only fallback" when layers 1-4 = 0
+  - "no deterministic layers ran - ripgrep-only fallback" when layers 1-3 = 0
     AND ripgrep emitted at least one finding
   - "no layers produced findings" on the zero-layer case
 
@@ -42,14 +42,14 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _validate  # noqa: E402
 
-LAYERS = ["static-imports", "ast-grep", "lsp", "framework", "ripgrep"]
-DETERMINISTIC = {"static-imports", "ast-grep", "lsp", "framework"}
+LAYERS = ["static-imports", "ast-grep", "framework", "ripgrep"]
+DETERMINISTIC = {"static-imports", "ast-grep", "framework"}
 
 
 def confidence_for(reasons: list[dict]) -> str:
     det_count = sum(1 for r in reasons if r["layer"] in DETERMINISTIC)
     if det_count >= 3:
-        return "high"
+        return "high"  # all 3 deterministic layers fired
     if det_count >= 1:
         return "medium"
     return "low"  # ripgrep-only

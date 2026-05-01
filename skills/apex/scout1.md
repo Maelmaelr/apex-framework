@@ -14,7 +14,6 @@ TaskCreate (insert before task 7) the 3 sub-tasks:
 
 Routing:
 - 6.a exit code 10 (zero-layer): orchestrator AskUserQuestion - see "AskUserQuestion contracts" below.
-- 6.a layer 3 LSP fallback: after `enumerate-scout.sh` returns 0 (non-zero-layer), inspect `findings-{session}.json`. Spawn `agents/lsp-scout.md` (Sonnet, low effort) BEFORE 6.b shard (sequential, not parallel - the merge has to land in findings before sharding, otherwise lsp-scout files miss the shard plan) when (a) seed_paths include any non-TS-family extension (`.py`, `.go`, `.rs`, `.java`, `.rb`, `.kt`, ...) AND a corresponding `mcp__*lsp__*` plugin tool is available, OR (b) zero entries in findings carry `reasons[].layer == "lsp"` (deterministic Python client returned nothing). lsp-scout writes `lsp-agent-{session}.json`; immediately call `python3 scripts/merge-lsp-agent.py --findings findings-{session}.json --lsp-agent lsp-agent-{session}.json` to fold entries into findings as `layer=lsp` reasons (recomputes confidence). Merger exit 0 -> proceed to 6.b; non-zero -> abort entryflow with merger stderr.
 - 6.b exit code 11 (>8 shards): orchestrator AskUserQuestion - see "AskUserQuestion contracts" below.
 - 6.c: each screener writes trace at `{session}-traces/entryflow/screener-{shard-id}-attempt-N.md`.
 
@@ -65,10 +64,10 @@ TaskCreate "6.c Screen"     - blockedBy [6.b]  - parallel screener.md per shard,
 
 ## 6.a layer rules + confidence (carried verbatim through to screener and verify)
 
-Each `findings-{session}.json` entry carries `reasons: [{layer, detail, line_range|null}]` with `layer` in `{static-imports, ast-grep, lsp, framework, ripgrep, rescout}`. `confidence` is derived from layer count:
-- `high` - 3+ deterministic layers (static-imports / ast-grep / lsp / framework)
+Each `findings-{session}.json` entry carries `reasons: [{layer, detail, line_range|null}]` with `layer` in `{static-imports, ast-grep, framework, ripgrep, rescout}`. `confidence` is derived from layer count:
+- `high` - 3 deterministic layers (static-imports / ast-grep / framework)
 - `medium` - 1-2 deterministic layers
-- `low` - ripgrep-only (fallback fired because all 4 deterministic layers produced 0)
+- `low` - ripgrep-only (fallback fired because all 3 deterministic layers produced 0)
 - `rescout` layer is special-cased at 7.x merge time (never appears here); see `scout2.md`.
 
 Screener (6.c) consumes confidence to bias keep/drop: `low` -> drop unless positive signal; `medium` -> judgment; `high` -> keep unless clear negative. Verify (8) routes `low` + no `line_range` to unresolved-claim review.
