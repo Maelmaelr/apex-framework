@@ -104,7 +104,7 @@ Helpers (uniform call sites for script + inline-LLM producers):
 
 Strict-mode enforcement (admin-apex only):
 - Apex hot path keeps lenient parse-only fallback when `jsonschema` is missing (one-line stderr warning per process). Rationale: end-user environments without the dep should not be blocked from `/apex` runs.
-- Admin-apex runs `scripts/check-deps.sh` at task 1; missing `jsonschema` aborts with the install one-liner. Rationale: admin-apex owns mutation and must validate before write - parse-only is not an acceptable degradation for the maintenance path.
+- Admin-apex runs `skills/admin-apex/scripts/check-deps.sh` at task 1; missing `jsonschema` aborts with the install one-liner. Rationale: admin-apex owns mutation and must validate before write - parse-only is not an acceptable degradation for the maintenance path.
 
 Validation failure handling:
 - Producer: aborts with explicit error to stderr (catches malformed output at source)

@@ -13,7 +13,7 @@ Read `head_sha` from `{session}-baseline.json` (written by p1.0 in main mode, or
 
 ```
 head_sha=$(jq -r '.head_sha' .claude-tmp/apex-active/{session}-baseline.json)
-touched=$( (git diff --name-only "$head_sha"; git ls-files --others --exclude-standard) | sort -u )
+touched=$( (git diff --name-only "$head_sha"; git ls-files --others --exclude-standard) | LC_ALL=C sort -u )
 ```
 
 The union covers tracked-modified AND untracked-non-ignored. Both are required: `git diff` excludes untracked files, so apex-newly-created files via the `Write` tool would otherwise be invisible to polish.
@@ -37,9 +37,11 @@ fi
 
 ```
 in_scope=$(jq -r '.allowed_files[]' "$scope_path" \
-  | sort -u \
-  | comm -12 - <(printf '%s\n' "$touched"))
+  | LC_ALL=C sort -u \
+  | LC_ALL=C comm -12 - <(printf '%s\n' "$touched"))
 ```
+
+`LC_ALL=C` on both `sort -u` and `comm -12` is required: `comm` expects byte-order ordering and silently emits empty output if either input is sorted under a different locale. `$touched` was C-sorted in Step 1; both sides match.
 
 `in_scope` is the set polish is allowed to edit. Pre-existing user-dirty files outside scope are NOT polished here - they still get committed by `git.md` per the "process as normal file" rule, but apex does not auto-modify user WIP code outside its declared scope.
 
@@ -58,17 +60,15 @@ Use the `Edit` tool for in-place fixes. Touch ONLY files in `$in_scope`; the sco
 
 ## Step 5: Hard cap (self-enforcement)
 
-Before EVERY `Edit` / `Write` call, verify the target path is in `$in_scope`:
+The intersected set from Step 3 is the ceiling. Polish runs inline on the host model (no subagent), so the gate is a host-side rule:
 
-```
-target="<path>"
-if ! printf '%s\n' "$in_scope" | grep -Fxq "$target"; then
-  echo "polish: refusing edit outside intersect: $target" >&2
-  continue   # skip this fix; do NOT escalate
-fi
-```
+- Hold `$in_scope` in working memory after Step 3 (the captured stdout from the bash block).
+- Before every `Edit` / `Write` tool call, check the target path against that set.
+- If the target is NOT in `$in_scope`, skip the fix - do NOT escalate, do NOT widen the set.
 
-The intersected set is the ceiling, not a hint. Polish never extends scope; if a fix would require touching a file outside `$in_scope`, leave it for the next session (the lesson goes to `lessons-tmp.md` via `learn.md` in p1.3 if it generalises).
+The scope-check PreToolUse hook is the outer guard: a missed self-check fails closed at the tool call. Self-enforcement is the inner guard so the host model does not burn tool calls on rejected edits.
+
+If a fix would require touching a file outside `$in_scope`, leave it for the next session - `learn.md` at p1.3 captures the pattern in `lessons-tmp.md` if it generalises.
 
 ## Step 6: No-op exit
 

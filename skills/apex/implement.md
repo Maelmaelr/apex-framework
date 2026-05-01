@@ -7,7 +7,7 @@ description: p1.1 dispatch skill. TaskCreates per-task implementation work, spaw
 
 Spec: `apex-core.md` p1.1 | `apex-core-overview.md` p1.1.
 
-Owner: TaskCreates per-task implementation tasks (use `Blocked by #` for sequencing; ALL inserted before p1.1b - polish needs all p1.1.* tasks complete before it intersects touched-by-apex with scope).
+Owner: TaskCreates per-task implementation tasks; dependencies wired via TaskUpdate `addBlockedBy` after creation. ALL slices must precede p1.1b - polish needs every p1.1.* task complete before it intersects touched-by-apex with scope.
 
 Executor: `agents/executor.md` (Sonnet latest).
 
@@ -44,27 +44,37 @@ Default to **one task per concern** (frontend slice, backend slice, schema slice
 
 For each pair of tasks, decide:
 - **Parallel** if their files are disjoint AND neither task depends on the other's output
-- **Sequential** otherwise (use `Blocked by #` to enforce ordering)
+- **Sequential** otherwise (wire via `TaskUpdate({taskId, addBlockedBy: [<prior>]})` after both are created)
 
 Default to parallel when files are clearly disjoint - executor agents are independent processes, parallelism is free latency. Common sequential triggers:
-- Task A adds a new function; task B calls it -> B blockedBy A
-- Task A renames a symbol; task B updates call sites -> B blockedBy A
-- Task A creates a new module; task B imports from it -> B blockedBy A
+- Task A adds a new function; task B calls it -> B addBlockedBy A
+- Task A renames a symbol; task B updates call sites -> B addBlockedBy A
+- Task A creates a new module; task B imports from it -> B addBlockedBy A
 
 ## TaskCreate template
 
+Per slice, call `TaskCreate` with the content shape below. `TaskCreate` accepts only `{subject, description, activeForm, metadata}` - dependencies and owner are set via `TaskUpdate` afterwards.
+
 ```
-TaskCreate "p1.1.<n> <one-line slice description>"
-  blockedBy:   [<other p1.1.<m>>]   # optional, only when sequential
-  blocks:      [p1.1b]              # ALWAYS - polish must wait for all slices
-  owner:       agents/executor.md (Sonnet latest)
-  description: |
-    Slice files:    <subset of allowed_files>
-    Findings:       <kept entries from screened-{session}.json with reasons + confidence,
-                     OR "no preflight - trivial / zero-layer branch">
-    Lessons:        <relevant matched blocks from step 4 grep-lessons.sh, if any>
-    Trace path:     {session}-traces/p1/executor-<task-id>.md   # main mode
-                    {session}-traces/p2/executor-<teammate-id>-<task-id>.md   # teammate mode
+TaskCreate({
+  subject:    "p1.1.<n> <one-line slice description>",
+  activeForm: "Implementing p1.1.<n>",
+  description:
+    "Slice files: <subset of allowed_files>
+     Findings:    <kept entries from screened-{session}.json with reasons + confidence,
+                   OR 'no preflight - trivial / zero-layer branch'>
+     Lessons:     <relevant matched blocks from step 4 grep-lessons.sh, if any>
+     Trace path:  .claude-tmp/apex-active/{session}-traces/p1/executor-<task-id>.md   (main)
+                  .claude-tmp/apex-active/{session}-traces/p2/executor-<teammate-id>-<task-id>.md (teammate)"
+})
+```
+
+After every slice is created, wire dependencies and owner:
+
+```
+TaskUpdate({taskId: <p1.1.n>, addBlockedBy: [<p1.1.m>]})   # per sequential pair, optional
+TaskUpdate({taskId: <p1.1b>,  addBlockedBy: [<every p1.1.*>]})   # ALWAYS - polish waits
+TaskUpdate({taskId: <p1.1.n>, owner: "executor"})         # set after Agent spawn
 ```
 
 ## Executor spawn (per task)

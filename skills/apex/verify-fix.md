@@ -35,49 +35,54 @@ mkdir -p "$TRACE_DIR"
 
 ```
 MAX=3
+
+# Load counter once (recovery from a prior aborted session); in-memory thereafter.
+count=$(PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$COUNTER" <<'PY'
+import sys
+from _validate import consumer_load
+data = consumer_load(sys.argv[1], "fix-attempts") or {"count": 0}
+print(data.get("count", 0))
+PY
+)
+
 while :; do
   # 2a. Run the verifier. Exit 0 -> clean; non-zero -> errors written to ERRORS_FILE.
   if bash $HOME/.claude/skills/apex/scripts/verify-build.sh --session {session}; then
     break
   fi
 
-  # 2b. Load attempt counter (consumer-validates against fix-attempts.schema.json).
-  count=$(PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - <<PY
-from _validate import consumer_load
-data = consumer_load("$COUNTER", "fix-attempts") or {"count": 0}
-print(data.get("count", 0))
-PY
-  )
-
-  # 2c. Cap check BEFORE spawning the next attempt.
+  # 2b. Cap check BEFORE spawning the next attempt.
   if (( count >= MAX )); then
     echo "verify-fix: cap reached ($count/$MAX); aborting" >&2
-    # Caller (p1.md / p2.md) is responsible for running session-end-hook.sh
-    # per shared-guardrails.md mid-/apex abort cleanup; verify-fix returns
-    # a non-zero exit so the chain in p1.md / p2.md routes to the abort branch.
+    # Caller (p1.md / p2.md) runs session-end-hook.sh per shared-guardrails.md
+    # "Mid-/apex abort cleanup"; verify-fix returns non-zero to route the chain.
     exit 1
   fi
 
-  # 2d. Spawn executor for this attempt (see "Executor spawn prompt" below).
+  # 2c. Spawn executor for this attempt (see "Executor spawn prompt" below).
   attempt=$(( count + 1 ))
   trace="$TRACE_DIR/fix-${attempt}.md"
   # spawn agents/executor.md (Sonnet) with the prompt template below
 
-  # 2e. Increment + persist counter (producer-validates before write; aborts on schema fail).
-  PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - <<PY
-import json, datetime, sys
+  # 2d. Persist counter for audit + crash-recovery (producer-validates; aborts on schema fail).
+  # Args via argv (no $-interpolation into the python source); UTC-aware datetime.
+  count=$attempt
+  PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$COUNTER" "$count" "$ERRORS_FILE" <<'PY'
+import json, sys
+from datetime import datetime, UTC
 from _validate import producer_validate, ValidationError
+counter_path, count_str, errors_path = sys.argv[1], sys.argv[2], sys.argv[3]
 data = {
-    "count": $attempt,
-    "last_attempt_at": datetime.datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"),
-    "last_errors_path": "$ERRORS_FILE",
+    "count": int(count_str),
+    "last_attempt_at": datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    "last_errors_path": errors_path,
 }
 try:
     producer_validate(data, "fix-attempts")
 except ValidationError as e:
     print(f"verify-fix: counter producer-validate failed: {e}", file=sys.stderr)
     sys.exit(1)
-with open("$COUNTER", "w") as f:
+with open(counter_path, "w", encoding="utf-8") as f:
     json.dump(data, f)
 PY
 done

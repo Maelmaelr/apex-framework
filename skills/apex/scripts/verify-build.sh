@@ -62,7 +62,7 @@ rm -f "$ERRORS_FILE"
 
 # Run a single verify command. On non-zero exit, write the full transcript
 # (label + command + combined output) to ERRORS_FILE and exit with that status.
-# On zero, return so the caller continues to the next command.
+# On zero, return silently so the caller continues to the next command.
 run_or_fail() {
   local label="$1"
   local cmd="$2"
@@ -80,21 +80,26 @@ run_or_fail() {
     echo "verify-build.sh: $label FAILED (exit $rc); errors -> $ERRORS_FILE" >&2
     exit 1
   fi
-  echo "verify-build.sh: $label OK" >&2
 }
 
-# Returns 0 if package.json declares a script with the given name.
-has_npm_script() {
-  NAME="$1" python3 - <<'PY'
-import json, os, sys
+# Cached space-padded list of npm script names; populated once per run when
+# PROJECT_TYPE=node. Membership check is a portable bash substring test.
+NPM_SCRIPTS=""
+
+load_npm_scripts() {
+  NPM_SCRIPTS=" $(python3 -c "
+import json, sys
 try:
-    with open("package.json", "r", encoding="utf-8") as f:
+    with open('package.json', 'r', encoding='utf-8') as f:
         data = json.load(f)
 except Exception:
-    sys.exit(1)
-scripts = data.get("scripts") or {}
-sys.exit(0 if os.environ["NAME"] in scripts else 1)
-PY
+    sys.exit(0)
+print(' '.join((data.get('scripts') or {}).keys()))
+") "
+}
+
+has_npm_script() {
+  [[ "$NPM_SCRIPTS" == *" $1 "* ]]
 }
 
 # Returns 0 if the binary is on PATH.
@@ -143,6 +148,7 @@ case "$PROJECT_TYPE" in
       bun)  RUN_PREFIX="bun run" ;;
     esac
 
+    load_npm_scripts
     ran_anything=0
     # Order matters: lint -> typecheck -> build.
     # A typecheck failure usually cascades into build, so first-fail-stop keeps

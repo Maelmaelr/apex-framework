@@ -40,9 +40,13 @@ _SCHEMA_DIR = _resolve_schema_dir()
 
 _FALLBACK_WARNED = False
 
+# Modern JSON Schema toolchain: jsonschema 4.18+ delegates $ref resolution to the
+# referencing library. RefResolver is deprecated in 4.18 and slated for removal
+# in 5.x; the referencing.Registry path is the supported successor.
 try:
-    import jsonschema  # type: ignore
-    from jsonschema import Draft202012Validator, RefResolver  # type: ignore
+    from jsonschema import Draft202012Validator  # type: ignore
+    from referencing import Registry, Resource  # type: ignore
+    from referencing.jsonschema import DRAFT202012  # type: ignore
     _HAVE_JSONSCHEMA = True
 except ImportError:  # pragma: no cover - environment-dependent
     _HAVE_JSONSCHEMA = False
@@ -64,13 +68,38 @@ def _load_schema(name: str) -> dict:
         return json.load(f)
 
 
+def _build_registry() -> Optional[Any]:
+    """Pre-load every *.schema.json under _SCHEMA_DIR into a referencing.Registry.
+
+    Each schema is registered under its bare filename (e.g. 'shard.schema.json'),
+    so relative $refs in sibling schemas resolve regardless of the dir's absolute
+    path. Mirrors the prior RefResolver(base_uri=file://{dir}/) behavior.
+    """
+    if not _HAVE_JSONSCHEMA or not os.path.isdir(_SCHEMA_DIR):
+        return None
+    registry = Registry()
+    for fn in sorted(os.listdir(_SCHEMA_DIR)):
+        if not fn.endswith(".schema.json"):
+            continue
+        try:
+            with open(os.path.join(_SCHEMA_DIR, fn), encoding="utf-8") as f:
+                data = json.load(f)
+        except (OSError, json.JSONDecodeError):
+            continue
+        registry = registry.with_resource(
+            uri=fn,
+            resource=Resource.from_contents(data, default_specification=DRAFT202012),
+        )
+    return registry
+
+
+_REGISTRY = _build_registry()
+
+
 def _validator(schema: dict):
-    """Build a validator that resolves $ref against the schemas/ dir."""
     if not _HAVE_JSONSCHEMA:
         return None
-    base_uri = f"file://{_SCHEMA_DIR}/"
-    resolver = RefResolver(base_uri=base_uri, referrer=schema)
-    return Draft202012Validator(schema, resolver=resolver)
+    return Draft202012Validator(schema, registry=_REGISTRY)
 
 
 def _warn_fallback() -> None:
