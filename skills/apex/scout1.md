@@ -99,9 +99,11 @@ The script reads `original_prompt` from `{session}-hypothesis.json`, regex-extra
 
 Then SKIP 6.b / 6.c / 7 / 8 / 9 (mark TaskList completed as no-op) and call `p1.md` directly with NO preflight artifact written. p1.0 reads absent preflight as no-findings-consultation branch.
 
+**Anti-rule (post-gate routing).** The script writes the scope; the orchestrator MUST NOT pre-write or post-write `{session}-main-scope.json` freehand. After `zero-layer-extract.sh` returns 0, the orchestrator MUST call `p1.md` directly. Forbidden from this branch: `EnterPlanMode`, `plan-mode.md`, `planner.md`, freehand inline `Write` of the scope JSON, manual scope synthesis from grep results, marking 6.c / 7 / 8 / 9 completed without their actual scripts having run as a stand-in for "I have my own scope". Path 2 is unreachable from the 6.a / 6.b proceed branches by design - if Path 2 is needed, the user must `refine` and re-prompt with a scope the deterministic layers can pick up.
+
 ## Ripgrep-poisoned proceed (6.b exit code 11, branch A)
 
-Same flow as zero-layer: invoke `zero-layer-extract.sh {session}`, mark 6.b/6.c/7/8/9 completed as no-op, call `p1.md`. The shard plan (already written to disk by shard-findings.sh) is left for the reflector; the empty post-extract scope handles the "0 validated paths" abort identically to 6.a.
+Same flow as zero-layer: invoke `zero-layer-extract.sh {session}`, mark 6.b/6.c/7/8/9 completed as no-op, call `p1.md`. The shard plan (already written to disk by shard-findings.sh) is left for the reflector; the empty post-extract scope handles the "0 validated paths" abort identically to 6.a. The "Anti-rule (post-gate routing)" above applies verbatim to this branch.
 
 ## Screen-deterministic-only (6.b exit code 11, branch B)
 

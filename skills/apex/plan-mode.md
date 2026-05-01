@@ -17,6 +17,8 @@ If `EnterPlanMode` is not in the active toolset (deferred), load it first: `Tool
 
 Do NOT call `EnterPlanMode` more than once per Path 2 run - re-entry has no defined semantics and would discard the planner's draft.
 
+**Forbidden.** `EnterPlanMode` is reachable ONLY through `decide-path.sh = complex` (entry-flow step 9). Calling `EnterPlanMode` at any other point - inline at 6.a / 6.b post-gate, after a manual grep, on a "user UX review" intuition, or anywhere before step 9 has fired - is a contract violation. If the orchestrator finds itself wanting to enter plan mode without 6.c / 7 / 8 / 9 having run, exactly one of these is true: (a) the prompt is genuinely complex - run the full pipeline through `verify-claims.sh` and let `decide-path.sh` decide; (b) the prompt is medium - call `p1.md` directly, no plan mode; (c) the 6.b ripgrep-poisoned gate fired - the only valid post-gate path from there is `zero-layer-extract.sh` -> `p1.md` (see `scout1.md` "Anti-rule (post-gate routing)"). Inline `EnterPlanMode` outside the p2.0a slot bypasses the disjoint-scope validator, the planner.md template, and the post-context-clear `p2.md` entry point - a Path 2 plan composed inline is structurally incomplete by definition.
+
 ## p2.0b Embed delegation plan
 
 Read and follow `~/.claude/skills/apex/planner.md`. Inputs (already on disk from earlier steps):
