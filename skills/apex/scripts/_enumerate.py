@@ -7,11 +7,11 @@ through 6.b sharding into expensive 6.c screener fan-out. When all four
 deterministic layers are empty the merger emits the zero-layer sentinel
 (exit code 10) so the orchestrator routes to zero-layer-extract or refine.
 
-The lsp layer queries typescript-language-server / pyright-langserver for
-identifier-shape seed terms (PascalCase / camelCase / snake_case 3+ chars)
-via workspace/symbol; misses on TS-less / Python-less repos are silent
-no-ops. Real protocol failures are absorbed and surfaced via
-findings._meta.warnings (sidecar lsp.warnings.txt -> merger).
+The lsp layer queries typescript-language-server for identifier-shape seed
+terms (PascalCase / camelCase / snake_case 3+ chars) via workspace/symbol;
+misses on TS-less repos are silent no-ops. Real protocol failures are
+absorbed and surfaced via findings._meta.warnings (sidecar lsp.warnings.txt
+-> merger).
 
 Writes per-layer JSONL into --layer-dir; caller (enumerate-scout.sh) invokes
 _enumerate_merge.py to dedupe + write findings-{session}.json.
@@ -233,20 +233,19 @@ def layer_framework(layer_dir: str, seed_terms: list[str]) -> None:
 
 
 def layer_lsp(layer_dir: str, seed_terms: list[str]) -> None:
-    # Adapter dispatch (TS + Python). Per-language adapters return
-    # ([], []) when their server binary or project root is unavailable
-    # (TS-less / Python-less repo); they only emit warning strings on real
-    # protocol failures (init-timeout, query-timeout, spawn-failed). Caught
-    # exceptions also become warnings so a flaky adapter cannot break the
-    # whole layer pipeline. Warnings written to lsp.warnings.txt sidecar
-    # for the merger to fold into findings._meta.warnings.
+    # Adapter dispatch (TS only). The adapter returns ([], []) when its
+    # server binary or project root is unavailable (TS-less repo); it only
+    # emits warning strings on real protocol failures (init-timeout,
+    # query-timeout, spawn-failed). Caught exceptions also become warnings
+    # so a flaky adapter cannot break the whole layer pipeline. Warnings
+    # written to lsp.warnings.txt sidecar for the merger to fold into
+    # findings._meta.warnings.
     try:
         from _lsp_typescript import enumerate as ts_enum
-        from _lsp_python import enumerate as py_enum
     except ImportError:
         return
     warnings: list[str] = []
-    for adapter in (ts_enum, py_enum):
+    for adapter in (ts_enum,):
         try:
             symbols, warns = adapter(seed_terms)
         except Exception as e:

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Minimal LSP JSON-RPC stdio client for scout 6.a layer_lsp.
 
-Spec: apex-core.md step 6.a. Used by _lsp_typescript.py and _lsp_python.py to
-query workspace/symbol against a language server. Silent-absorb failure
+Spec: apex-core.md step 6.a. Used by _lsp_typescript.py to query
+workspace/symbol against a language server. Silent-absorb failure
 contract per skills/apex/SKILL.md and the deferred-finding scout-6a-lsp-layer
 design (admin-apex run e199ee86): catch all subprocess / timeout / protocol
 errors, return ([], [warning_str]) so the caller emits zero findings for that

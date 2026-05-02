@@ -6,10 +6,10 @@
 #   1. Static imports     - madge (JS/TS), pydeps (Python). Explicit deps, zero noise.
 #   2. ast-grep           - structural queries via sg/ast-grep (tree-sitter).
 #   3. Framework-conv     - Next.js (app/, pages/), Rails (config/routes.rb), Django (urls.py).
-#   4. LSP                - typescript-language-server / pyright-langserver via
-#                           workspace/symbol queries (identifier-shape seeds only).
-#                           Silent no-op on TS-less / Python-less repos; protocol
-#                           failures absorbed into findings._meta.warnings.
+#   4. LSP                - typescript-language-server via workspace/symbol
+#                           queries (identifier-shape seeds only). Silent no-op
+#                           on TS-less repos; protocol failures absorbed into
+#                           findings._meta.warnings.
 #
 # The ripgrep keyword fallback was retired (apex 1.x): the noise it generated
 # poisoned 6.b sharding and amplified 6.c screener cost. When all four
