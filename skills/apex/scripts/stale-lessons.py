@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pre-scan lessons.md for stale entries by [last-hit: YYYY-MM-DD] tag age.
 
-Output is a starting candidate list for /apex-lessons-analyze Step 3.5 - the
+Output is a starting candidate list for /apex-lessons (analyze phase) Step 3.5 - the
 LLM reviews each candidate and decides ARCHIVE (move to lessons-archive.md)
 or KEEP (re-verified by recent grep hit).
 

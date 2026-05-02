@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pre-scan lessons.md for candidate duplicate pairs by token-overlap (Jaccard).
 
-Output is a starting candidate list for /apex-lessons-analyze Step 2 - the LLM
+Output is a starting candidate list for /apex-lessons (analyze phase) Step 2 - the LLM
 reviews each pair and decides merge / dedup / keep-both. Heuristic-only; not
 authoritative (false positives expected; the LLM is the gate).
 

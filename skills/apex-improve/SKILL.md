@@ -45,7 +45,7 @@ If all three signals empty / current at Step 2 -> exit `apex-improve: no signals
 | 4 | `apply.md` | Phase 3: apply ops (3a semantic Edit, 3b delegate to admin-apex/evolve.md) |
 | 5-6 | `finalize.md` | Cleanup + version stamp + structured report |
 | 7-8 | `sync-git.md` | VERSION + commit + mirror + push (standalone-mode only; mirrors admin-apex tasks 9+10) |
-| 9 | this skill | Lessons sweep: spawn `/apex-lessons-analyze` if `.claude/lessons.md` exists (standalone-mode only) |
+| 9 | this skill | Lessons sweep: spawn `/apex-lessons` if `.claude/lessons.md` exists (standalone-mode only) |
 
 ## Step 0: TaskCreate the chain
 
@@ -103,23 +103,24 @@ Read and follow `~/.claude/skills/apex-improve/sync-git.md`. Standalone-mode onl
 
 ## Step 9: Lessons sweep (standalone only)
 
-Standalone-mode only (skipped under apex-eod; apex-eod step 4 owns this). Pre-flight: only fire if `test -f .claude/lessons.md` (the project may not have lessons captured yet).
+Standalone-mode only (skipped under apex-eod; apex-eod step 2 owns this). Pre-flight: only fire if `test -f .claude/lessons.md` (the project may not have lessons captured yet).
 
-After Steps 7-8 commit + mirror succeed, spawn `/apex-lessons-analyze` as a subagent so its determinism / non-determinism mix runs in a fresh context (separate from this run's Step 4 apply context):
+After Steps 7-8 commit + mirror succeed, spawn `/apex-lessons` as a subagent so its determinism / non-determinism mix runs in a fresh context (separate from this run's Step 4 apply context). The orchestrator runs both extract and analyze phases sequentially:
 
 ```
 Spawn subagent (general-purpose, sonnet, bypassPermissions):
-  description: "Run lessons-analyze post-improve"
+  description: "Run apex-lessons post-improve"
   prompt: "ASCII only. No tables, no diagrams. Read and follow all instructions
-           in ~/.claude/skills/apex-lessons-analyze/SKILL.md. Execute every step.
-           You are running as a subagent under apex-improve standalone mode -
-           use deferred routing per Route + Finalize subagent restriction.
-           Report the final summary."
+           in ~/.claude/skills/apex-lessons/SKILL.md. Execute Step 1 (extract
+           phase) then Step 2 (analyze phase). You are running as a subagent
+           under apex-improve standalone mode - use deferred routing per the
+           analyze phase Route + Finalize subagent restriction. Report the
+           extract Step 6 summary line then the analyze Step 9 final summary."
 ```
 
-Skip silently if pre-flight fails (no lessons.md) or subagent mode is active. Errors from lessons-analyze do NOT block the apex-improve report - it has already committed and mirrored.
+Skip silently if pre-flight fails (no lessons.md) or subagent mode is active. Errors from /apex-lessons do NOT block the apex-improve report - it has already committed and mirrored.
 
-This step closes the loop: apex-improve consumes reflector signals (including those produced by lessons-analyze's own Reflect + Cleanup phase) on its NEXT run, and lessons-analyze keeps `.claude/lessons.md` lean on every standalone /apex-improve invocation.
+This step closes the loop: apex-improve consumes reflector signals (including those produced by the apex-lessons phases' own Reflect + Cleanup) on its NEXT run, and apex-lessons keeps `.claude/lessons.md` lean on every standalone /apex-improve invocation.
 
 ## Subagent invocation contract
 

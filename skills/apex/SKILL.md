@@ -34,7 +34,7 @@ See `shared-guardrails.md` for: scope enforcement, safety paths, manifest schema
 
 ## Step 0: TaskCreate the entry chain
 
-Each line below is one `TaskCreate(subject, description)`. Tasks run in TaskCreate order; `TaskCreate` has no `blockedBy` / `blocks` parameter - if a parallel branch needs an explicit merge dependency, set it after the fact via `TaskUpdate addBlockedBy`. Orchestrator marks each task `in_progress` when dispatching its per-step skill / script and `completed` on clean return (mirrors `apex-lessons-analyze/SKILL.md` Step 0b). A task may be marked `completed` ONLY after its owning script/skill has actually been invoked and returned cleanly - bulk-marking tasks `completed` (or jumping over them via inline ad-hoc edits) without invocation is forbidden. Stale-task reminders mid-run indicate this contract was missed.
+Each line below is one `TaskCreate(subject, description)`. Tasks run in TaskCreate order; `TaskCreate` has no `blockedBy` / `blocks` parameter - if a parallel branch needs an explicit merge dependency, set it after the fact via `TaskUpdate addBlockedBy`. Orchestrator marks each task `in_progress` when dispatching its per-step skill / script and `completed` on clean return (mirrors `apex-lessons/analyze.md` Step 0b). A task may be marked `completed` ONLY after its owning script/skill has actually been invoked and returned cleanly - bulk-marking tasks `completed` (or jumping over them via inline ad-hoc edits) without invocation is forbidden. Stale-task reminders mid-run indicate this contract was missed.
 
 ```
 TaskCreate "1. Analyze"            (inline; AskUserQuestion if ambiguous)
