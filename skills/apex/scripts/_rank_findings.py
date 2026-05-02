@@ -95,12 +95,19 @@ def size_penalty(loc: int | None) -> float:
     return 0.2
 
 
-def score_entry(entry: dict, tokens: list[str]) -> float:
+def score_breakdown(entry: dict, tokens: list[str]) -> dict:
+    # Surfaces the deterministic formula components for cost-profiling
+    # observation. Final score is clamp(base + bonus - penalty, 0, 1).
     n = deterministic_layer_count(entry)
     base = {1: 0.4, 2: 0.7, 3: 1.0}.get(n, 0.4)
     bonus = path_overlap(entry["file"], tokens)
     penalty = size_penalty(file_loc(entry["file"]))
-    return max(0.0, min(1.0, base + bonus - penalty))
+    score = max(0.0, min(1.0, base + bonus - penalty))
+    return {"base": base, "bonus": bonus, "penalty": penalty, "score": score}
+
+
+def score_entry(entry: dict, tokens: list[str]) -> float:
+    return score_breakdown(entry, tokens)["score"]
 
 
 def screening_prompt(original_prompt: str, hypothesis: str) -> str:
@@ -167,16 +174,21 @@ def main() -> int:
 
     deterministic_count = sum(1 for e in filtered if deterministic_layer_count(e) >= 1)
 
-    scored = [(score_entry(e, tokens), e) for e in filtered]
-    scored.sort(key=lambda x: x[0], reverse=True)
-    truncated = scored[: args.top_k]
-    dropped_below_cap = max(0, len(scored) - args.top_k)
+    breakdowns = [(score_breakdown(e, tokens), e) for e in filtered]
+    breakdowns.sort(key=lambda x: x[0]["score"], reverse=True)
+    truncated = breakdowns[: args.top_k]
+    dropped_below_cap = max(0, len(breakdowns) - args.top_k)
 
     ranked = []
-    for s, e in truncated:
+    for sb, e in truncated:
         ranked.append({
             "file": e["file"],
-            "score": round(s, 4),
+            "score": round(sb["score"], 4),
+            "rationale": {
+                "base": round(sb["base"], 4),
+                "bonus": round(sb["bonus"], 4),
+                "penalty": round(sb["penalty"], 4),
+            },
             "reasons": e.get("reasons", []),
             "confidence": e.get("confidence", "medium"),
         })

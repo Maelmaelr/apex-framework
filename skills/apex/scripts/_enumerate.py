@@ -77,12 +77,23 @@ def extract_seeds(hypothesis_path: str) -> tuple[list[str], list[str]]:
     for tok in term_re.findall(text):
         if tok.isdigit() or tok.lower() in STOPWORDS or tok in seen_t:
             continue
+        if _is_english_word_shape(tok):
+            continue
         seen_t.add(tok)
         seed_terms.append(tok)
         if len(seed_terms) >= SEED_TERM_CAP:
             break
 
     return seed_paths, seed_terms
+
+
+def _is_english_word_shape(tok: str) -> bool:
+    # Pure-lowercase 3-7 char alphabetic tokens are almost always English words,
+    # not code identifiers. ast-grep --pattern wastes 30s timeouts on them
+    # producing zero useful structural matches. Identifiers carry uppercase
+    # (PascalCase / camelCase) or underscores (snake_case), or are long enough
+    # (>= 8 chars) to be intentional symbol names.
+    return tok.isalpha() and tok.islower() and 3 <= len(tok) <= 7
 
 
 def emit(layer_dir: str, layer: str, file: str, detail: str, line_range: list[int] | None = None) -> None:

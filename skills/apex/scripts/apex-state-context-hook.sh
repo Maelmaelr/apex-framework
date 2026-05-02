@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 # SessionStart hook: apex state context injection at session boundaries.
-# See user-global CLAUDE.md "Compaction Preservation" rule.
 #
 # Wired in settings.json under hooks.SessionStart with matcher="compact|resume":
 #   - matcher=compact: fires after auto/manual compaction completes; re-injects

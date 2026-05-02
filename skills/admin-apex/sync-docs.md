@@ -51,6 +51,18 @@ Spec: `skills/admin-apex/SKILL.md` task 7.
 
 5. **Write `docs-changed.txt`** even if empty - SKILL task 9 expects the file to exist.
 
+## Out-of-scope stale-refs: escalation
+
+While processing rewrite hits in step 3, sync-docs may encounter stale-refs in spec docs that are NOT in this run's `applied-ops.json` (e.g., a previously removed CLAUDE.md section that an old comment still cites). The rewrite map cannot fix them - they are out-of-scope for the current run. Instead of leaving them as silent rot in reflector logs as manual follow-ups, append a finding-shaped block to `~/.claude/tmp/apex-workflow-improvements.md` so the next `/apex-improve` invocation picks it up:
+
+```
+## sync-docs - stale-ref - {ISO-8601}
+- gaps: stale-ref in {file}:{line} ({old-token} no longer exists)
+- improvements: rewrite or remove
+```
+
+Continue processing the in-scope rewrites; do NOT block the current admin-apex run on out-of-scope drift. This closes the manual-follow-up loop.
+
 ## Glob/Grep before Edit
 
 For every Edit call:
