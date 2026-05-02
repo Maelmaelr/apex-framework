@@ -29,7 +29,7 @@
         "findings_count": { "type": "integer", "minimum": 0, "description": "Total findings entries before any --min-confidence filter." },
         "ranked_count": { "type": "integer", "minimum": 0, "description": "Length of ranked[] (post-cap)." },
         "dropped_below_cap": { "type": "integer", "minimum": 0, "description": "Findings dropped because the top-K cap was hit (signal that hypothesis was too broad)." },
-        "deterministic_count": { "type": "integer", "minimum": 0, "description": "Findings entries with at least one deterministic-layer reason (static-imports/ast-grep/framework). With ripgrep retired in v1.x, equals findings_count for any non-empty findings.json." },
+        "deterministic_count": { "type": "integer", "minimum": 0, "description": "Findings entries with at least one deterministic-layer reason (static-imports/ast-grep/framework/lsp). With ripgrep retired in v1.x, equals findings_count for any non-empty findings.json." },
         "min_confidence": { "enum": ["medium", "high"], "description": "--min-confidence flag passed to rank-findings.sh (default medium = no filter; high drops medium-confidence entries)." },
         "top_k": { "type": "integer", "minimum": 1, "description": "Cap applied to ranked[]; default 30." }
       }

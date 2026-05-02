@@ -4,7 +4,7 @@
 Spec: apex-core.md step 6.a (merge / dedupe / confidence / zero-layer).
 
 Reads per-layer JSONL files from <layer_dir>:
-    static-imports.jsonl, ast-grep.jsonl, framework.jsonl
+    static-imports.jsonl, ast-grep.jsonl, framework.jsonl, lsp.jsonl
 Each line: {"file": <realpath>, "detail": <str>, "line_range": null | [int, int]}.
 
 Dedupe rules:
@@ -12,12 +12,16 @@ Dedupe rules:
   - Same-layer duplicates collapsed by (layer, detail) tuple.
 
 Confidence:
-  - 3 deterministic layers (static-imports/ast-grep/framework) -> high
-  - 1-2 deterministic                                          -> medium
+  - >=3 deterministic layers fire -> high (4 deterministic max with lsp; the
+    >=3 bar keeps LSP-less repos at high when the original 3 fire, and lets
+    typed repos hit high with 3-out-of-4)
+  - 1-2 deterministic              -> medium
   - rescout layer is reserved for 7.x merge; never appears here.
 
 _meta.warnings:
   - "no layers produced findings" on the zero-layer case
+  - lsp.warnings.txt sidecar (written by _enumerate.layer_lsp) folded in
+    one entry per line (init-timeout / query-timeout / spawn-failed / etc.)
 
 Exit codes:
   0  - findings written
@@ -37,8 +41,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _validate  # noqa: E402
 
-LAYERS = ["static-imports", "ast-grep", "framework"]
-DETERMINISTIC = {"static-imports", "ast-grep", "framework"}
+LAYERS = ["static-imports", "ast-grep", "framework", "lsp"]
+DETERMINISTIC = {"static-imports", "ast-grep", "framework", "lsp"}
 
 # Post-merge noise filter (step 6.a). Drops auto-generated / binary-shaped /
 # lockfile-shaped paths that any layer might emit but the screener (6.c) and
@@ -134,6 +138,10 @@ def main() -> int:
         findings.append(entry)
 
     warnings: list[str] = []
+    lsp_warnings_path = os.path.join(args.layer_dir, "lsp.warnings.txt")
+    if os.path.isfile(lsp_warnings_path):
+        with open(lsp_warnings_path, encoding="utf-8") as f:
+            warnings.extend(ln.strip() for ln in f if ln.strip())
     if noise_dropped:
         warnings.append(f"noise-filter dropped {noise_dropped} path(s) (lockfile/sourcemap/binary/etc.)")
 

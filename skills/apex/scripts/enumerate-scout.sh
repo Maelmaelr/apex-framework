@@ -6,19 +6,23 @@
 #   1. Static imports     - madge (JS/TS), pydeps (Python). Explicit deps, zero noise.
 #   2. ast-grep           - structural queries via sg/ast-grep (tree-sitter).
 #   3. Framework-conv     - Next.js (app/, pages/), Rails (config/routes.rb), Django (urls.py).
+#   4. LSP                - typescript-language-server / pyright-langserver via
+#                           workspace/symbol queries (identifier-shape seeds only).
+#                           Silent no-op on TS-less / Python-less repos; protocol
+#                           failures absorbed into findings._meta.warnings.
 #
 # The ripgrep keyword fallback was retired (apex 1.x): the noise it generated
-# poisoned 6.b sharding and amplified 6.c screener cost. When all three
+# poisoned 6.b sharding and amplified 6.c screener cost. When all four
 # deterministic layers are empty the merger emits the zero-layer sentinel
 # (exit code 10) and the orchestrator routes to zero-layer-extract or refine.
 #
 # Output: findings-{session}.json (validated against schemas/findings.schema.json).
 #   - Dedupe by realpath-canonicalized file
 #   - reasons[]: one item per matching layer with detail + line_range (when known)
-#   - confidence: 3 deterministic = high; 1-2 = medium
+#   - confidence: >=3 deterministic = high; 1-2 = medium
 #   - rescout layer reserved for 7.x merge (never appears here)
 #
-# Zero-layer case (all 3 deterministic layers produce 0):
+# Zero-layer case (all 4 deterministic layers produce 0):
 #   - empty findings file with _meta.warnings=['no layers produced findings']
 #   - exit 10 (orchestrator dispatches zero-layer branch)
 #

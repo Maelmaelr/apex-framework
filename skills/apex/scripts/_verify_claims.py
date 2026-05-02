@@ -41,7 +41,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _validate  # noqa: E402
 
-LAYERS = ["static-imports", "ast-grep", "framework", "rescout"]
+LAYERS = ["static-imports", "ast-grep", "framework", "lsp", "rescout"]
 SCOUT_DIR = ".claude-tmp/scout"
 APEX_ACTIVE = ".claude-tmp/apex-active"
 

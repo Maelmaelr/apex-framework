@@ -10,7 +10,7 @@ Replaces the prior shard-fanout model: there is exactly one screener call
 at 6.c that consumes screen-plan-{session}.json end-to-end.
 
 Score formula (deterministic):
-  base    = {1 layer: 0.4, 2 layers: 0.7, 3 layers: 1.0} (deterministic-layer count)
+  base    = {1 layer: 0.4, 2 layers: 0.7, 3+ layers: 1.0} (deterministic-layer count; 4 max with lsp)
   bonus   = path-token overlap with hypothesis (capped at 0.3)
   penalty = size penalty (>= 500 LOC: 0.1; >= 1500 LOC: 0.2)
   score   = clamp(base + bonus - penalty, 0, 1)
@@ -34,7 +34,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _validate  # noqa: E402
 
-DETERMINISTIC = {"static-imports", "ast-grep", "framework"}
+DETERMINISTIC = {"static-imports", "ast-grep", "framework", "lsp"}
 DEFAULT_TOP_K = 30
 TOKEN_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 STOPWORDS = {
@@ -99,7 +99,7 @@ def score_breakdown(entry: dict, tokens: list[str]) -> dict:
     # Surfaces the deterministic formula components for cost-profiling
     # observation. Final score is clamp(base + bonus - penalty, 0, 1).
     n = deterministic_layer_count(entry)
-    base = {1: 0.4, 2: 0.7, 3: 1.0}.get(n, 0.4)
+    base = {1: 0.4, 2: 0.7, 3: 1.0, 4: 1.0}.get(n, 0.4)
     bonus = path_overlap(entry["file"], tokens)
     penalty = size_penalty(file_loc(entry["file"]))
     score = max(0.0, min(1.0, base + bonus - penalty))

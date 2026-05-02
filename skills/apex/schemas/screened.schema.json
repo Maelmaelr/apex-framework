@@ -40,6 +40,7 @@
             "static-imports": { "type": "integer", "minimum": 0 },
             "ast-grep": { "type": "integer", "minimum": 0 },
             "framework": { "type": "integer", "minimum": 0 },
+            "lsp": { "type": "integer", "minimum": 0 },
             "rescout": { "type": "integer", "minimum": 0 }
           }
         }

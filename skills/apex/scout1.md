@@ -72,8 +72,8 @@ Explicit dot-paths in the prompt (e.g., `.github/workflows/ci.yml`) still flow t
 
 ## 6.a layer rules + confidence (carried verbatim through to ranker, screener, and verify)
 
-Each `findings-{session}.json` entry carries `reasons: [{layer, detail, line_range|null}]` with `layer` in `{static-imports, ast-grep, framework, rescout}`. `confidence` is derived from layer count:
-- `high` - 3 deterministic layers (static-imports / ast-grep / framework)
+Each `findings-{session}.json` entry carries `reasons: [{layer, detail, line_range|null}]` with `layer` in `{static-imports, ast-grep, framework, lsp, rescout}`. `confidence` is derived from layer count:
+- `high` - >=3 deterministic layers (4 max: static-imports / ast-grep / framework / lsp)
 - `medium` - 1-2 deterministic layers
 - `rescout` layer is special-cased at 7.x merge time (never appears here); see `scout2.md`.
 

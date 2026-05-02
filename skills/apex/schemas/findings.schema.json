@@ -20,7 +20,7 @@
               "type": "object",
               "required": ["layer", "detail"],
               "properties": {
-                "layer": { "enum": ["static-imports", "ast-grep", "framework", "rescout"] },
+                "layer": { "enum": ["static-imports", "ast-grep", "framework", "lsp", "rescout"] },
                 "detail": { "type": "string" },
                 "line_range": {
                   "oneOf": [
