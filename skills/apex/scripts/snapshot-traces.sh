@@ -6,10 +6,10 @@
 # Spec: agents/reflector.md "First action: snapshot defends against cleanup race".
 #
 # Args:
-#   --token <8hex>      (required) session token (apex) or run token (admin-apex / lessons-analyze)
-#   --phase <name>      (required) entryflow | entryflow+p1 | p2 | admin-apex | lessons-analyze
+#   --token <8hex>      (required) session token (apex) or run token (admin-apex / lessons-analyze / lessons-extract)
+#   --phase <name>      (required) entryflow | entryflow+p1 | p2 | admin-apex | lessons-analyze | lessons-extract
 #
-# Output: /tmp/{token}-{suffix}-snapshot.txt (suffix: entryflow | p1 | p2 | admin-apex | lessons-analyze)
+# Output: /tmp/{token}-{suffix}-snapshot.txt (suffix: entryflow | p1 | p2 | admin-apex | lessons-analyze | lessons-extract)
 #
 # Phase -> sources mapping:
 #   entryflow         -> {token}-traces/entryflow/*.md
@@ -19,6 +19,8 @@
 #                        .claude-tmp/admin-apex-active/
 #   lessons-analyze   -> {token}-summary.md + {token}-*.json + {token}-*.txt under
 #                        .claude-tmp/lessons-analyze-active/
+#   lessons-extract   -> {token}-summary.md under .claude-tmp/lessons-extract-active/
+#                        (linear pipeline; no JSON artifacts beyond the manifest)
 #
 # Exit: 0 on success (snapshot file always written; "[no source files ...]"
 # placeholder when nothing matched). 1 on bad args.
@@ -47,7 +49,8 @@ done
 
 APEX_TRACES=".claude-tmp/apex-active/$TOKEN-traces"
 ADMIN_DIR=".claude-tmp/admin-apex-active"
-LESSONS_DIR=".claude-tmp/lessons-analyze-active"
+LESSONS_ANALYZE_DIR=".claude-tmp/lessons-analyze-active"
+LESSONS_EXTRACT_DIR=".claude-tmp/lessons-extract-active"
 
 case "$PHASE" in
   entryflow)
@@ -68,9 +71,13 @@ case "$PHASE" in
     ;;
   lessons-analyze)
     SUFFIX=lessons-analyze
-    SOURCES=("$LESSONS_DIR/$TOKEN-summary.md" "$LESSONS_DIR/$TOKEN-"*.json "$LESSONS_DIR/$TOKEN-"*.txt)
+    SOURCES=("$LESSONS_ANALYZE_DIR/$TOKEN-summary.md" "$LESSONS_ANALYZE_DIR/$TOKEN-"*.json "$LESSONS_ANALYZE_DIR/$TOKEN-"*.txt)
     ;;
-  *) echo "snapshot-traces.sh: bad --phase: $PHASE (entryflow|entryflow+p1|p2|admin-apex|lessons-analyze)" >&2; exit 1 ;;
+  lessons-extract)
+    SUFFIX=lessons-extract
+    SOURCES=("$LESSONS_EXTRACT_DIR/$TOKEN-summary.md")
+    ;;
+  *) echo "snapshot-traces.sh: bad --phase: $PHASE (entryflow|entryflow+p1|p2|admin-apex|lessons-analyze|lessons-extract)" >&2; exit 1 ;;
 esac
 
 OUT="/tmp/$TOKEN-$SUFFIX-snapshot.txt"
