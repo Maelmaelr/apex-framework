@@ -39,9 +39,15 @@
 #   $1   <run-token>  required, e.g. "b6c67024"
 #
 # Env overrides:
-#   APEX_PRIVATE         default: $HOME/.claude
-#   APEX_FRAMEWORK_DEV   default: /Users/mael/dev/apex-framework
-#   APEX_MIRROR_NO_PUSH  if set non-empty, skip both pushes (commit-only)
+#   APEX_PRIVATE              default: $HOME/.claude
+#   APEX_FRAMEWORK_DEV        default: /Users/mael/dev/apex-framework
+#   APEX_MIRROR_NO_PUSH       if set non-empty, skip both pushes (commit-only)
+#   APEX_MIRROR_COMMIT_RANGE  default: HEAD~1..HEAD (single-commit, current behavior).
+#                             Override (e.g., HEAD~3..HEAD) for multi-commit runs:
+#                             the public commit message becomes the concatenated
+#                             messages of all private commits in the range, oldest
+#                             first. Single-commit default preserves byte-identical
+#                             behavior with the prior `git log -1 --pretty=%B` form.
 #
 # Exit codes:
 #   0  mirrored + pushed (or nothing-to-do)
@@ -115,7 +121,8 @@ fi
 if ( cd "$PUBLIC" && git diff --cached --quiet ); then
   echo "mirrored ${#mirrored[@]} paths but no net change in $PUBLIC; skipping commit"
 else
-  msg=$(cd "$PRIVATE" && git log -1 --pretty=%B)
+  RANGE="${APEX_MIRROR_COMMIT_RANGE:-HEAD~1..HEAD}"
+  msg=$(cd "$PRIVATE" && git log "$RANGE" --pretty=%B --reverse)
   ( cd "$PUBLIC" && git commit -m "$msg" ) \
     || { echo "git commit failed in $PUBLIC" >&2; exit 5; }
 fi

@@ -106,14 +106,36 @@ if [[ "$BUMP" != "none" ]]; then
   # bump. Catches externally-modified VERSION (e.g., hand-edit between prior
   # commit and this finalize) before _bump-version.sh advances from a wrong
   # base, which forces a mid-finalize amendment loop pre-push.
-  WT_VERSION="$(cat VERSION 2>/dev/null || true)"
+  WT_VERSION_PRE="$(cat VERSION 2>/dev/null || true)"
   HEAD_VERSION="$(git show HEAD:VERSION 2>/dev/null || true)"
-  if [[ -n "$WT_VERSION" && -n "$HEAD_VERSION" && "$WT_VERSION" != "$HEAD_VERSION" ]]; then
-    echo "admin-apex-finalize.sh: VERSION drift detected (working-tree=$WT_VERSION, HEAD=$HEAD_VERSION); reset working-tree VERSION and re-run, or invoke with --bump=none" >&2
+  if [[ -n "$WT_VERSION_PRE" && -n "$HEAD_VERSION" && "$WT_VERSION_PRE" != "$HEAD_VERSION" ]]; then
+    echo "admin-apex-finalize.sh: VERSION drift detected (working-tree=$WT_VERSION_PRE, HEAD=$HEAD_VERSION); reset working-tree VERSION and re-run, or invoke with --bump=none" >&2
     exit 1
   fi
+  # Compute expected post-bump value (mirrors _bump-version.sh: patch +1 on
+  # patch field; minor +1 on minor field, patch reset 0). Sibling-bump race
+  # detector: if a parallel finalize.sh advances WT VERSION between this point
+  # and _bump-version.sh below, WT_VERSION_POST will not match EXPECTED and we
+  # abort. The pre-check above catches HEAD drift; this check catches concurrent
+  # WT drift from a parallel sibling that targets the same starting VERSION.
+  EXPECTED=$(python3 -c "
+import sys
+parts = sys.argv[1].split('.')
+maj, min_, pat = int(parts[0]), int(parts[1]), int(parts[2])
+if sys.argv[2] == 'patch':
+    pat += 1
+elif sys.argv[2] == 'minor':
+    min_ += 1
+    pat = 0
+print(f'{maj}.{min_}.{pat}')
+" "$WT_VERSION_PRE" "$BUMP" 2>/dev/null || true)
   if ! bash "$SCRIPT_DIR/_bump-version.sh" "$BUMP" >/dev/null; then
     echo "admin-apex-finalize.sh: _bump-version.sh $BUMP failed" >&2
+    exit 1
+  fi
+  WT_VERSION_POST="$(cat VERSION 2>/dev/null || true)"
+  if [[ -n "$EXPECTED" && "$WT_VERSION_POST" != "$EXPECTED" ]]; then
+    echo "admin-apex-finalize.sh: post-bump drift detected (working-tree=$WT_VERSION_POST, expected=$EXPECTED); a parallel sibling bumped VERSION between the pre-check and _bump-version.sh - reset working-tree VERSION, git pull, and re-run" >&2
     exit 1
   fi
   echo VERSION >> "$DIRTY"

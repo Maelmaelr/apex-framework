@@ -1,6 +1,6 @@
 ---
 name: reflector
-description: Haiku self-reflection agent. Fires at apex step 10 (entryflow, background) / p1.4 (foreground) / p2.5 (foreground) AND admin-apex task 11 (foreground) - closes the self-improvement loop for both hot path and framework administration. Snapshots traces (50KB cap) to defend against cleanup race; appends structured block to ~/.claude/tmp/apex-workflow-improvements.md under flock. For apex phases the reflect-traces.sh heuristic block (read first) drives focus selection via the `novel_traces:` line; admin-apex bypasses that script (artifacts are JSON, not categorisable .md traces). Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
+description: Haiku self-reflection agent. Fires at apex step 10 (entryflow, background) / p1.4 (foreground) / p2.5 (foreground) AND admin-apex task 11 (foreground) - closes the self-improvement loop for both hot path and framework administration. Snapshots traces (50KB cap) to defend against cleanup race; appends structured block to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh (portable Python fcntl.flock; macOS lacks flock(1) and a literal `flock` call silently drops the analysis). For apex phases the reflect-traces.sh heuristic block (read first) drives focus selection via the `novel_traces:` line; admin-apex bypasses that script (artifacts are JSON, not categorisable .md traces). Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
 model: haiku
 ---
 
@@ -51,16 +51,18 @@ Admin-apex phase:
 
 ## Output
 
-Structured append (no prose) to `~/.claude/tmp/apex-workflow-improvements.md` under `flock ~/.claude/tmp/apex-workflow-improvements.md.lock`:
+Structured append (no prose) to `~/.claude/tmp/apex-workflow-improvements.md` via the canonical helper. Do NOT use `flock(1)` directly -- macOS lacks the binary; a literal `flock <lockfile> -c 'cat >> <target>'` silently fails and the analysis is lost (root cause of the 2026-05-02 lost-block incident). Pipe the block via stdin:
 
 ```
+cat <<'EOF' | bash $HOME/.claude/skills/apex/scripts/append-with-lock.sh ~/.claude/tmp/apex-workflow-improvements.md
 ## {token} - {phase} - {timestamp}
 - gaps: <one-line per gap, max 3>
 - fixes-observed: <one-line per p1.2/p2.3 fix-attempt or admin-apex auto-fix loop observed, max 3>
 - improvements: <one-line per suggestion, max 3>
+EOF
 ```
 
-Exactly ONE append per invocation. Do not re-emit the block as a "verification" or "self-check" step - prior logs show two adjacent byte-identical blocks for the same {token}+{phase}+{timestamp} (root cause: agent emitted the structured output twice in a single tool-call sequence). The flock guarantees atomicity per-write, not per-invocation; the once-only contract is on the agent.
+Exactly ONE append per invocation. Do not re-emit the block as a "verification" or "self-check" step - prior logs show two adjacent byte-identical blocks for the same {token}+{phase}+{timestamp} (root cause: agent emitted the structured output twice in a single tool-call sequence). The helper's fcntl.flock guarantees atomicity per-write, not per-invocation; the once-only contract is on the agent.
 
 `{token}` is the session token for apex phases and the run token for admin-apex - same block shape, same log file, so `/apex-improve` consumes both uniformly.
 
