@@ -10,14 +10,16 @@ ARCHIVE_DIR="$HOME/.claude/tmp/improvements-archive"; mkdir -p "$ARCHIVE_DIR"
 DATE=$(date -u +%Y-%m-%dT%H-%M-%SZ)
 WORKFLOW="$HOME/.claude/tmp/apex-workflow-improvements.md"
 TECH="$HOME/.claude/tmp/tech-updates.md"
+ERRLOG="$HOME/.claude/tmp/reflector-errors.log"
 [[ -s "$WORKFLOW" ]] && { cp "$WORKFLOW" "$ARCHIVE_DIR/${DATE}-workflow-improvements.md"; : > "$WORKFLOW"; }
 [[ -s "$TECH" ]]     && { cp "$TECH"     "$ARCHIVE_DIR/${DATE}-tech-updates.md";         : > "$TECH"; }
+[[ -s "$ERRLOG" ]]   && { cp "$ERRLOG"   "$ARCHIVE_DIR/${DATE}-reflector-errors.log";    : > "$ERRLOG"; }
 
 # 5b. Stamp CC version (closes version-drift signal until next CC update)
 claude --version | awk '{print $1}' > "$HOME/.claude/tmp/apex-claude-code-version.txt"
 ```
 
-Both signal files archive to `improvements-archive/` (timestamped) before truncation, so unapplied / deferred blocks remain recoverable. apex-tech-watch's 30-day rotation still bounds `tech-updates.md` between consumption runs (this archive is post-consumption, not a substitute for that rotation). The CC-version stamp lives under `~/.claude/tmp/` (gitignored); local-state only, not committed. Add to `{run}-dirty-paths.txt` only if content changed (`git diff --quiet` check).
+All three signal files archive to `improvements-archive/` (timestamped) before truncation, so unapplied / deferred blocks and historical errors remain recoverable. `reflector-errors.log` is reset alongside the structured logs because any rescued-from-errlog analyses (the 2026-05-02 lost-block incident, recovered by hand from this file) have by definition been consumed by analyze.md once they reach this point; carrying old errors across runs reads as recurring noise to the next analyze pass. apex-tech-watch's 30-day rotation still bounds `tech-updates.md` between consumption runs (this archive is post-consumption, not a substitute for that rotation). The CC-version stamp lives under `~/.claude/tmp/` (gitignored); local-state only, not committed. Add to `{run}-dirty-paths.txt` only if content changed (`git diff --quiet` check).
 
 ## Step 6: Report (inline)
 
