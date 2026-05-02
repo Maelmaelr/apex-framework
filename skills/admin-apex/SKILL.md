@@ -49,6 +49,8 @@ Mint `{run}` (`openssl rand -hex 4`), `mkdir -p "$HOME/.claude/.claude-tmp/admin
 
 Then run `bash skills/admin-apex/scripts/sweep-stale-runs.sh` (best-effort; idempotent). It cleans only sibling manifests where the recorded PID is dead OR `ps -o comm=` does not match `claude` - active sibling sessions are preserved (mirrors `apex/scripts/create-session.sh` PID classification).
 
+**User-driven concern capture.** After manifest write, source a free-text concern in this order: (1) `$ARGUMENTS` (slash-command tail; strip wrapping quotes); (2) if empty AND mode == `audit+apply`, AskUserQuestion `inject | skip` (skip / dismiss / `audit-only` mode = no concern). Non-blank concern -> `Write` verbatim to `$HOME/.claude/.claude-tmp/admin-apex-active/{run}-user-concern.md`; blank -> no file. First-class replacement for the historical "manual override of task 4's soft-skip" workaround. Detector contract: `audit.md` `user-driven` row; cluster->op mapping: `evolve.md` `user-driven` row.
+
 ## Task 2: Inventory snapshot
 
 `bash skills/admin-apex/scripts/inventory-apex.sh --out "$HOME/.claude/.claude-tmp/admin-apex-active/{run}-inventory.json"`. Non-zero exit -> abort with explicit error (state corruption; no fallback).

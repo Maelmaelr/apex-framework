@@ -31,6 +31,7 @@ For each cluster the gate marked `apply`, translate items into ops:
 | `stale-spec` | hard-stop cluster: SKILL must downgrade to audit-only; this skill should NOT see `apply` for stale-spec. If it does, abort with explicit error. |
 | `schema-mismatch` | `rename` (rename schema file to match `$id`) OR edit `$id` to match basename - prefer rename (safer; refs less coupled). |
 | `dead-hook` | `hook-remove` (settings.json entry deletion) |
+| `user-driven` | `edit` per cluster item (each `items[]` path becomes one `edit` op; `rationale` = the cluster `summary` so the user concern propagates verbatim into the audit trail). If `items` is empty, emit a single `edit` op with `target = skills/admin-apex/SKILL.md` as a placeholder so the planner is forced to redirect at validation time (signals "concern is informational, no concrete file picked"). `doc_only` follows the standard rule: true iff every target sits outside `skills/apex/`, `skills/admin-apex/`, `agents/`, `settings.json`. |
 
 Set `doc_only: true` for any op that does NOT touch `skills/apex/`, `skills/admin-apex/`, `agents/`, or `settings.json` (only README/apex-core/overview/CLAUDE.md edits). Drives task 9 patch-vs-minor bump rule. The `skills/admin-apex/` inclusion is what makes structural mutations to admin-apex itself (e.g., split `evolve.md`, retire a sub-skill) correctly classify as non-doc_only and bump minor.
 
