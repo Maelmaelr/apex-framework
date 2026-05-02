@@ -56,7 +56,7 @@ Empty `clusters: []` -> "clean" outcome (SKILL task 4 prints report path and exi
 
    For `user-driven`: read `.claude-tmp/admin-apex-active/{run}-user-concern.md`. If the file is missing or blank (only whitespace), skip - emit no cluster. Otherwise: `summary` = first non-blank line (truncated at 240 chars); `items` = `grep -oE '\b(skills/[^\s\)\`]+|agents/[^\s\)\`]+|scripts/[^\s\)\`]+|apex-core[^\s\)\`]*\.md|README\.md|CLAUDE\.md)' <file>` rstripped of `.,;:)`'\"` and de-duplicated in document order. Empty items list is allowed (the concern is informational); evolve.md task 5 will then translate it to a single `edit` op against `skills/admin-apex/SKILL.md` as a placeholder for the planner to redirect.
 
-3. **For orphan-refs and missing-refs**: use `scripts/grep-apex-refs.sh <basename>` to count cross-references. Treat zero hits in spec_docs[] as "missing". Treat any hit pointing at a path not in inventory as "orphan".
+3. **Pre-compute spec-doc coverage map ONCE** (single `scripts/grep-apex-refs.sh` sweep over inventory basenames against spec_docs[]); orphan-refs and missing-refs both consume it - never re-grep per detector. Treat zero hits as "missing"; any hit pointing at a path not in inventory as "orphan".
 
 4. **Write the drift report** at `.claude-tmp/admin-apex-active/{run}-drift-report.json`. Pretty-printed JSON (2-space indent), matching the shape above.
 

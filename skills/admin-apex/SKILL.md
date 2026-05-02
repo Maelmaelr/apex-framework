@@ -69,7 +69,7 @@ Soft-skips (skip 5-8 only; task 9 still runs to capture private-tracked-root del
 - `clusters: []` (clean)
 - every cluster decision is `keep`/`defer`
 
-Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | apply | defer`; dismiss = `keep`). At least one `apply` -> proceed to task 5. All `keep`/`defer` -> soft-skip to task 9.
+Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | apply | defer`; dismiss = `keep`). Fast-path: a single cluster of `kind=user-driven` (concern was supplied this run) defaults to `apply` without prompt - the user already expressed intent at task 1. At least one `apply` -> proceed to task 5. All `keep`/`defer` -> soft-skip to task 9.
 
 ## Task 5 / 6: Evolve
 
@@ -98,7 +98,7 @@ Bump rule (only applies when evolve ran in tasks 5-8 and produced applied ops):
 
 ```
 bash skills/admin-apex/scripts/admin-apex-finalize.sh \
-  --run {run} --bump {kind} --message "<one-liner>" --body "<op-list>"
+  --run {run} --bump {kind} --message "<one-liner>" --body "<count+kind summary, e.g. '3 edit'>"
 ```
 
 Caller decides `{kind}` per the bump rule above (read `{run}-applied-ops.json` to classify). Branch on exit code:
