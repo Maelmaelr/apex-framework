@@ -98,10 +98,9 @@ For a lighter, easier-to-read summary of steps, skill/agent/script used, and rou
          - scout1.md (the step 6 owner) aggregates: reads each shard-result JSON, merges per-shard kept / dropped lists into `screened-{session}.json`, validates against schema, returns the merged artifact path to apex
 7. Scout phase 2 preflight -> select medium or complex mode (rescout if gaps) | Blocked by #6
    - scout2.md | `~/.claude/skills/apex/scout2.md`
-     - reads `screened-{session}.json` + prompt
-     - computes `effective_blast`: `small` if kept-file count <= 15 AND shard count == 1; `large` otherwise. Both terms are needed: shard count comes from pre-screen findings count (6.b), kept-file count is post-screen - `small` requires the work to have been narrow both before and after screening (a wide pre-screen scope that screening culled to <= 15 still indicates non-trivial blast and routes to `large` / Path 2)
-     - Writes `preflight-{session}.json` to `.claude-tmp/scout/`: `{missed_regions: [{file, line_range: [start, end] | null, reason}], effective_blast: small|large, mode: medium|complex}`
-     - Gate:
+     - reads `screened-{session}.json` + prompt; LLM judgment generates `MISSED` (JSON-string of missed_regions)
+     - calls `scripts/scout2-finalize.sh --session {session} --missed "$MISSED"`: deterministic helper that reads `screened` + `shard-plan`, computes `effective_blast` (`small` if kept-file count <= 15 AND shard count == 1; `large` otherwise - both terms required since shard count is pre-screen, kept-count is post-screen), composes + producer-validates `preflight-{session}.json` (`{missed_regions, effective_blast, mode}`), echoes the selected `mode` to stdout
+     - Gate (decided by the script's `mode` output):
        - `missed_regions=[]` AND `effective_blast=small` -> medium mode, proceed to 8
        - `missed_regions=[]` AND `effective_blast=large` -> complex mode, proceed to 8 (no rescout - nothing to look for)
        - `missed_regions != []` -> complex mode, TaskCreate 7.x
@@ -149,18 +148,12 @@ For a lighter, easier-to-read summary of steps, skill/agent/script used, and rou
         - novel_flagged: <count>
         - novel_traces: <comma-separated trace paths, max 5>
 
-      - flags traces as "novel" when patterns don't match heuristic categories; the `novel_traces` line lists the flagged trace paths so the reflector knows what to focus on (single source - no separate scratch file). The `novel_flagged` count is informational only -- the reflector always fires (since v1.4.0).
+      - flags traces as "novel" when patterns don't match heuristic categories; the `novel_traces` line lists the flagged trace paths so the reflector knows what to focus on (single source - no separate scratch file). The `novel_flagged` count is informational only -- the reflector always fires.
 
     - reflector.md | `~/.claude/agents/reflector.md` (Haiku, background, silent) - always fires (focus driven by `novel_traces` line; on novel_flagged == 0 the reflector still surfaces hypothesis-vs-reality and cross-session patterns)
       - parameter = entryflow
       - inputs: `.claude-tmp/apex-active/{session}.json` (manifest path; reflector reads `cc_session_id` from it and loads main-orchestrator TaskList from `~/.claude/todos/{cc_session_id}-agent-{cc_session_id}.json`), the latest `## {session} - entryflow-heuristics` block in `~/.claude/tmp/apex-workflow-improvements.md` (reflector parses the `novel_traces` line for the trace paths to focus on), and the entry-flow trace files under `.claude-tmp/apex-active/{session}-traces/entryflow/*.md` (snapshotted in the first action below to cap context and defend against the p2.6 cleanup race)
-      - first action (snapshot defends against p2.6 cleanup race; cap at 50KB for Haiku context bound):
-
-        TOTAL=$(cat .claude-tmp/apex-active/{session}-traces/entryflow/*.md | wc -c)
-        N=$(ls .claude-tmp/apex-active/{session}-traces/entryflow/*.md | wc -l)
-        cat .claude-tmp/apex-active/{session}-traces/entryflow/*.md | head -c 51200 > /tmp/{session}-entryflow-snapshot.txt
-        [ "$TOTAL" -gt 51200 ] && echo "[snapshot truncated, $N traces total]" >> /tmp/{session}-entryflow-snapshot.txt
-
+      - first action: `bash scripts/snapshot-traces.sh --token {session} --phase entryflow` (writes `/tmp/{session}-entryflow-snapshot.txt` capped at 50KB; defends against p2.6 cleanup race)
       - processes snapshot, not live files
       - emits structured append (no prose) to `~/.claude/tmp/apex-workflow-improvements.md` under `flock ~/.claude/tmp/apex-workflow-improvements.md.lock` (single shared lockfile; serialises the step-10 + p1.4 / p2.5 reflectors that may run concurrently across sessions or back-to-back in the same Path 2 session):
 
@@ -248,17 +241,11 @@ For agents whose internal reasoning matters (provenance, failure analysis), the 
 - **p1.4** Self-reflect | Blocked by #p1.3
   - Reflection principle: compare (a) what the session DID - pipeline executed + tasks completed per end-of-session summary - against (b) what it SHOULD have done - pipeline-as-spec + original prompt + hypothesis from `{session}-hypothesis.json` (embeds `original_prompt`). Spot the gaps and what could have been done better.
   - reflect-traces.sh (script-first) does heuristic pattern matching on traces (regex for `error|failed|skip`, count `fix-attempt-N.md`, list traces > N lines); appends a `## {session} - entryflow+p1-heuristics - {timestamp}` block to `~/.claude/tmp/apex-workflow-improvements.md` under the shared lockfile (same format and lockfile as step 10's reflect-traces.sh - see step 10, including the `novel_traces:` line); flags traces as "novel" when patterns don't match heuristic categories
-  - reflector.md | `~/.claude/agents/reflector.md` (Haiku, foreground, silent) - always fires (since v1.4.0); focus driven by the `novel_traces` line in the heuristics block. Foreground (vs step 10's background) because p1.4 runs at end-of-session with no critical user-facing action waiting; p1.5 cleanup is the only follow-up and it explicitly blocks on p1.4, so there is no need to overlap reflector work with anything
+  - reflector.md | `~/.claude/agents/reflector.md` (Haiku, foreground, silent) - always fires; focus driven by the `novel_traces` line in the heuristics block. Foreground (vs step 10's background) because p1.4 runs at end-of-session with no critical user-facing action waiting; p1.5 cleanup is the only follow-up and it explicitly blocks on p1.4, so there is no need to overlap reflector work with anything
     - parameter = entryflow+p1 (matches the heuristics block name `## {session} - entryflow+p1-heuristics` and the trace inputs below, which span both phases - p1.4 is the first reflector that has end-of-session view across both)
     - inputs: `git diff --stat {baseline.head_sha}` plus `git ls-files --others --exclude-standard` (reflector reads `head_sha` from `{session}-baseline.json`; single-ref diff covers working-tree-vs-baseline so it captures both committed delta AND tracked-modified-uncommitted - the latter matters when `git.md` fail-silent skipped the commit, leaving apex's tracked edits in the working tree; ls-files surfaces apex-newly-created untracked files in either case. If git.md committed cleanly, the ls-files output is empty, which is itself informative), `.claude-tmp/apex-active/{session}.json` (manifest path; reflector reads `cc_session_id` from it and loads main-orchestrator TaskList from `~/.claude/todos/{cc_session_id}-agent-{cc_session_id}.json`), the latest `## {session} - entryflow+p1-heuristics` block in `~/.claude/tmp/apex-workflow-improvements.md` (reflector parses the `novel_traces` line for the trace paths to focus on), and the entryflow + p1 trace files under `.claude-tmp/apex-active/{session}-traces/entryflow/*.md` + `.claude-tmp/apex-active/{session}-traces/p1/*.md` (snapshotted in the first action below)
-    - reads phase-scoped traces directly: `.claude-tmp/apex-active/{session}-traces/entryflow/*.md` + `.claude-tmp/apex-active/{session}-traces/p1/*.md` (p1.5 cleanup blocked by #p1.4 so no race), capped at 50KB total via the same explicit bash as step 10's snapshot first-action:
-
-      TOTAL=$(cat .claude-tmp/apex-active/{session}-traces/entryflow/*.md .claude-tmp/apex-active/{session}-traces/p1/*.md | wc -c)
-      N=$(ls .claude-tmp/apex-active/{session}-traces/entryflow/*.md .claude-tmp/apex-active/{session}-traces/p1/*.md | wc -l)
-      cat .claude-tmp/apex-active/{session}-traces/entryflow/*.md .claude-tmp/apex-active/{session}-traces/p1/*.md | head -c 51200 > /tmp/{session}-p1-snapshot.txt
-      [ "$TOTAL" -gt 51200 ] && echo "[snapshot truncated, $N traces total]" >> /tmp/{session}-p1-snapshot.txt
-
-      processes snapshot, not live files
+    - first action: `bash scripts/snapshot-traces.sh --token {session} --phase entryflow+p1` (writes `/tmp/{session}-p1-snapshot.txt` capped at 50KB; covers both `{session}-traces/entryflow/*.md` and `{session}-traces/p1/*.md`)
+    - processes snapshot, not live files
 
     - emits structured append (no prose) to `~/.claude/tmp/apex-workflow-improvements.md` under `flock ~/.claude/tmp/apex-workflow-improvements.md.lock` (single shared lockfile; serialises the step-10 + p1.4 / p2.5 reflectors that may run concurrently across sessions or back-to-back in the same Path 2 session):
 
@@ -375,17 +362,11 @@ Delegation to N teammates via plan mode, where N is sized by the planner (p2.0b)
 - **p2.5** Self-reflect | Blocked by #p2.4
   - Reflection principle: compare (a) what the session DID - pipeline executed + tasks completed per end-of-session summary - against (b) what it SHOULD have done - pipeline-as-spec + original prompt + hypothesis from `{session}-hypothesis.json` (embeds `original_prompt`). Spot the gaps and what could have been done better.
   - reflect-traces.sh (script-first) does heuristic pattern matching on traces (regex for `error|failed|skip`, count `fix-attempt-N.md`, list traces > N lines); appends a `## {session} - p2-heuristics - {timestamp}` block to `~/.claude/tmp/apex-workflow-improvements.md` under the shared lockfile (same format and lockfile as step 10's reflect-traces.sh - see step 10, including the `novel_traces:` line); flags traces as "novel" when patterns don't match heuristic categories
-  - reflector.md | `~/.claude/agents/reflector.md` (Haiku, foreground, silent) - always fires (since v1.4.0); focus driven by the `novel_traces` line in the heuristics block. Foreground (vs step 10's background) because p2.5 runs at end-of-session with no critical user-facing action waiting; p2.6 cleanup is the only follow-up and it explicitly blocks on p2.5, so there is no need to overlap reflector work with anything
+  - reflector.md | `~/.claude/agents/reflector.md` (Haiku, foreground, silent) - always fires; focus driven by the `novel_traces` line in the heuristics block. Foreground (vs step 10's background) because p2.5 runs at end-of-session with no critical user-facing action waiting; p2.6 cleanup is the only follow-up and it explicitly blocks on p2.5, so there is no need to overlap reflector work with anything
     - parameter = p2
     - inputs: `git diff --stat {baseline.head_sha}` plus `git ls-files --others --exclude-standard` (reflector reads `head_sha` from `{session}-baseline.json`; single-ref diff covers working-tree-vs-baseline so it captures both committed delta AND tracked-modified-uncommitted - the latter matters when `git.md` fail-silent skipped the commit, leaving apex's tracked edits in the working tree; ls-files surfaces apex-newly-created untracked files in either case. If git.md committed cleanly, the ls-files output is empty, which is itself informative), `.claude-tmp/apex-active/{session}.json` (manifest path; reflector reads `p2_cc_session_id` from it - written by p2.0 after the context clear - and loads the p2-orchestrator TaskList from `~/.claude/todos/{p2_cc_session_id}-agent-{p2_cc_session_id}.json`; the entry-flow `cc_session_id` is preserved in the manifest but not used here since p2's tasks live under the post-context-clear session id), the latest `## {session} - p2-heuristics` block in `~/.claude/tmp/apex-workflow-improvements.md` (reflector parses the `novel_traces` line for the trace paths to focus on), and the p2 trace files under `.claude-tmp/apex-active/{session}-traces/p2/*.md` (snapshotted in the first action below)
-    - reads phase-scoped traces directly: `.claude-tmp/apex-active/{session}-traces/p2/*.md` (p2.6 cleanup blocked by #p2.5 so no race), capped at 50KB total via the same explicit bash as step 10's snapshot first-action:
-
-      TOTAL=$(cat .claude-tmp/apex-active/{session}-traces/p2/*.md | wc -c)
-      N=$(ls .claude-tmp/apex-active/{session}-traces/p2/*.md | wc -l)
-      cat .claude-tmp/apex-active/{session}-traces/p2/*.md | head -c 51200 > /tmp/{session}-p2-snapshot.txt
-      [ "$TOTAL" -gt 51200 ] && echo "[snapshot truncated, $N traces total]" >> /tmp/{session}-p2-snapshot.txt
-
-      processes snapshot, not live files
+    - first action: `bash scripts/snapshot-traces.sh --token {session} --phase p2` (writes `/tmp/{session}-p2-snapshot.txt` capped at 50KB; p2.6 cleanup is blocked by #p2.5 so no race, but the script idiom matches step 10 / p1.4 for consistency)
+    - processes snapshot, not live files
 
     - emits structured append (no prose) to `~/.claude/tmp/apex-workflow-improvements.md` under `flock ~/.claude/tmp/apex-workflow-improvements.md.lock` (single shared lockfile; serialises the step-10 + p1.4 / p2.5 reflectors that may run concurrently across sessions or back-to-back in the same Path 2 session):
 

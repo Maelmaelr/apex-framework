@@ -12,13 +12,23 @@
 #   - /tmp/{run}-* (apex-improve hygiene rename target; forward-compat)
 #
 # Args:
-#   --run <token>  (required; 8-char lowercase hex - matches openssl rand -hex 4
-#                  per SKILL.md task 1)
+#   --run <token>     (required; 8-char lowercase hex - matches openssl rand
+#                     -hex 4 per SKILL.md task 1)
+#   --post-success    (optional; bypasses the 60s in-flight mtime guard.
+#                     Reserved for callers with authoritative knowledge that
+#                     the run is complete, e.g. SKILL.md task 11 after
+#                     mirror-to-dev.sh succeeded. Without it, task 11 cleanup
+#                     is deferred to SessionEnd because the just-written
+#                     {run}-summary.md keeps the guard armed.)
 #
 # Callers:
-#   - session-end-hook.sh (manifest cc_session_id match -> per-run cleanup)
-#   - admin-apex-finalize.sh (no-commit branch when nothing staged)
-#   - evolve.md mid-flight rollback (after git restore)
+#   - session-end-hook.sh (manifest cc_session_id match -> per-run cleanup;
+#     keeps guard - sibling SessionEnd misfire could race a mid-flight run)
+#   - admin-apex-finalize.sh (no-commit branch when nothing staged; keeps
+#     guard - the no-commit branch fires before any structural mutation)
+#   - evolve.md mid-flight rollback (after git restore; keeps guard)
+#   - skills/admin-apex/SKILL.md task 11 (post-success path; uses
+#     --post-success to bypass the guard)
 #
 # Exit code: always 0 (idempotent contract; warnings to stderr).
 
@@ -30,11 +40,16 @@ set -uo pipefail
 ADMIN_ACTIVE=".claude-tmp/admin-apex-active"
 
 RUN=""
+POST_SUCCESS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --run)
       RUN="${2:-}"
       shift 2
+      ;;
+    --post-success)
+      POST_SUCCESS=1
+      shift
       ;;
     *)
       echo "cleanup-run.sh: unknown arg: $1" >&2
@@ -95,23 +110,30 @@ rm_run_glob() {
 # legitimate post-completion cleanup at SessionEnd typically sees stale mtimes
 # and proceeds. Edge-case crashed runs with recent mtimes are picked up by
 # sweep-stale-runs.sh on a later pass once mtime ages out.
+#
+# --post-success bypasses (b) only. Reserved for SKILL.md task 11 (and other
+# callers with authoritative knowledge that the run is complete) so the
+# end-of-run cleanup happens immediately rather than deferring to SessionEnd.
+# Manifest-missing fast-exit (a) is still honoured to keep idempotency.
 MANIFEST="$ADMIN_ACTIVE/${RUN}.json"
 if [[ ! -f "$MANIFEST" ]]; then
   exit 0
 fi
-NOW=$(date +%s)
-LATEST=0
-shopt -s nullglob
-for f in "$MANIFEST" "$ADMIN_ACTIVE/${RUN}"-*; do
-  [[ -e "$f" ]] || continue
-  # `stat -f %m` (BSD/macOS) -> falls back to `stat -c %Y` (GNU/Linux).
-  m=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
-  (( m > LATEST )) && LATEST=$m
-done
-shopt -u nullglob
-if (( LATEST != 0 && NOW - LATEST < 60 )); then
-  warn "refusing cleanup: latest run artifact mtime $((NOW - LATEST))s ago < 60s (run mid-flight)"
-  exit 0
+if (( POST_SUCCESS == 0 )); then
+  NOW=$(date +%s)
+  LATEST=0
+  shopt -s nullglob
+  for f in "$MANIFEST" "$ADMIN_ACTIVE/${RUN}"-*; do
+    [[ -e "$f" ]] || continue
+    # `stat -f %m` (BSD/macOS) -> falls back to `stat -c %Y` (GNU/Linux).
+    m=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+    (( m > LATEST )) && LATEST=$m
+  done
+  shopt -u nullglob
+  if (( LATEST != 0 && NOW - LATEST < 60 )); then
+    warn "refusing cleanup: latest run artifact mtime $((NOW - LATEST))s ago < 60s (run mid-flight)"
+    exit 0
+  fi
 fi
 
 # Per-run admin-apex-active artifacts (excluding deferred-findings).

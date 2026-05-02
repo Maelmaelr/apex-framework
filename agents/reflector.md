@@ -24,15 +24,12 @@ The p1.4 snapshot file is `p1-snapshot.txt` (NOT `entryflow+p1-snapshot.txt`) pe
 ## First action: snapshot defends against cleanup race
 
 ```
-TOTAL=$(cat <trace globs> | wc -c)
-N=$(ls <trace globs> | wc -l)
-cat <trace globs> | head -c 51200 > /tmp/{token}-<snapshot-suffix>-snapshot.txt
-[ "$TOTAL" -gt 51200 ] && echo "[snapshot truncated, $N traces total]" >> /tmp/{token}-<snapshot-suffix>-snapshot.txt
+bash $HOME/.claude/skills/apex/scripts/snapshot-traces.sh --token {token} --phase {phase}
 ```
 
-`<snapshot-suffix>` is `entryflow` for step 10, `p1` for p1.4, `p2` for p2.5, `admin-apex` for admin-apex task 11 - matches the suffix in the table above. `{token}` is the session token for apex phases and the run token for admin-apex (both 8-hex). All four are caught by the `/tmp/{token}-*` cleanup glob (p1.5 / p2.6 for apex; admin-apex's `cleanup-run.sh` for the run token).
+The helper writes `/tmp/{token}-{suffix}-snapshot.txt` capped at 50KB (suffix: `entryflow` | `p1` | `p2` | `admin-apex`; per the table above). `{token}` is the session token for apex phases and the run token for admin-apex - both 8-hex, both caught by the `/tmp/{token}-*` cleanup glob (p1.5 / p2.6 for apex; `cleanup-run.sh` for admin-apex).
 
-Process snapshot, NOT live files (p2.6 / admin-apex cleanup may race).
+Process the snapshot, NOT live files (p2.6 / admin-apex cleanup may race).
 
 ## Inputs
 
@@ -43,11 +40,13 @@ Apex phases (entryflow / entryflow+p1 / p2):
 - (p1.4 / p2.5 only) `git diff --stat {baseline.head_sha}` + `git ls-files --others --exclude-standard`
 
 Admin-apex phase:
-- `.claude-tmp/admin-apex-active/{run}.json` manifest (read for context only; no TaskList lookup)
-- `.claude-tmp/admin-apex-active/{run}-summary.md` - per-task summary trace written by the SKILL during tasks 1-10 (gate dismissals, mid-flight drift, test failure auto-fix loops, mirror outcome). Snapshotted with the JSON artifacts.
-- `.claude-tmp/admin-apex-active/{run}-applied-ops.json`, `{run}-drift-report.json`, `{run}-evolve-plan.json`, `{run}-dirty-paths.txt`, `{run}-docs-changed.txt` - whichever exist (paths typed but read-tolerant; absent = skip).
+- `$HOME/.claude/.claude-tmp/admin-apex-active/{run}.json` manifest (read for context only; no TaskList lookup)
+- `$HOME/.claude/.claude-tmp/admin-apex-active/{run}-summary.md` - per-task summary trace written by the SKILL during tasks 1-10 (gate dismissals, mid-flight drift, test failure auto-fix loops, mirror outcome). Snapshotted with the JSON artifacts.
+- `$HOME/.claude/.claude-tmp/admin-apex-active/{run}-applied-ops.json`, `{run}-drift-report.json`, `{run}-evolve-plan.json`, `{run}-dirty-paths.txt`, `{run}-docs-changed.txt` - whichever exist (paths typed but read-tolerant; absent = skip).
 - No heuristic block (admin-apex bypasses `reflect-traces.sh`).
-- `git diff --stat HEAD~1` + `git log -1 --pretty=%B` for the just-made admin-apex commit (captures what was actually mutated).
+- `git diff --stat HEAD~1` + `git log -1 --pretty=%B` for the just-made admin-apex commit (captures what was actually mutated). Run from the apex repo root: `git -C "$HOME/.claude" ...`.
+
+**CWD discipline (admin-apex)**: All paths above are written `$HOME`-anchored on purpose. Subagents inherit a CWD that is not guaranteed to be `~/.claude`, so a relative `.claude-tmp/admin-apex-active/...` resolves to a nonexistent directory and the agent reports "admin-apex run artifacts not yet available" while the artifacts exist (root cause of the 0109cadd / 2026-05-02 incident). When you call helpers, prefer the absolute-path forms (`bash $HOME/.claude/skills/apex/scripts/snapshot-traces.sh ...`) and read inputs at `$HOME/.claude/.claude-tmp/...` (Read requires absolute anyway). The snapshot helper itself anchors its CWD via `BASH_SOURCE` (see `snapshot-traces.sh` header comment) so the snapshot file at `/tmp/{token}-{phase}-snapshot.txt` is always populated.
 
 ## Output
 

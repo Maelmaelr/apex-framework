@@ -129,13 +129,13 @@ artifacts plus `git diff --stat HEAD~1` and `git log -1 --pretty=%B`.
 
 Token:    {run}             # 8-hex; used in place of {session}
 Phase:    admin-apex
-Manifest: .claude-tmp/admin-apex-active/{run}.json   # context only; no TaskList lookup
+Manifest: $HOME/.claude/.claude-tmp/admin-apex-active/{run}.json   # absolute on purpose: subagent CWD != ~/.claude breaks relative paths (see agents/reflector.md "CWD discipline").
 
 Errors -> ~/.claude/tmp/reflector-errors.log (silent failure otherwise).
 Shut down silently (no main-session output).
 ```
 
-After reflector returns, invoke `bash skills/admin-apex/scripts/cleanup-run.sh --run {run}`. Reflector failure does NOT block cleanup - the agent self-silences per its contract.
+After reflector returns, invoke `bash skills/admin-apex/scripts/cleanup-run.sh --run {run} --post-success`. The `--post-success` flag bypasses cleanup-run.sh's 60s in-flight mtime guard, which would otherwise refuse cleanup (the just-written `{run}-summary.md` keeps the guard armed) and defer to SessionEnd. Task 11 has authoritative knowledge that mirror-to-dev.sh succeeded, so the guard's defensive purpose (sibling SessionEnd misfire / eager mid-write cleanup) does not apply on this codepath. Reflector failure does NOT block cleanup - the agent self-silences per its contract.
 
 ## Out of scope
 

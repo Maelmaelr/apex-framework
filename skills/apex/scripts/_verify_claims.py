@@ -50,13 +50,9 @@ def _now() -> str:
 
 
 def _safety_paths(session: str) -> list[str]:
-    # Standard safety paths per shared-guardrails.md / apex-core.md Conventions.
-    # Closed set; never includes .env* or .git/.
+    # Closed set per shared-guardrails.md "Standard safety paths"; never includes
+    # .env* or .git/. Keep in sync with zero-layer-extract.sh:89 (bash inline copy).
     return [".claude-tmp/", "~/.claude/tmp/", "~/.claude/plans/", f"/tmp/{session}-*", "docs/", "README*"]
-
-
-def _resolve(project_root: str, file_path: str) -> str:
-    return file_path if os.path.isabs(file_path) else os.path.join(project_root, file_path)
 
 
 def _line_range_ok(path: str, line_range) -> bool:
@@ -83,8 +79,8 @@ def _layers_for_claim(claim: dict) -> list[str]:
     return [r.get("layer") for r in claim.get("reasons", []) if r.get("layer")]
 
 
-def _verify_kept_claim(claim: dict, project_root: str) -> bool:
-    path = _resolve(project_root, claim["file"])
+def _verify_kept_claim(claim: dict) -> bool:
+    path = claim["file"]
     if not os.path.isfile(path):
         return False
     for reason in claim.get("reasons", []):
@@ -93,8 +89,8 @@ def _verify_kept_claim(claim: dict, project_root: str) -> bool:
     return True
 
 
-def _verify_missed_region(region: dict, project_root: str) -> bool:
-    path = _resolve(project_root, region["file"])
+def _verify_missed_region(region: dict) -> bool:
+    path = region["file"]
     if not os.path.isfile(path):
         return False
     return _line_range_ok(path, region.get("line_range"))
@@ -150,7 +146,7 @@ def _write_main_scope(session: str, screened: dict, produced_by: str) -> int:
     return 0
 
 
-def cmd_verify(session: str, project_root: str) -> int:
+def cmd_verify(session: str) -> int:
     screened_path = f"{SCOUT_DIR}/screened-{session}.json"
     preflight_path = f"{SCOUT_DIR}/preflight-{session}.json"
     rerun_path = f"{APEX_ACTIVE}/{session}-verify-rerun.json"
@@ -177,7 +173,7 @@ def cmd_verify(session: str, project_root: str) -> int:
     dropped_per_layer = {layer: 0 for layer in LAYERS}
 
     for claim in kept_in:
-        if _verify_kept_claim(claim, project_root):
+        if _verify_kept_claim(claim):
             kept_passed.append(claim)
         else:
             kept_dropped.append(claim)
@@ -198,7 +194,7 @@ def cmd_verify(session: str, project_root: str) -> int:
     missed_passed: list[dict] = []
     preflight_bad = 0
     for region in missed_in:
-        if _verify_missed_region(region, project_root):
+        if _verify_missed_region(region):
             missed_passed.append(region)
         else:
             preflight_bad += 1
@@ -277,7 +273,7 @@ def cmd_verify(session: str, project_root: str) -> int:
     return _write_main_scope(session, new_screened, "verify-claims.sh")
 
 
-def cmd_apply_resolved(session: str, project_root: str) -> int:
+def cmd_apply_resolved(session: str) -> int:
     screened_path = f"{SCOUT_DIR}/screened-{session}.json"
     review_path = f"{SCOUT_DIR}/claim-review-{session}.json"
     resolved_path = f"{SCOUT_DIR}/claim-review-resolved-{session}.json"
@@ -336,19 +332,15 @@ def cmd_apply_resolved(session: str, project_root: str) -> int:
 
 
 def main() -> int:
+    # verify-claims.sh wrapper validates --session shape; this script trusts it.
     ap = argparse.ArgumentParser()
     ap.add_argument("--session", required=True)
     ap.add_argument("--apply-resolved", action="store_true")
-    ap.add_argument("--project-root", default=".")
     args = ap.parse_args()
 
-    if not (len(args.session) == 8 and all(c in "0123456789abcdef" for c in args.session)):
-        print(f"verify-claims.sh: invalid session token shape: {args.session}", file=sys.stderr)
-        return 1
-
     if args.apply_resolved:
-        return cmd_apply_resolved(args.session, args.project_root)
-    return cmd_verify(args.session, args.project_root)
+        return cmd_apply_resolved(args.session)
+    return cmd_verify(args.session)
 
 
 if __name__ == "__main__":
