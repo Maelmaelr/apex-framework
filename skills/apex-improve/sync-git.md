@@ -55,6 +55,14 @@ bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"
 
 The script reads `{run}-dirty-paths.txt` + `{run}-docs-changed.txt`, applies the closed allowlist (`skills/apex/**`, `skills/admin-apex/**`, `skills/apex-improve/**`, `skills/apex-tech-watch/**`, `agents/**`, `VERSION`, `apex-core.md`, `apex-core-overview.md`), copies survivors to the public mirror (default `/Users/mael/dev/apex-framework`), commits with the same message as the just-made `~/.claude` commit, then pushes the public repo first and `~/.claude` second.
 
+On exit 0 (success), immediately sweep this run's artifacts:
+
+```
+bash skills/admin-apex/scripts/cleanup-run.sh --run "{run}" --post-success
+```
+
+Mirrors admin-apex SKILL.md task 11's post-success cleanup pattern. See "Cleanup" below for the rationale.
+
 Exit codes (caller surfaces these to the user; do not retry):
 
 - `0` -> mirrored + pushed (or nothing-to-do).
@@ -69,9 +77,9 @@ Inspect-without-pushing during development: `APEX_MIRROR_NO_PUSH=1 bash skills/a
 
 ## Cleanup
 
-`cleanup-run.sh` is NOT called from Step 8 - the manifest's `cc_session_id` arms `skills/admin-apex/scripts/session-end-hook.sh` to sweep this run's artifacts when the CC session ends. Calling cleanup eagerly here would race with deferred-findings preservation (`{run}-deferred-findings.json` survives across runs).
+The Step 8 post-success `cleanup-run.sh --post-success` invocation sweeps `{run}-*` artifacts and the manifest immediately - mirror+push has just succeeded, so the run is irrevocably complete and there is no reason to defer to SessionEnd. The `--post-success` flag bypasses cleanup-run.sh's 60s in-flight mtime guard (the just-written `{run}-applied-ops.json` and `{run}-dirty-paths.txt` keep it armed otherwise). `{run}-deferred-findings.json` is preserved by cleanup-run.sh's `rm_run_glob` skip-clause and survives for the next apex-improve run.
 
-The no-commit branch (Step 7 exit 10) DOES call `cleanup-run.sh` internally via `admin-apex-finalize.sh` line 124 - that branch leaves no commit context to defer, so eager cleanup is correct there.
+The no-commit branch (Step 7 exit 10) DOES call `cleanup-run.sh` internally via `admin-apex-finalize.sh` - that branch leaves no commit context to defer, so eager cleanup is correct there. SessionEnd (manifest `cc_session_id` match in `session-end-hook.sh`) remains the safety net for runs that crashed or were interrupted before Step 8 success.
 
 ## What this step does NOT do
 
