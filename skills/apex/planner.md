@@ -18,11 +18,11 @@ Outputs (embedded in plan):
 - per-teammate scoped task description + `allowed_files`
 - `shared_files: [...]` (cross-teammate files routed to p2.4 integration pass)
 
-**Disjoint-scope rule**: per-teammate `allowed_files` MUST be pairwise disjoint (excluding standard safety paths). Validator: planner self-checks pairwise intersection BEFORE embedding the plan; on overlap, planner reassigns or moves the file to `shared_files` (no silent overlap).
+**Disjoint-scope rule**: per-teammate `allowed_files` MUST be pairwise disjoint (excluding standard safety paths). Validator: deterministic check via `scripts/validate-disjoint-scopes.py` BEFORE embedding the plan; on overlap, planner reassigns or moves the file to `shared_files` (no silent overlap).
 
 **Main scope is the union**: if a teammate needs a file outside `{session}-main-scope.json`, the planner extends main scope first (single source of truth).
 
-First instruction in plan: call `p2.md` (TaskCreate p2.1 -> p2.7).
+First instruction in plan: `read and follow ~/.claude/skills/apex/p2.md` (post-context-clear session loads p2.md, which TaskCreates p2.1 -> p2.7).
 
 See `shared-guardrails.md` for safety paths, manifest schema, scope write producers.
 
@@ -89,7 +89,7 @@ After reassignment, re-validate. If still violating after one reassign pass, har
 The plan embedded in plan mode (survives p2.0c context clear):
 
 ```
-First instruction: call ~/.claude/skills/apex/p2.md
+First instruction: read and follow ~/.claude/skills/apex/p2.md
 
 Session: {session}
 Team size: N
@@ -113,4 +113,4 @@ Hypothesis: <verbatim from {session}-hypothesis.json>
 Original prompt: <verbatim>
 ```
 
-The first instruction `call p2.md` is critical - it routes the post-context-clear session into the Path 2 chain (p2.0 -> p2.7).
+The first instruction `read and follow ~/.claude/skills/apex/p2.md` is critical - it routes the post-context-clear session into the Path 2 chain (p2.0 -> p2.7).
