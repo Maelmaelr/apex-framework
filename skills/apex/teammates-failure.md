@@ -7,7 +7,7 @@ description: Failure-recovery decision tree for p2.1 teammates. Three branches (
 
 Spec: `apex-core.md` "Path 2 (p2)" p2.1 + "Teammate-failure handling" | `apex-core-overview.md` p2.1.
 
-Owned by `teammates.md` Step 4 (failure-recovery branch). Inline orchestrator decision tree - no subagent spawn here.
+Owned by `teammates.md` (Failure-recovery decision tree section). Inline orchestrator decision tree - no subagent spawn here.
 
 ## Decision tree
 

@@ -129,10 +129,10 @@ case "$PROJECT_TYPE" in
 
   node)
     # Pick package manager by lockfile (closed set; falls through to npm).
-    if   [[ -f bun.lockb       ]]; then PM="bun"
-    elif [[ -f pnpm-lock.yaml  ]]; then PM="pnpm"
-    elif [[ -f yarn.lock       ]]; then PM="yarn"
-    else                                PM="npm"
+    if   [[ -f bun.lock || -f bun.lockb ]]; then PM="bun"
+    elif [[ -f pnpm-lock.yaml           ]]; then PM="pnpm"
+    elif [[ -f yarn.lock                ]]; then PM="yarn"
+    else                                         PM="npm"
     fi
     if ! has_bin "$PM"; then
       echo "verify-build.sh: package manager '$PM' not on PATH; falling back to npm" >&2

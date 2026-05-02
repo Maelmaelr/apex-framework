@@ -64,10 +64,7 @@ while :; do
   trace="$TRACE_DIR/fix-${attempt}.md"
   # spawn agents/executor.md (Sonnet) with the prompt template below
 
-  # 2d. Persist counter for audit + crash-recovery (producer-validates; aborts on schema fail).
-  # Args via argv (no $-interpolation into the python source); UTC-aware datetime
-  # via datetime.timezone.utc for Python 3.2+ portability (the `from datetime import UTC`
-  # form is 3.11+ only and end-users on older interpreters would hit ImportError).
+  # 2d. Persist counter (producer-validates). datetime.timezone.utc for Python 3.2+ portability.
   count=$attempt
   PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$COUNTER" "$count" "$ERRORS_FILE" <<'PY'
 import json, sys

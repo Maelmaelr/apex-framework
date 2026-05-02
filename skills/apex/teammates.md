@@ -124,7 +124,7 @@ p2.2 shutdown is blocked until every surviving teammate has either (a) completed
 
 ## Failure-recovery decision tree
 
-Read and follow `~/.claude/skills/apex/teammates-failure.md` (three branches: a self-fix / b replacement teammate / c AskUserQuestion). Inline orchestrator decision tree owned by this skill at Step 4; never spawns a subagent.
+Read and follow `~/.claude/skills/apex/teammates-failure.md` (three branches: a self-fix / b replacement teammate / c AskUserQuestion). Inline orchestrator decision tree owned by this skill; never spawns a subagent.
 
 ## Scope write producer
 
