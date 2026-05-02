@@ -68,7 +68,7 @@ run_or_fail() {
   local cmd="$2"
   : > "$TMP_OUT"
   local rc=0
-  bash -lc "$cmd" >"$TMP_OUT" 2>&1 || rc=$?
+  bash -c "$cmd" >"$TMP_OUT" 2>&1 || rc=$?
   if (( rc != 0 )); then
     {
       printf '## verify-build.sh: %s FAILED (exit %d)\n' "$label" "$rc"

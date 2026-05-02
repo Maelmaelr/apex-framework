@@ -20,26 +20,17 @@ The union covers tracked-modified AND untracked-non-ignored. Both are required: 
 
 ## Step 2: Resolve active scope path
 
-| Mode | Scope file |
-|------|-----------|
-| main | `.claude-tmp/apex-active/{session}-main-scope.json` |
-| teammate | `.claude-tmp/apex-active/{session}-{teammate-id}-scope.json` |
-
-```
-if [[ "$MODE" == "main" ]]; then
-  scope_path=".claude-tmp/apex-active/{session}-main-scope.json"
-else
-  scope_path=".claude-tmp/apex-active/{session}-{teammate-id}-scope.json"
-fi
-```
+Active scope file: `.claude-tmp/apex-active/{session}-main-scope.json` in main mode, `.claude-tmp/apex-active/{session}-{teammate-id}-scope.json` in teammate mode (under Path 2).
 
 ## Step 3: Intersect touched-by-apex with allowed_files
 
 ```
-in_scope=$(jq -r '.allowed_files[]' "$scope_path" \
+in_scope=$(jq -r '.allowed_files[]' <scope_file> \
   | LC_ALL=C sort -u \
   | LC_ALL=C comm -12 - <(printf '%s\n' "$touched"))
 ```
+
+`<scope_file>` is the Step 2 path (main or teammate variant).
 
 `LC_ALL=C` on both `sort -u` and `comm -12` is required: `comm` expects byte-order ordering and silently emits empty output if either input is sorted under a different locale. `$touched` was C-sorted in Step 1; both sides match.
 
