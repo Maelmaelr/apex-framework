@@ -23,6 +23,11 @@
           "reason": { "type": "string", "description": "One-line" }
         }
       }
+    },
+    "discovered_paths": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Optional. Repo-relative file paths the orchestrator validated during step-3 inline exploration (Glob/Grep/Read on conceptual prompts where the user named no file paths). Consumed by 6.a enumerate-scout as additional seed_paths (drives static-imports / framework / lsp expansion the same way prompt-explicit paths do) AND by 6.a zero-layer dispatch as autonomous fallback scope - when non-empty, zero-layer routes through zero-layer-extract.sh without an AskUserQuestion. Empty / absent when the prompt itself names paths (regex extraction covers them) or when step-3 did no exploration."
     }
   }
 }

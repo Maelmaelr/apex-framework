@@ -12,7 +12,7 @@
       "items": { "type": "string" },
       "description": "Absolute or repo-relative paths; standard safety paths always included"
     },
-    "produced_by": { "enum": ["trivial-inline", "zero-layer-inline", "verify-claims.sh", "verify-claims.sh --apply-resolved"] },
+    "produced_by": { "enum": ["trivial-inline", "zero-layer-inline", "zero-layer-discovered", "verify-claims.sh", "verify-claims.sh --apply-resolved"] },
     "produced_at": { "type": "string", "format": "date-time" }
   }
 }

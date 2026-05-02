@@ -22,12 +22,23 @@ Routing:
 Surfaced by `scout1.md` / `scout2.md`; `SKILL.md` step 6 routing is the entry point. All questions: dismiss / cancel = abort.
 
 ```
-AskUserQuestion at 6.a (zero-layer; exit code 10 from enumerate):
-  - "abort"
-  - "proceed-with-prompt-paths"  (regex-extract paths from original_prompt,
-                                  validate each on disk, write scope inline + pointer,
-                                  SKIP 6.b/6.c/7/8/9, call p1.md directly)
-0 validated paths after extraction -> abort like verify exit-1.
+6.a zero-layer (exit code 10 from enumerate) - autonomous-first dispatch:
+  IF hypothesis.discovered_paths is non-empty AND >=1 path validates on disk:
+    -> orchestrator runs `bash skills/apex/scripts/zero-layer-extract.sh {session}`
+       directly (no question). The script prefers discovered_paths over regex
+       extraction, writes scope with produced_by="zero-layer-discovered",
+       SKIPs 6.b/6.c/7/8/9, calls p1.md.
+       This is the smart-autonomous path: step-3 inline LLM exploration already
+       found the relevant files; we trust that work and proceed.
+
+  ELSE (discovered_paths empty / absent - true blank-slate prompt):
+    AskUserQuestion (header: "Scout zero-layer"):
+      - "abort"
+      - "proceed-with-prompt-paths"  (zero-layer-extract.sh regex-extracts paths
+                                      from original_prompt - the legacy fallback;
+                                      writes scope with produced_by="zero-layer-inline";
+                                      SKIPs 6.b/6.c/7/8/9, calls p1.md directly)
+    0 validated paths after extraction -> abort like verify exit-1.
 
 AskUserQuestion at 6.b (cap overshot; exit code 11 from rank-findings.sh):
   Read screen-plan-{session}.json _meta to size the overshoot (dropped_below_cap
@@ -107,13 +118,13 @@ The exit-2 6c+7 re-run (driven by `verify-claims.sh`) re-invokes this single cal
 
 ## Zero-layer proceed (6.a exit code 10)
 
-Orchestrator (NOT scout1) handles the AskUserQuestion. On "proceed-with-prompt-paths":
+Two routings, both terminate in `bash $HOME/.claude/skills/apex/scripts/zero-layer-extract.sh {session}`:
 
-```
-bash $HOME/.claude/skills/apex/scripts/zero-layer-extract.sh {session}
-```
+1. **Autonomous (hypothesis.discovered_paths non-empty)**: orchestrator skips the AskUserQuestion entirely and invokes the script. The script prefers `discovered_paths` over regex - persisted from step-3 inline LLM exploration on conceptual prompts (see SKILL.md step 3 "Inline discovery for conceptual prompts"). Scope is written with `produced_by="zero-layer-discovered"`.
 
-The script reads `original_prompt` from `{session}-hypothesis.json`, regex-extracts paths (project-tree-shaped + quoted/backticked tokens), validates each on disk, writes `{session}-main-scope.json` + the scope pointer at `{session}-scopes/$CC_SESSION_ID.txt`. Exit codes: `0` = scope written, `10` = zero validated paths -> abort like verify exit-1.
+2. **Question-gated (discovered_paths empty / absent)**: orchestrator surfaces the AskUserQuestion above. On `proceed-with-prompt-paths`, the script falls back to regex-extracting paths from `original_prompt` (project-tree-shaped + quoted/backticked tokens) and writes scope with `produced_by="zero-layer-inline"`.
+
+Either source: the script validates each candidate on disk, writes `{session}-main-scope.json` + the scope pointer at `{session}-scopes/$CC_SESSION_ID.txt`. Exit codes: `0` = scope written, `10` = zero validated paths from BOTH sources -> abort like verify exit-1.
 
 Then SKIP 6.b / 6.c / 7 / 8 / 9 (mark TaskList completed as no-op) and call `p1.md` directly with NO preflight artifact written. p1.0 reads absent preflight as no-findings-consultation branch.
 

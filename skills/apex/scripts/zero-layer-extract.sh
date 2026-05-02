@@ -1,15 +1,20 @@
 #!/usr/bin/env bash
-# zero-layer-extract.sh -- step 6.a zero-layer "proceed-with-prompt-paths" branch.
+# zero-layer-extract.sh -- step 6.a zero-layer "proceed" branch (autonomous + question).
 # Spec: apex-core.md step 6.a + scout1.md "Zero-layer proceed (6.a exit code 10)".
 #
-# Reads original_prompt from {session}-hypothesis.json, regex-extracts paths
-# (project-tree-shaped tokens + quoted/backticked relative paths), validates
-# each on disk, writes {session}-main-scope.json + the post-extract scope
-# pointer at {session}-scopes/$CC_SESSION_ID.txt.
+# Source priority (first non-empty wins):
+#   1. hypothesis.discovered_paths (persisted by step-3 inline LLM exploration on
+#      conceptual prompts). When non-empty + at least one path validates on disk,
+#      the script writes scope from these. The orchestrator routes here AUTONOMOUSLY
+#      (no AskUserQuestion). This is the "smart, deterministic, no-babysitting" path.
+#   2. original_prompt regex extraction (project-tree-shaped tokens + quoted /
+#      backticked relative paths). The fallback when discovered_paths is empty /
+#      absent. The orchestrator routes here only after AskUserQuestion at 6.a
+#      resolves to "proceed-with-prompt-paths" (true blank-slate case).
 #
-# Caller (orchestrator) invokes this only AFTER the AskUserQuestion at 6.a
-# resolves to "proceed-with-prompt-paths". On exit 10 (zero validated paths),
-# the orchestrator runs the verify-exit-1 abort surface.
+# Either source produces {session}-main-scope.json + the post-extract scope
+# pointer at {session}-scopes/$CC_SESSION_ID.txt. On exit 10 (zero validated
+# paths from BOTH sources), the orchestrator runs the verify-exit-1 abort surface.
 #
 # Args (positional):
 #   $1  -- {session} 8-hex token (required)
@@ -21,7 +26,7 @@
 # Exit codes:
 #   0   -- scope written + pointer written
 #   1   -- bad args, cc_session_id unresolvable, missing hypothesis, jq missing
-#   10  -- zero validated paths (orchestrator runs verify-exit-1 abort)
+#   10  -- zero validated paths from both sources (orchestrator runs verify-exit-1 abort)
 
 set -euo pipefail
 
@@ -63,19 +68,30 @@ if [[ ! -f "$HYPOTHESIS" ]]; then
   exit 1
 fi
 
-prompt=$(jq -r '.original_prompt' "$HYPOTHESIS")
-
-# Two extraction patterns: (1) quoted/backticked tokens, (2) project-tree-shaped
-# paths with extensions. Strip quote/backtick wrappers from results.
-candidates=$(printf '%s' "$prompt" \
-  | { grep -oE '(`[^`]+`|"[^"]+"|[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)' || true; } \
-  | tr -d '`"')
-
 validated=()
+producer="zero-layer-discovered"
+
+# Source 1: persisted discovered_paths (autonomous path - LLM exploration at step 3).
+# jq emits each array entry on its own line; absent / null / empty array -> no lines.
 while IFS= read -r p; do
   [[ -z "$p" ]] && continue
   [[ -f "$p" ]] && validated+=("$p")
-done <<< "$candidates"
+done < <(jq -r '(.discovered_paths // []) | .[]' "$HYPOTHESIS")
+
+# Source 2: regex extraction from original_prompt (fallback when discovered_paths empty).
+if [[ ${#validated[@]} -eq 0 ]]; then
+  producer="zero-layer-inline"
+  prompt=$(jq -r '.original_prompt' "$HYPOTHESIS")
+  # Two extraction patterns: (1) quoted/backticked tokens, (2) project-tree-shaped
+  # paths with extensions. Strip quote/backtick wrappers from results.
+  candidates=$(printf '%s' "$prompt" \
+    | { grep -oE '(`[^`]+`|"[^"]+"|[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)' || true; } \
+    | tr -d '`"')
+  while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    [[ -f "$p" ]] && validated+=("$p")
+  done <<< "$candidates"
+fi
 
 if [[ ${#validated[@]} -eq 0 ]]; then
   exit 10
@@ -86,7 +102,8 @@ fi
 # paths" - keep in sync with _verify_claims.py:_safety_paths).
 jq -n --argjson files "$(printf '%s\n' "${validated[@]}" | jq -R . | jq -s .)" \
   --arg session "$SESSION" \
-  '{session: $session, produced_by: "zero-layer-inline", allowed_files: ($files + [".claude-tmp/", "~/.claude/tmp/", "~/.claude/plans/", "/tmp/\($session)-*", "docs/", "README*"])}' \
+  --arg producer "$producer" \
+  '{session: $session, produced_by: $producer, allowed_files: ($files + [".claude-tmp/", "~/.claude/tmp/", "~/.claude/plans/", "/tmp/\($session)-*", "docs/", "README*"])}' \
   > "$MAIN_SCOPE"
 
 # Producer-validates-before-write: closes the spec gap (shared-guardrails.md

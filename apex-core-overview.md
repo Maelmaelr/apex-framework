@@ -13,7 +13,7 @@ Step 0 TaskCreates 1-5.
 ```
 1. Analyze prompt: inline
 2. Create session: create-session.sh
-3. Hypothesis: inline -> {session}-hypothesis.json
+3. Hypothesis: inline -> {session}-hypothesis.json (incl. discovered_paths from bounded inline Glob/Grep/Read on conceptual prompts)
 4. Load lessons: grep-lessons.sh + update-hit.sh
 5. Trivial detection: inline
   - if trivial:
@@ -25,10 +25,11 @@ Step 0 TaskCreates 1-5.
 
 ```
 6. Scout phase 1: scout1.md
-  6.a Enumerate: enumerate scripts -> findings-{session}.json
+  6.a Enumerate: enumerate scripts -> findings-{session}.json (also seeds layers from hypothesis.discovered_paths)
     - if zero-layer (deterministic layers all empty; ripgrep retired in 1.x):
-      - zero-layer-extract.sh -> p1.md
-      - skip tasks 6.b/c, 7-9
+      - if hypothesis.discovered_paths non-empty: zero-layer-extract.sh autonomously (no AskUserQuestion; produced_by=zero-layer-discovered)
+      - else: AskUserQuestion (abort | proceed-with-prompt-paths -> zero-layer-extract.sh; produced_by=zero-layer-inline)
+      - either: -> p1.md, skip tasks 6.b/c, 7-9
   6.b Rank: rank-findings.sh -> screen-plan-{session}.json (deterministic top-K cap)
     - if dropped_below_cap >= top_k (overshoot signal):
       - AskUserQuestion (all options surfaced verbatim):

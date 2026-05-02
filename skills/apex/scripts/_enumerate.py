@@ -69,6 +69,16 @@ def extract_seeds(hypothesis_path: str) -> tuple[list[str], list[str]]:
     path_re = re.compile(r"`([^`]+)`|\"([^\"]+)\"|([A-Za-z0-9_./\-]+\.[A-Za-z0-9]+)")
     seen: set[str] = set()
     seed_paths: list[str] = []
+    # discovered_paths first: persisted from step-3 inline exploration on conceptual prompts.
+    # These were already validated by the orchestrator before persisting; we re-validate
+    # here defensively (file may have moved between step 3 and step 6.a).
+    for cand in (hyp.get("discovered_paths") or []):
+        cand = (cand or "").strip()
+        if not cand or cand in seen:
+            continue
+        seen.add(cand)
+        if os.path.isfile(cand):
+            seed_paths.append(cand)
     for m in path_re.finditer(text):
         cand = next((g for g in m.groups() if g), "").strip()
         if not cand or cand in seen:
