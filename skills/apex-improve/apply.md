@@ -26,6 +26,8 @@ For each `op.kind == edit` operation:
 4. Append the operation (verbatim from the plan) to `{run}-applied-ops.json` with the **actual** `delta_lines` attached.
 5. Append the target path to `{run}-dirty-paths.txt`.
 
+**Dangling-ref pre-flight (multi-Edit batches on same file)**: when two or more ops in this run target the same file, OR a single op deletes a variable/function/path-definition that other parts of the file may rely on, after the final Edit re-read the file and grep for tokens that were just removed (variable names, function names, file paths). Any surviving reference to a now-undefined name is a dangling ref - apply a follow-on Edit before moving on. The polish.md `scope_path` incident (session 9e51202e) is the prototype: Step 2 collapse deleted the bash variable definition, Step 3 still referenced `$scope_path` until a follow-on Edit fixed it. Discipline check, not tooling - the cost of one extra grep is much lower than the cost of shipping a broken contract.
+
 If an Edit tool call fails (string not found, ambiguous match), surface AskUserQuestion (header: "Edit failure on op {N}"; options: `retry-with-context | skip-finding | abort-run`; dismiss = `abort-run`). Never silently move on.
 
 ## Path B: Structural ops -- delegate to admin-apex/evolve.md
