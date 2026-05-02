@@ -103,5 +103,5 @@ p2.4 Tail+shared docs: detect-tail-mode.sh -> agents (parallel)
   - documentation.md owns first-write on planner's shared_files
 p2.5 Self-reflect: reflect-traces.sh + reflector.md (Haiku, fg, param=p2)
 p2.6 Cleanup session: cleanup-session.sh
-p2.7 Inline summary: inline (reads hypothesis | {teammate-id}-task.md; removes hypothesis on success)
+p2.7 Inline summary: inline (reads hypothesis; removes on success)
 ```
