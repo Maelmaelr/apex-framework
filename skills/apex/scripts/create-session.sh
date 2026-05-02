@@ -7,8 +7,10 @@
 #      Active = manifest exists AND PID alive AND ps comm matches "claude".
 #      Stale  = manifest exists but PID dead OR comm mismatch (PID-rollover guard).
 #   2. On overlap (any active OR stale found): exit 10 with stderr listing detected
-#      state. Orchestrator runs AskUserQuestion (abort | proceed-alongside |
-#      cleanup-stale-and-proceed) per spec, options filtered to detected state.
+#      state. Orchestrator branches per skills/apex/SKILL.md Step 2: stale-only -> auto
+#      cleanup-stale-and-proceed (no prompt; PID dead = no concurrent file overlap);
+#      active-detected -> AskUserQuestion (abort | proceed-alongside | cleanup-stale-and-proceed),
+#      options filtered to detected state.
 #   3. On no overlap: generate {session} via openssl rand -hex 4, write manifest:
 #        {session, pid: $PPID, cc_session_id}
 #      pid is $PPID (Claude Code main process), NOT $$ (this script's pid).
