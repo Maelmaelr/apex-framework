@@ -10,6 +10,8 @@ Spec: `apex-core.md` step 10 / p1.4 / p2.5 | `apex-core-overview.md` step 10 / p
 
 This agent always fires at the five reflection points. For apex phases the reflect-traces.sh heuristic block is read first for focus routing -- traces categorised as `novel` get priority attention; categorised traces (gap/fix/verbose) get a quick scan. The reflector outputs an analysis block every run, even when novel_flagged is 0 -- in that case the output captures hypothesis-vs-reality (TaskList compared against `{session}-hypothesis.json`) and any cross-session pattern worth surfacing. The admin-apex and lessons-analyze phases have no heuristic preamble; inputs are this run's JSON artifacts plus the per-task summary trace.
 
+Two cross-cutting checks fire in every phase, regardless of focus routing: (1) **workflow-respect audit** - walk the phase's spec (apex-core.md step list / `SKILL.md` task list / sub-skill spec) against the actual trace + summary + git diff, and flag steps that were skipped, reordered, ran without their declared inputs, or left their declared output artifact missing; (2) **token-reduction sweep** - over the same evidence, spot redundancy or oversize that does not change the step's outcome (redundant re-reads, prompts restating context the agent already has, oversized snapshots not bound by an existing cap, gates that always fall through). Both surface as dedicated lines in the structured output (see Output below) and feed `/apex-improve` as ordinary candidate findings.
+
 ## Invocation
 
 | Phase | parameter | foreground? | trace inputs | snapshot file |
@@ -68,8 +70,12 @@ cat <<'EOF' | bash $HOME/.claude/skills/apex/scripts/append-with-lock.sh ~/.clau
 - gaps: <one-line per gap, max 3>
 - fixes-observed: <one-line per p1.2/p2.3 fix-attempt or admin-apex auto-fix loop or lessons-analyze obvious-drop / dedup / archive observed, max 3>
 - improvements: <one-line per suggestion, max 3>
+- workflow-respected: <yes | one-line per spec-prescribed step that was skipped, reordered, or executed without its declared inputs/gates; phrase as "step-X: <deviation>", max 3>
+- token-reductions: <one-line per opportunity to cut tokens without deteriorating step quality (e.g., redundant re-read, oversized snapshot, prompt restating context the agent already has, gate that always falls through); phrase as "step-X: <reduction>", max 3>
 EOF
 ```
+
+The `workflow-respected:` line is a step-respect audit: walk the per-phase spec (apex-core.md / SKILL.md task list / sub-skill spec) against the actual trace + summary + git diff for this run; flag any step whose declared inputs are absent in the trace, whose order was inverted, whose gate was bypassed, or whose declared output artifact is missing. Emit `yes` when every step was honored. The `token-reductions:` line is a cost-reduction sweep over the same evidence: spot redundancy or oversize that does not change the step's outcome (snapshot caps already in place do NOT count - only NEW reductions). Both lines feed `/apex-improve` as additional candidate findings; treat `workflow-respected: yes` as a zero-finding signal.
 
 Exactly ONE append per invocation. Do not re-emit the block as a "verification" or "self-check" step - prior logs show two adjacent byte-identical blocks for the same {token}+{phase}+{timestamp} (root cause: agent emitted the structured output twice in a single tool-call sequence). The helper's fcntl.flock guarantees atomicity per-write, not per-invocation; the once-only contract is on the agent.
 
@@ -79,7 +85,7 @@ Exactly ONE append per invocation. Do not re-emit the block as a "verification" 
 ## {token} - {phase} - SKIPPED-no-inputs - {timestamp}
 ```
 
-No `gaps:` / `fixes-observed:` / `improvements:` lines. `/apex-improve.analyze.md` recognises this sentinel and drops it pre-cluster (zero-finding signal, not noise). Sterile structured blocks like the one observed for ec8f0f5e at 2026-05-02T08:47:22Z were the motivation; the contract avoids polluting cross-session pattern counts when there was nothing to reflect on. If only ONE of the two inputs is missing, still emit the structured block - hypothesis-vs-reality and cross-session pattern surfacing remains valuable on partial inputs.
+No `gaps:` / `fixes-observed:` / `improvements:` / `workflow-respected:` / `token-reductions:` lines. `/apex-improve.analyze.md` recognises this sentinel and drops it pre-cluster (zero-finding signal, not noise). Sterile structured blocks like the one observed for ec8f0f5e at 2026-05-02T08:47:22Z were the motivation; the contract avoids polluting cross-session pattern counts when there was nothing to reflect on. If only ONE of the two inputs is missing, still emit the structured block - hypothesis-vs-reality and cross-session pattern surfacing remains valuable on partial inputs.
 
 `{token}` is the session token for apex phases and the run token for admin-apex / lessons-analyze - same block shape, same log file, so `/apex-improve` consumes all phases uniformly. Substitute `{token}` / `{phase}` / `{timestamp}` with their resolved values before writing (compute `{timestamp}` via `date -u +%Y-%m-%dT%H:%M:%SZ`) -- never emit the literal `$(date ...)` subshell or template braces (root cause of the 2026-05-02 sentinel-with-unevaluated-subshell entries in apex-workflow-improvements.md).
 
