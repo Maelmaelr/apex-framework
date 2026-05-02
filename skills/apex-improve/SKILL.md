@@ -45,6 +45,7 @@ If all three signals empty / current at Step 2 -> exit `apex-improve: no signals
 | 4 | `apply.md` | Phase 3: apply ops (3a semantic Edit, 3b delegate to admin-apex/evolve.md) |
 | 5-6 | `finalize.md` | Cleanup + version stamp + structured report |
 | 7-8 | `sync-git.md` | VERSION + commit + mirror + push (standalone-mode only; mirrors admin-apex tasks 9+10) |
+| 9 | this skill | Lessons sweep: spawn `/apex-lessons-analyze` if `.claude/lessons.md` exists (standalone-mode only) |
 
 ## Step 0: TaskCreate the chain
 
@@ -56,9 +57,10 @@ If all three signals empty / current at Step 2 -> exit `apex-improve: no signals
 5-6. Cleanup + stamp + Report   - finalize.md
 7. VERSION + commit             - sync-git.md (standalone only)
 8. Mirror + push both           - sync-git.md (standalone only)
+9. Lessons sweep                - inline (standalone only; pre-flight `.claude/lessons.md` exists)
 ```
 
-Each task `blockedBy` the previous. Steps 3-6 conditional on Step 2 non-empty findings; Steps 7-8 conditional on standalone mode AND >=1 op applied.
+Each task `blockedBy` the previous. Steps 3-6 conditional on Step 2 non-empty findings; Steps 7-8 conditional on standalone mode AND >=1 op applied; Step 9 conditional on standalone mode AND `.claude/lessons.md` exists.
 
 ## Step 1: Mint run + manifest (inline)
 
@@ -96,6 +98,26 @@ Read and follow `~/.claude/skills/apex-improve/finalize.md`. Returns when the st
 
 Read and follow `~/.claude/skills/apex-improve/sync-git.md`. Standalone-mode only (skipped under apex-eod and when Step 4 applied zero ops); reuses admin-apex's `admin-apex-finalize.sh` + `mirror-to-dev.sh`.
 
+## Step 9: Lessons sweep (standalone only)
+
+Standalone-mode only (skipped under apex-eod; apex-eod step 4 owns this). Pre-flight: only fire if `test -f .claude/lessons.md` (the project may not have lessons captured yet).
+
+After Steps 7-8 commit + mirror succeed, spawn `/apex-lessons-analyze` as a subagent so its determinism / non-determinism mix runs in a fresh context (separate from this run's Step 4 apply context):
+
+```
+Spawn subagent (general-purpose, sonnet, bypassPermissions):
+  description: "Run lessons-analyze post-improve"
+  prompt: "ASCII only. No tables, no diagrams. Read and follow all instructions
+           in ~/.claude/skills/apex-lessons-analyze/SKILL.md. Execute every step.
+           You are running as a subagent under apex-improve standalone mode -
+           use deferred routing per Route + Finalize subagent restriction.
+           Report the final summary."
+```
+
+Skip silently if pre-flight fails (no lessons.md) or subagent mode is active. Errors from lessons-analyze do NOT block the apex-improve report - it has already committed and mirrored.
+
+This step closes the loop: apex-improve consumes reflector signals (including those produced by lessons-analyze's own Reflect + Cleanup phase) on its NEXT run, and lessons-analyze keeps `.claude/lessons.md` lean on every standalone /apex-improve invocation.
+
 ## Subagent invocation contract
 
 When `apex-eod` step 3 runs apex-improve as a subagent, the prompt template is:
@@ -107,7 +129,7 @@ as a subagent under apex-eod - do NOT commit or push (apex-eod step 5
 owns the inline commit). Report the Step 6 summary verbatim.
 ```
 
-The "do NOT commit or push" line is the explicit signal that suppresses Steps 7+8. apex-eod step 5 remains the only commit driver in EOD context; standalone `/apex-improve` runs execute Steps 7+8 (mirrors admin-apex tasks 9+10).
+The "do NOT commit or push" line is the explicit signal that suppresses Steps 7+8 AND Step 9 (apex-eod step 4 owns lessons-analyze separately). apex-eod step 5 remains the only commit driver in EOD context; standalone `/apex-improve` runs execute Steps 7+8 (mirrors admin-apex tasks 9+10) and Step 9 (lessons sweep).
 
 ## What this skill does NOT do
 
