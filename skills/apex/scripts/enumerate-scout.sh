@@ -6,16 +6,19 @@
 #   1. Static imports     - madge (JS/TS), pydeps (Python). Explicit deps, zero noise.
 #   2. ast-grep           - structural queries via sg/ast-grep (tree-sitter).
 #   3. Framework-conv     - Next.js (app/, pages/), Rails (config/routes.rb), Django (urls.py).
-# Fallback (only when layers 1-3 produced 0):
-#   4. ripgrep            - text patterns. Noise generator, demoted to last resort.
+#
+# The ripgrep keyword fallback was retired (apex 1.x): the noise it generated
+# poisoned 6.b sharding and amplified 6.c screener cost. When all three
+# deterministic layers are empty the merger emits the zero-layer sentinel
+# (exit code 10) and the orchestrator routes to zero-layer-extract or refine.
 #
 # Output: findings-{session}.json (validated against schemas/findings.schema.json).
 #   - Dedupe by realpath-canonicalized file
 #   - reasons[]: one item per matching layer with detail + line_range (when known)
-#   - confidence: 3 deterministic = high; 1-2 = medium; ripgrep-only = low
+#   - confidence: 3 deterministic = high; 1-2 = medium
 #   - rescout layer reserved for 7.x merge (never appears here)
 #
-# Zero-layer case (all 3 deterministic + ripgrep produce 0):
+# Zero-layer case (all 3 deterministic layers produce 0):
 #   - empty findings file with _meta.warnings=['no layers produced findings']
 #   - exit 10 (orchestrator dispatches zero-layer branch)
 #
@@ -54,21 +57,17 @@ trap 'rm -rf "$LAYER_DIR"' EXIT
 
 OUTPUT="$SCOUT_DIR/findings-${SESSION}.json"
 
-# Run all layers (writes per-layer jsonl into $LAYER_DIR; echoes "DET RG").
-read -r DETERMINISTIC_NONEMPTY RIPGREP_FIRED < <(
-  python3 "$SCRIPT_DIR/_enumerate.py" \
-    --hypothesis "$HYPOTHESIS" \
-    --layer-dir "$LAYER_DIR"
-)
+# Run deterministic layers (writes per-layer jsonl into $LAYER_DIR).
+python3 "$SCRIPT_DIR/_enumerate.py" \
+  --hypothesis "$HYPOTHESIS" \
+  --layer-dir "$LAYER_DIR"
 
 # Merge layers, dedupe, derive confidence, write findings.json.
 # _enumerate_merge.py exits 10 on zero-layer, 1 on schema validation failure, 0 otherwise.
 set +e
 python3 "$SCRIPT_DIR/_enumerate_merge.py" \
   --layer-dir "$LAYER_DIR" \
-  --output "$OUTPUT" \
-  --det-nonempty "$DETERMINISTIC_NONEMPTY" \
-  --rg-fired "$RIPGREP_FIRED"
+  --output "$OUTPUT"
 exit_code=$?
 set -e
 exit $exit_code

@@ -7,7 +7,7 @@ description: Scout phase 2 preflight (step 7). Computes effective_blast and mode
 
 Spec: `apex-core.md` step 7 (full) | `apex-core-overview.md` step 7 (summary).
 
-Inputs: `screened-{session}.json`, `shard-plan-{session}.json`, `{session}-hypothesis.json` (for `original_prompt` + intent).
+Inputs: `screened-{session}.json`, `screen-plan-{session}.json`, `{session}-hypothesis.json` (for `original_prompt` + intent).
 
 Output: `.claude-tmp/scout/preflight-{session}.json` (validated against `schemas/preflight.schema.json`).
 
@@ -18,7 +18,7 @@ Gate (decided by the script's `mode` output):
 | [] | large | complex | step 8 (no rescout) |
 | != [] | (any) | complex | TaskCreate 7.x then step 8 |
 
-`effective_blast`: `small` if kept-file count <= 15 AND shard count == 1; otherwise `large`. Both terms required - a wide pre-screen scope that screening culled to <= 15 still routes to `large` / Path 2.
+`effective_blast`: `small` if kept-file count <= 15 AND `_meta.findings_count` (pre-rank) <= 30 (i.e., the screen-plan did not need the top-K cap); otherwise `large`. Both terms required - a wide pre-rank scope that screening culled to <= 15 still routes to `large` / Path 2 because the underlying enumeration was wide.
 
 ## Step 1: identify missed regions (LLM judgment)
 
@@ -39,7 +39,7 @@ mode=$(bash $HOME/.claude/skills/apex/scripts/scout2-finalize.sh \
   --session {session} --missed "$MISSED")
 ```
 
-The script reads `screened` + `shard-plan`, computes `effective_blast`, composes + validates `preflight-{session}.json`, echoes the selected `mode` to stdout. Non-zero exit aborts with explicit error (preflight malformed at producer source).
+The script reads `screened` + `screen-plan`, computes `effective_blast`, composes + validates `preflight-{session}.json`, echoes the selected `mode` to stdout. Non-zero exit aborts with explicit error (preflight malformed at producer source).
 
 ## Step 3: 7.x TaskCreate (only when `MISSED` was non-empty)
 

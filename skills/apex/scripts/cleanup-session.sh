@@ -95,8 +95,8 @@ rm_glob() {
 # --- Cleanup (declaration order matches the apex-core.md p1.5 / p2.6 lists) ---
 
 # Scout artifacts: substring-match glob covers prefix-then-session filenames
-# (findings-{session}.json, shard-{shard-id}-{session}.json, screened/preflight/
-# rescout/claim-review[-resolved]-{session}.json, shard-plan-{session}.json).
+# (findings-{session}.json, screen-plan-{session}.json, screened/preflight/
+# rescout/claim-review[-resolved]-{session}.json).
 rm_glob "$SCOUT_DIR/*${SESSION}*"
 
 # Scope files: catches {session}-main-scope.json and every {session}-{teammate-id}-scope.json.

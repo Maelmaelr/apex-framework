@@ -4,7 +4,7 @@
 #
 # Caller (orchestrator following scout2.md) generates --missed (JSON-string of the
 # missed_regions array via LLM judgment); this script does the deterministic rest:
-# reads screened + shard-plan, computes effective_blast, composes preflight,
+# reads screened + screen-plan, computes effective_blast, composes preflight,
 # producer-validates. Single tool-call surface for the LLM-driven step.
 #
 # Args:
@@ -35,17 +35,21 @@ done
 [[ -n "$MISSED" ]] || { echo "scout2-finalize.sh: --missed required (pass '[]' if no missed regions)" >&2; exit 1; }
 
 SCREENED=".claude-tmp/scout/screened-$SESSION.json"
-SHARD_PLAN=".claude-tmp/scout/shard-plan-$SESSION.json"
+SCREEN_PLAN=".claude-tmp/scout/screen-plan-$SESSION.json"
 PREFLIGHT=".claude-tmp/scout/preflight-$SESSION.json"
 
-[[ -f "$SCREENED"   ]] || { echo "scout2-finalize.sh: missing $SCREENED" >&2; exit 1; }
-[[ -f "$SHARD_PLAN" ]] || { echo "scout2-finalize.sh: missing $SHARD_PLAN" >&2; exit 1; }
+[[ -f "$SCREENED"    ]] || { echo "scout2-finalize.sh: missing $SCREENED" >&2; exit 1; }
+[[ -f "$SCREEN_PLAN" ]] || { echo "scout2-finalize.sh: missing $SCREEN_PLAN" >&2; exit 1; }
 
 kept_count=$(jq '.kept | length' "$SCREENED")
-shard_count=$(jq '.shards | length' "$SHARD_PLAN")
+findings_count=$(jq '._meta.findings_count // 0' "$SCREEN_PLAN")
 missed_count=$(printf '%s' "$MISSED" | jq 'length')
 
-if [[ "$kept_count" -le 15 && "$shard_count" -eq 1 ]]; then
+# small = tight scope: <=15 files survived screening AND the underlying findings
+# set fit comfortably below the ranker's top-K cap (default 30). Wider enumerations
+# that screening culled to <=15 still route to large/Path 2 because the breadth
+# of the original scout signal indicates non-trivial blast radius.
+if [[ "$kept_count" -le 15 && "$findings_count" -le 30 ]]; then
   blast=small
 else
   blast=large

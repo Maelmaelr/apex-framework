@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """Step 6.a layered enumeration. Spec: apex-core.md step 6.a.
 
-Runs deterministic layers (static-imports, ast-grep, framework) and the
-ripgrep fallback when none fired. Writes per-layer JSONL into --layer-dir;
-caller (enumerate-scout.sh) invokes _enumerate_merge.py to dedupe + write
-findings-{session}.json.
+Runs deterministic layers only (static-imports, ast-grep, framework). The
+ripgrep keyword fallback was retired: it generated noise that propagated
+through 6.b sharding into expensive 6.c screener fan-out. When all three
+deterministic layers are empty the merger emits the zero-layer sentinel
+(exit code 10) so the orchestrator routes to zero-layer-extract or refine.
+
+Writes per-layer JSONL into --layer-dir; caller (enumerate-scout.sh) invokes
+_enumerate_merge.py to dedupe + write findings-{session}.json.
 
 Each JSONL line: {"file": <realpath>, "detail": <str>, "line_range": null|[s,e]}.
-
-Stdout: a single line "<DET> <RG>" where DET=1 if any deterministic layer
-emitted >=1 finding, else 0; RG=1 if the ripgrep fallback fired AND emitted
->=1 finding, else 0. Consumed by enumerate-scout.sh as flags for the merger.
 
 Args:
   --hypothesis PATH    (required) - {session}-hypothesis.json
@@ -33,33 +33,11 @@ WORKSPACE_EXCLUDES = {
     ".git", ".vscode", "coverage", "__pycache__",
     "venv", "target",
 }
-# ripgrep / grep noise rules (step 6.a layer 4 fallback). The default-skip-of-
-# dot-prefixed dirs is intentional - apps/web/.next, apps/api/.turbo, .cache,
-# .pytest_cache, .mypy_cache, etc. are all build artefacts that ripgrep would
-# scan if --hidden were passed. Explicit globs cover non-dot build dirs that
-# .gitignore may not catch in every project, plus lockfiles / sourcemaps /
-# minified bundles whose contents are auto-generated and high-noise.
-RG_EXCLUDE_GLOBS = (
-    # build / cache dirs (non-dot; dot-dirs are already skipped by rg default)
-    "!node_modules", "!dist", "!build", "!out", "!coverage",
-    "!__pycache__", "!venv", "!target",
-    # auto-generated / high-noise file patterns
-    "!*.lock", "!*.map", "!*.min.js", "!*.min.css",
-    "!package-lock.json", "!yarn.lock", "!pnpm-lock.yaml",
-    "!Cargo.lock", "!Gemfile.lock", "!composer.lock", "!poetry.lock",
-)
-GREP_EXCLUDE_DIRS = (
-    "node_modules", ".git", ".next", ".turbo", ".vscode",
-    ".cache", ".parcel-cache", ".pytest_cache", ".mypy_cache", ".ruff_cache",
-    ".venv", "venv",
-    "dist", "build", "out", "coverage", "__pycache__", "target",
-)
 SEED_TERM_CAP = 16
 SUBPROCESS_TIMEOUT_S = 30
 HEAD_FRAMEWORK = 200
 HEAD_DJANGO_URLS = 50
 HEAD_DJANGO_SETTINGS = 10
-HEAD_RIPGREP = 100
 
 STOPWORDS = {
     "the", "and", "for", "with", "from", "this", "that", "into",
@@ -227,36 +205,6 @@ def layer_framework(layer_dir: str, seed_terms: list[str]) -> None:
             emit(layer_dir, "framework", f, "django settings")
 
 
-def layer_ripgrep(layer_dir: str, seed_terms: list[str]) -> None:
-    rg = shutil.which("rg")
-    grep_bin = None if rg else shutil.which("grep")
-    if not rg and not grep_bin:
-        return
-    rg_glob_args: list[str] = []
-    for g in RG_EXCLUDE_GLOBS:
-        rg_glob_args.extend(("--glob", g))
-    grep_dir_args = [f"--exclude-dir={d}" for d in GREP_EXCLUDE_DIRS]
-    for term in seed_terms:
-        if rg:
-            # No --hidden: ripgrep skips dot-prefixed dirs (and .gitignored paths) by default.
-            args = [rg, "-l", "--no-messages", *rg_glob_args, term]
-        else:
-            args = [grep_bin, "-rlI", *grep_dir_args, term, "."]
-        try:
-            proc = subprocess.run(args, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_S)
-        except subprocess.SubprocessError:
-            continue
-        for f in proc.stdout.splitlines()[:HEAD_RIPGREP]:
-            f = f.strip()
-            if f and os.path.isfile(f):
-                emit(layer_dir, "ripgrep", f, f"ripgrep '{term}'")
-
-
-def _layer_nonempty(layer_dir: str, layer: str) -> bool:
-    p = os.path.join(layer_dir, f"{layer}.jsonl")
-    return os.path.isfile(p) and os.path.getsize(p) > 0
-
-
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--hypothesis", required=True)
@@ -271,13 +219,6 @@ def main() -> int:
     layer_ast_grep(args.layer_dir, seed_terms)
     layer_framework(args.layer_dir, seed_terms)
 
-    det_nonempty = any(_layer_nonempty(args.layer_dir, ll) for ll in ("static-imports", "ast-grep", "framework"))
-    rg_fired = 0
-    if not det_nonempty:
-        layer_ripgrep(args.layer_dir, seed_terms)
-        rg_fired = 1 if _layer_nonempty(args.layer_dir, "ripgrep") else 0
-
-    print(f"{1 if det_nonempty else 0} {rg_fired}")
     return 0
 
 

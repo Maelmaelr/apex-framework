@@ -1,6 +1,6 @@
 ---
 name: screener
-description: Step 6.c parallel LLM screener (Sonnet, high effort by default). Reads its assigned shard from shard-plan-{session}.json, returns keep/drop + relevance annotation per file. Writes shard-{shard-id}-{session}.json + claim-provenance trace screener-{shard-id}-attempt-N.md. Returns the JSON path + one-line status to caller; never returns the findings body.
+description: Step 6.c LLM screener (Sonnet, single call). Reads the ranked list from screen-plan-{session}.json (top-K, deterministically scored at 6.b), returns keep/drop + relevance annotation per file. Writes screened-{session}.json directly + claim-provenance trace screener-attempt-N.md. Returns the JSON path + one-line status to caller; never returns the findings body.
 model: sonnet
 ---
 
@@ -8,28 +8,30 @@ model: sonnet
 
 Spec: `apex-core.md` step 6.c | `apex-core-overview.md` step 6.c.
 
+A single screener call replaces the prior parallel-shard fan-out (apex 1.x). The 6.b deterministic ranker (`_rank_findings.py`) has already capped the input at top-K (default 30) and ordered entries by relevance score, so one Sonnet pass over the ranked list is sufficient.
+
 ## Inputs (passed by orchestrator/scout1)
 
-- shard contents (subset of files from shard-plan-{session}.json)
-- hypothesis (verbatim from {session}-hypothesis.json)
-- shared screening prompt template
+- `screen-plan-{session}.json` (`ranked[]` + `screening_prompt` + `_meta`)
+- hypothesis (verbatim from `{session}-hypothesis.json`)
 
 ## Behavior
 
-Per file in the shard, decide keep / drop with a free-text reason. Bias rules from 6.a confidence:
-- `confidence: low`    -> drop unless positive relevance signal (ripgrep-only finding)
-- `confidence: medium` -> use judgment (1-2 deterministic layers matched)
-- `confidence: high`   -> keep unless clear negative (3+ deterministic layers matched)
+Per entry in the ranked list, decide keep / drop with a free-text reason. Bias rules from 6.a confidence:
+- `confidence: medium` -> judgment; tilt drop if no relevance signal (1-2 deterministic layers matched)
+- `confidence: high`   -> keep unless clear negative (3 deterministic layers matched)
+
+The ranker has already ordered by score; treat the top of the list as more likely keeps and the tail as more likely drops, but verify each against the hypothesis.
 
 ## Outputs
 
-1. `.claude-tmp/scout/shard-{shard-id}-{session}.json` (validated against `schemas/shard.schema.json`):
-   - `kept[]`: `{file, screener_reason, reasons, confidence}` - reasons + confidence forwarded VERBATIM from input findings entry
+1. `.claude-tmp/scout/screened-{session}.json` (validated against `schemas/screened.schema.json`):
+   - `kept[]`: `{file, screener_reason, reasons, confidence}` - reasons + confidence forwarded VERBATIM from the ranked entry
    - `dropped[]`: `{file, screener_reason}`
-2. `.claude-tmp/apex-active/{session}-traces/entryflow/screener-{shard-id}-attempt-N.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop). N = 1 initially; N = 2 on exit-2 6c re-run (preserves attempt-1 alongside).
+2. `.claude-tmp/apex-active/{session}-traces/entryflow/screener-attempt-N.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop). N = 1 initially; N = 2 on exit-2 6c re-run (preserves attempt-1 alongside).
 
 ## Return to caller
 
-JSON path + one-line status (e.g. `kept: 7, dropped: 3`). NEVER the findings body - keeps orchestrator context small.
+JSON path + one-line status (e.g. `kept: 18, dropped: 12`). NEVER the findings body - keeps orchestrator context small.
 
 See `skills/apex/shared-guardrails.md` for trace path schema, JSON Schema validation.

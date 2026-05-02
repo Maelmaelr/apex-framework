@@ -26,20 +26,19 @@ Step 0 TaskCreates 1-5.
 ```
 6. Scout phase 1: scout1.md
   6.a Enumerate: enumerate scripts -> findings-{session}.json
-    - if zero-layer:
+    - if zero-layer (deterministic layers all empty; ripgrep retired in 1.x):
       - zero-layer-extract.sh -> p1.md
       - skip tasks 6.b/c, 7-9
-  6.b Shard: shard script -> shard-plan-{session}.json
-    - ripgrep_poisoned: collapse to NOISE_POOL_TARGET_SHARDS=8 consolidated shards
-    - if >8 shards:
+  6.b Rank: rank-findings.sh -> screen-plan-{session}.json (deterministic top-K cap)
+    - if dropped_below_cap >= top_k (overshoot signal):
       - AskUserQuestion (all options surfaced verbatim):
-        - ripgrep_poisoned: refine | proceed-with-prompt-paths | continue
-        - else:           refine | screen-deterministic-only | continue
+        - refine | proceed-with-prompt-paths | continue
       - refine = hard abort (session-end-hook.sh inline; NOT a license for inline edits)
       - if proceed-with-prompt-paths:
         - p1.md
         - skip tasks 6.c, 7-9
-  6.c Screen: screener.md -> screened-{session}.json
+      - if continue: proceed to 6.c with the already-capped top-K
+  6.c Screen: single screener.md call -> screened-{session}.json (no shards, no aggregator)
 7. Scout phase 2: scout2.md -> preflight-{session}.json
   7.x Targeted rescout: rescout.md (only if missed_regions != [])
 8. Verify claims: verify-claims.sh

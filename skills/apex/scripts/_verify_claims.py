@@ -9,9 +9,10 @@ Default mode (no --apply-resolved):
   Drops mechanically-failed claims; tracks per-layer drop counts on screened
   (_meta.dropped_per_layer) and a single dropped_count on preflight (_meta).
 
-  Confidence-aware screening: kept claims with confidence:low AND no line_range
-  on any reason are removed from screened.kept and emitted to claim-review.json
-  for the orchestrator's optional inline review (the unresolved batch).
+  Ripgrep retired (apex 1.x): "low" confidence is no longer reachable, so the
+  prior low-confidence-no-line_range -> unresolved-review path is dead code.
+  All mechanically-passed claims flow through; semantic-mismatch unresolveds
+  (if introduced in the future) would feed the same claim-review.json batch.
 
   Exit-code priority 1 > 2 > 3 > 0:
     1 abort         preflight_bad >= 2 (abort_cause=preflight_bad)
@@ -40,7 +41,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import _validate  # noqa: E402
 
-LAYERS = ["static-imports", "ast-grep", "framework", "ripgrep", "rescout"]
+LAYERS = ["static-imports", "ast-grep", "framework", "rescout"]
 SCOUT_DIR = ".claude-tmp/scout"
 APEX_ACTIVE = ".claude-tmp/apex-active"
 
@@ -96,10 +97,6 @@ def _verify_missed_region(region: dict) -> bool:
     return _line_range_ok(path, region.get("line_range"))
 
 
-def _has_any_line_range(claim: dict) -> bool:
-    return any(r.get("line_range") for r in claim.get("reasons", []))
-
-
 def _build_review_entry(claim: dict) -> dict:
     # Preserves the full original kept-claim shape under _original for --apply-resolved
     # lookup. Schema does not set additionalProperties:false, so the extra field
@@ -110,7 +107,7 @@ def _build_review_entry(claim: dict) -> dict:
         "_original": claim,
     }
     conf = claim.get("confidence")
-    if conf in ("high", "medium", "low"):
+    if conf in ("high", "medium"):
         entry["confidence"] = conf
     lr = next((r.get("line_range") for r in claim.get("reasons", []) if r.get("line_range")), None)
     if lr is not None:
@@ -181,14 +178,12 @@ def cmd_verify(session: str) -> int:
                 if layer in dropped_per_layer:
                     dropped_per_layer[layer] += 1
 
-    # Confidence-aware screening: low-confidence + no line_range -> unresolved.
+    # Ripgrep retired (apex 1.x) -> "low" confidence no longer reachable, so the
+    # prior low+no-line_range -> unresolved routing is dead code. All mechanically-
+    # passed claims flow straight through; semantic-mismatch unresolveds (if any
+    # are introduced in the future) would go through the same unresolved list.
     unresolved: list[dict] = []
-    final_kept: list[dict] = []
-    for claim in kept_passed:
-        if claim.get("confidence") == "low" and not _has_any_line_range(claim):
-            unresolved.append(claim)
-        else:
-            final_kept.append(claim)
+    final_kept = list(kept_passed)
 
     missed_in = list(preflight.get("missed_regions", []))
     missed_passed: list[dict] = []

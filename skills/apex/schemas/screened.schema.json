@@ -2,17 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "screened.schema.json",
   "title": "screened-{session}.json",
-  "description": "Aggregated 6.c output (merge of all shard JSONs). See apex-core.md step 6.c aggregator.",
+  "description": "Step 6.c output. Single-call screener writes this directly (the prior parallel-shard fan-out + aggregator was retired in apex 1.x). See apex-core.md step 6.c.",
   "type": "object",
   "required": ["kept", "dropped"],
   "properties": {
     "kept": {
       "type": "array",
-      "items": { "$ref": "shard.schema.json#/properties/kept/items" }
+      "items": {
+        "type": "object",
+        "required": ["file", "screener_reason", "reasons", "confidence"],
+        "properties": {
+          "file": { "type": "string" },
+          "screener_reason": { "type": "string", "description": "Free-text keep justification" },
+          "reasons": { "type": "array", "description": "Forwarded verbatim from findings entry" },
+          "confidence": { "enum": ["high", "medium"] }
+        }
+      }
     },
     "dropped": {
       "type": "array",
-      "items": { "$ref": "shard.schema.json#/properties/dropped/items" }
+      "items": {
+        "type": "object",
+        "required": ["file", "screener_reason"],
+        "properties": {
+          "file": { "type": "string" },
+          "screener_reason": { "type": "string", "description": "Free-text drop justification" }
+        }
+      }
     },
     "_meta": {
       "type": "object",
@@ -24,7 +40,6 @@
             "static-imports": { "type": "integer", "minimum": 0 },
             "ast-grep": { "type": "integer", "minimum": 0 },
             "framework": { "type": "integer", "minimum": 0 },
-            "ripgrep": { "type": "integer", "minimum": 0 },
             "rescout": { "type": "integer", "minimum": 0 }
           }
         }

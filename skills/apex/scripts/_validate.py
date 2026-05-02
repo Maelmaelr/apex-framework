@@ -71,7 +71,7 @@ def _load_schema(name: str) -> dict:
 def _build_registry() -> Optional[Any]:
     """Pre-load every *.schema.json under _SCHEMA_DIR into a referencing.Registry.
 
-    Each schema is registered under its bare filename (e.g. 'shard.schema.json'),
+    Each schema is registered under its bare filename (e.g. 'screened.schema.json'),
     so relative $refs in sibling schemas resolve regardless of the dir's absolute
     path. Mirrors the prior RefResolver(base_uri=file://{dir}/) behavior.
     """

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "screen-plan.schema.json",
+  "title": "screen-plan-{session}.json",
+  "description": "Step 6.b output. Deterministic ranker output: a single ranked list of findings (top-K cap) plus the screening prompt. Replaces the prior shard-plan / shard-fanout model with a single screener call at 6.c. See apex-core.md step 6.b.",
+  "type": "object",
+  "required": ["ranked", "screening_prompt"],
+  "properties": {
+    "ranked": {
+      "type": "array",
+      "description": "Findings sorted by deterministic relevance score (descending). Top-K cap applied; entries below the cap are dropped with a _meta.dropped_below_cap warning.",
+      "items": {
+        "type": "object",
+        "required": ["file", "score", "reasons", "confidence"],
+        "properties": {
+          "file": { "type": "string", "description": "Canonicalized via realpath (forwarded from findings.json)" },
+          "score": { "type": "number", "description": "Deterministic relevance score in [0, 1] computed by _rank_findings.py (layer-count + confidence + path-token-overlap - size-penalty)." },
+          "reasons": { "type": "array", "description": "Forwarded verbatim from findings entry" },
+          "confidence": { "enum": ["high", "medium"] }
+        }
+      }
+    },
+    "screening_prompt": { "type": "string", "description": "Shared template with hypothesis injected verbatim. Consumed by the single screener call at 6.c." },
+    "_meta": {
+      "type": "object",
+      "description": "Telemetry produced by rank-findings.sh.",
+      "properties": {
+        "warnings": { "type": "array", "items": { "type": "string" } },
+        "findings_count": { "type": "integer", "minimum": 0, "description": "Total findings entries before any --min-confidence filter." },
+        "ranked_count": { "type": "integer", "minimum": 0, "description": "Length of ranked[] (post-cap)." },
+        "dropped_below_cap": { "type": "integer", "minimum": 0, "description": "Findings dropped because the top-K cap was hit (signal that hypothesis was too broad)." },
+        "deterministic_count": { "type": "integer", "minimum": 0, "description": "Findings entries with at least one deterministic-layer reason (static-imports/ast-grep/framework). With ripgrep retired in v1.x, equals findings_count for any non-empty findings.json." },
+        "min_confidence": { "enum": ["medium", "high"], "description": "--min-confidence flag passed to rank-findings.sh (default medium = no filter; high drops medium-confidence entries)." },
+        "top_k": { "type": "integer", "minimum": 1, "description": "Cap applied to ranked[]; default 30." }
+      }
+    }
+  }
+}

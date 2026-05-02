@@ -41,7 +41,7 @@ If `project-context.md` is absent, fall back to the kept-file count + hypothesis
 Inputs:
 - `complexity_hint` from `{session}-hypothesis.json`
 - kept-file count from `screened-{session}.json`
-- per-shard kept distribution from `shard-plan-{session}.json`
+- ranked kept distribution from `screen-plan-{session}.json` (single ranked list; top-K capped at 6.b)
 - architectural boundaries from `<project-root>/docs/project-context.md` (if present; see above)
 
 | complexity_hint | kept-file count | suggested team size |
@@ -52,7 +52,7 @@ Inputs:
 | high            | 46-90           | 4-6 |
 | high            | > 90            | 5-8 |
 
-Team size should typically track shard count from 6.b (shards already partition the work into ~15-file chunks) but is not constrained to it - the planner may merge two adjacent shards into one teammate when the work is closely coupled, or split one shard across two teammates when files cluster around independent concerns.
+Team size derives from kept-file count and architectural boundaries (see project-context.md note above). Group ranked entries into teammate slices by topical / boundary affinity - the planner partitions the kept set into pairwise-disjoint `allowed_files` lists at p2.0b, routing cross-cutting files to `shared_files`.
 
 ## Model selection per teammate
 
