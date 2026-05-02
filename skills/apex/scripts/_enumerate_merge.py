@@ -45,6 +45,46 @@ import _validate  # noqa: E402
 LAYERS = ["static-imports", "ast-grep", "framework", "ripgrep"]
 DETERMINISTIC = {"static-imports", "ast-grep", "framework"}
 
+# Post-merge noise filter (step 6.a). Drops auto-generated / binary-shaped /
+# lockfile-shaped paths that any layer might emit but the screener (6.c) and
+# verify (8) would always discard. Keeping them out at merge time cuts shard
+# fan-out, screener token cost, and LLM noise. Mirrors and complements the
+# rg / grep glob excludes in _enumerate.py - this is the safety net for the
+# ast-grep / framework / static-imports layers (and for ripgrep when a glob
+# slips through). Source-shaped extensions (ts/tsx/js/jsx/py/md/json/svg/html
+# /css/yaml/toml/sh/rb/go/rs/etc.) are NEVER in this set - the rule is "drop
+# if clearly not human-edited source", not an extension allowlist.
+NOISE_EXTENSIONS = frozenset({
+    "lock", "map", "log",
+    "pyc", "pyo", "pyd",
+    "class", "jar", "war", "ear",
+    "so", "dylib", "dll", "exe",
+    "o", "a", "lib", "bin",
+    "png", "jpg", "jpeg", "gif", "ico", "webp", "bmp", "tiff", "psd",
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
+    "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar",
+    "woff", "woff2", "ttf", "otf", "eot",
+    "mp4", "webm", "mov", "avi", "mkv",
+    "wav", "mp3", "ogg", "flac", "aac",
+    "sqlite", "sqlite3", "db", "mdb",
+})
+NOISE_BASENAMES = frozenset({
+    "package-lock.json", "yarn.lock", "pnpm-lock.yaml",
+    "Cargo.lock", "Gemfile.lock", "composer.lock", "poetry.lock",
+})
+
+
+def is_noise_path(path: str) -> bool:
+    base = os.path.basename(path)
+    if base in NOISE_BASENAMES:
+        return True
+    # multi-dot suffixes (e.g., foo.min.js, bar.spec.snap)
+    if base.endswith(".min.js") or base.endswith(".min.css"):
+        return True
+    if "." not in base:
+        return False
+    return base.rsplit(".", 1)[1].lower() in NOISE_EXTENSIONS
+
 
 def confidence_for(reasons: list[dict]) -> str:
     det_count = sum(1 for r in reasons if r["layer"] in DETERMINISTIC)
@@ -99,12 +139,18 @@ def main() -> int:
         if layer == "ripgrep" and layer_emitted:
             ripgrep_emitted = True
 
-    findings = []
+    findings: list[dict] = []
+    noise_dropped = 0
     for entry in by_file.values():
+        if is_noise_path(entry["file"]):
+            noise_dropped += 1
+            continue
         entry["confidence"] = confidence_for(entry["reasons"])
         findings.append(entry)
 
     warnings: list[str] = []
+    if noise_dropped:
+        warnings.append(f"noise-filter dropped {noise_dropped} path(s) (lockfile/sourcemap/binary/etc.)")
     if args.det_nonempty == 0 and ripgrep_emitted:
         warnings.append("no deterministic layers ran - ripgrep-only fallback")
 

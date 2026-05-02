@@ -24,6 +24,8 @@ Gate (decided by the script's `mode` output):
 
 Read `screened-{session}.json` and `{session}-hypothesis.json` (`original_prompt` + `hypothesis` + `alternatives`). Identify regions the screener may have under-covered relative to user intent. Each region: `{file, line_range?, reason}`. Empty array if screened scope already covers the hypothesis.
 
+Skip dot-prefixed dirs (`.next/`, `.turbo/`, `.cache/`, `.pytest_cache/`, etc.) and build artefacts (`dist/`, `build/`, `out/`, `coverage/`, `node_modules/`, `__pycache__/`, `venv/`, `target/`) when listing missed regions. The 6.a noise filter (see `scout1.md` "6.a noise filter") drops these by design; reintroducing them via `missed_regions` would force the 7.x rescout to re-enumerate noise the deterministic layers already excluded. Source files referenced explicitly in `original_prompt` (e.g., `.github/workflows/ci.yml`) are exempt - if the user named the path, route it.
+
 Compose as a JSON-string bash variable:
 
 ```

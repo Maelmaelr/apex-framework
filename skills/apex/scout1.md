@@ -69,6 +69,15 @@ TaskCreate "6.b Shard"      - blockedBy [6.a]  - scripts/shard-findings.sh --ses
 TaskCreate "6.c Screen"     - blockedBy [6.b]  - parallel screener.md per shard, then aggregator
 ```
 
+## 6.a noise filter (token-cost contract)
+
+`enumerate-scout.sh` is built to stay token-cheap without cropping determinism / exhaustivity. Two rules govern what reaches the screener:
+
+- **Layer 4 (ripgrep) excludes by default.** No `--hidden` (so dot-prefixed dirs - `apps/web/.next`, `apps/api/.turbo`, `.cache`, `.pytest_cache`, `.mypy_cache`, etc. - are skipped at any depth); explicit `--glob` excludes for non-dot build dirs (`node_modules`, `dist`, `build`, `out`, `coverage`, `__pycache__`, `venv`, `target`) and high-noise file shapes (`*.lock`, `*.map`, `*.min.js`, `*.min.css`, `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, `Cargo.lock`, `Gemfile.lock`, `composer.lock`, `poetry.lock`). The grep fallback applies the same dir-exclude set via `--exclude-dir`. See `scripts/_enumerate.py` (`RG_EXCLUDE_GLOBS`, `GREP_EXCLUDE_DIRS`).
+- **Post-merge denylist (safety net for all layers).** `_enumerate_merge.py` drops any path whose extension or basename matches a clearly-not-source pattern (lockfiles, sourcemaps, minified bundles, compiled bytecode, archives, fonts, AV, raster images). Source-shaped extensions (`ts/tsx/js/jsx/py/md/json/svg/html/css/yaml/toml/sh/rb/go/rs/...`) are NEVER in the denylist - the rule is "drop if clearly not human-edited", not an extension allowlist. Dropped count surfaces in `_meta.warnings`.
+
+Explicit dot-paths in the prompt (e.g., `.github/workflows/ci.yml`) still flow through `seed_paths` (extracted from `original_prompt` / `hypothesis` text and validated on disk) so they are reachable via `static-imports` / `framework` layers without `--hidden`.
+
 ## 6.a layer rules + confidence (carried verbatim through to screener and verify)
 
 Each `findings-{session}.json` entry carries `reasons: [{layer, detail, line_range|null}]` with `layer` in `{static-imports, ast-grep, framework, ripgrep, rescout}`. `confidence` is derived from layer count:

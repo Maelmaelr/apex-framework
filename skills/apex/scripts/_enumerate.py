@@ -31,7 +31,29 @@ import sys
 WORKSPACE_EXCLUDES = {
     "node_modules", ".next", ".turbo", "dist", "build", "out",
     ".git", ".vscode", "coverage", "__pycache__",
+    "venv", "target",
 }
+# ripgrep / grep noise rules (step 6.a layer 4 fallback). The default-skip-of-
+# dot-prefixed dirs is intentional - apps/web/.next, apps/api/.turbo, .cache,
+# .pytest_cache, .mypy_cache, etc. are all build artefacts that ripgrep would
+# scan if --hidden were passed. Explicit globs cover non-dot build dirs that
+# .gitignore may not catch in every project, plus lockfiles / sourcemaps /
+# minified bundles whose contents are auto-generated and high-noise.
+RG_EXCLUDE_GLOBS = (
+    # build / cache dirs (non-dot; dot-dirs are already skipped by rg default)
+    "!node_modules", "!dist", "!build", "!out", "!coverage",
+    "!__pycache__", "!venv", "!target",
+    # auto-generated / high-noise file patterns
+    "!*.lock", "!*.map", "!*.min.js", "!*.min.css",
+    "!package-lock.json", "!yarn.lock", "!pnpm-lock.yaml",
+    "!Cargo.lock", "!Gemfile.lock", "!composer.lock", "!poetry.lock",
+)
+GREP_EXCLUDE_DIRS = (
+    "node_modules", ".git", ".next", ".turbo", ".vscode",
+    ".cache", ".parcel-cache", ".pytest_cache", ".mypy_cache", ".ruff_cache",
+    ".venv", "venv",
+    "dist", "build", "out", "coverage", "__pycache__", "target",
+)
 SEED_TERM_CAP = 16
 SUBPROCESS_TIMEOUT_S = 30
 HEAD_FRAMEWORK = 200
@@ -210,12 +232,16 @@ def layer_ripgrep(layer_dir: str, seed_terms: list[str]) -> None:
     grep_bin = None if rg else shutil.which("grep")
     if not rg and not grep_bin:
         return
+    rg_glob_args: list[str] = []
+    for g in RG_EXCLUDE_GLOBS:
+        rg_glob_args.extend(("--glob", g))
+    grep_dir_args = [f"--exclude-dir={d}" for d in GREP_EXCLUDE_DIRS]
     for term in seed_terms:
         if rg:
-            args = [rg, "-l", "--no-messages", "--hidden",
-                    "--glob", "!.git", "--glob", "!node_modules", term]
+            # No --hidden: ripgrep skips dot-prefixed dirs (and .gitignored paths) by default.
+            args = [rg, "-l", "--no-messages", *rg_glob_args, term]
         else:
-            args = [grep_bin, "-rlI", "--exclude-dir=.git", "--exclude-dir=node_modules", term, "."]
+            args = [grep_bin, "-rlI", *grep_dir_args, term, "."]
         try:
             proc = subprocess.run(args, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT_S)
         except subprocess.SubprocessError:
