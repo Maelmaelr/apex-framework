@@ -20,7 +20,8 @@
 
 set -uo pipefail
 
-REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# admin-apex always operates on the apex framework at ~/.claude.
+REPO_ROOT="${CLAUDE_PROJECT_DIR:-$HOME/.claude}"
 cd "$REPO_ROOT"
 
 failed=0
@@ -138,11 +139,17 @@ check_fixtures() {
 }
 
 run_fixture() {
-  # $1 = label, $2 = expected exit, rest = command to run inside a temp dir
+  # $1 = label, $2 = expected exit, rest = command to run inside a temp dir.
+  # APEX_ADMIN_ACTIVE_DIR is set to the temp's per-fixture admin-apex-active
+  # subdir so admin-apex scripts that anchor at $HOME/.claude/.claude-tmp/...
+  # in production resolve to the sandbox during fixtures (production hardcoding
+  # is what closes the cwd-pollution bug; the env override is the test seam).
   local label="$1" expected="$2" got
   shift 2
   local tmp; tmp=$(mktemp -d)
-  ( cd "$tmp" && "$@" >/dev/null 2>&1 )
+  ( cd "$tmp" \
+      && APEX_ADMIN_ACTIVE_DIR="$tmp/.claude-tmp/admin-apex-active" \
+         "$@" >/dev/null 2>&1 )
   got=$?
   rm -rf "$tmp"
   check_fixtures "$label" "$expected" "$got"
@@ -271,6 +278,48 @@ sweep_stale_no_pid_fixture() {
   return 0
 }
 run_fixture "sweep-stale-runs.sh no-pid-preserved" 0 sweep_stale_no_pid_fixture
+
+# 4e-g. apex/scripts/session-end-hook.sh Path-2-transition guard regression:
+#       cc_session_id match + plan-candidate.json present -> SKIP cleanup
+#       (manifest survives so post-context-clear p2.md inherits the state).
+#       Path-1 / aborted-entryflow case (cc match, no plan-candidate) still cleans.
+#       p2_cc_session_id match (post-clear session ending) always cleans.
+apex_session_end_p2_transition_skip_fixture() {
+  mkdir -p .claude-tmp/apex-active
+  printf '{"session":"deadbabe","pid":1,"cc_session_id":"FIXTURE-CC"}\n' \
+    > .claude-tmp/apex-active/deadbabe.json
+  printf '{}' > .claude-tmp/apex-active/deadbabe-plan-candidate.json
+  printf '{"session_id":"FIXTURE-CC"}' \
+    | bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh"
+  [[ -f .claude-tmp/apex-active/deadbabe.json ]] || return 1
+  [[ -f .claude-tmp/apex-active/deadbabe-plan-candidate.json ]] || return 1
+  return 0
+}
+run_fixture "apex session-end-hook.sh p2-transition-skip" 0 apex_session_end_p2_transition_skip_fixture
+
+apex_session_end_path1_clean_fixture() {
+  mkdir -p .claude-tmp/apex-active
+  printf '{"session":"feedface","pid":1,"cc_session_id":"FIXTURE-CC1"}\n' \
+    > .claude-tmp/apex-active/feedface.json
+  printf '{"session_id":"FIXTURE-CC1"}' \
+    | bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh"
+  [[ -e .claude-tmp/apex-active/feedface.json ]] && return 1
+  return 0
+}
+run_fixture "apex session-end-hook.sh path1-clean" 0 apex_session_end_path1_clean_fixture
+
+apex_session_end_p2cc_clean_fixture() {
+  mkdir -p .claude-tmp/apex-active
+  printf '{"session":"cafebabe","pid":1,"cc_session_id":"FIXTURE-CC2","p2_cc_session_id":"FIXTURE-P2-CC"}\n' \
+    > .claude-tmp/apex-active/cafebabe.json
+  # Plan-candidate intentionally absent (cleanup-session.sh removed it at p2.6
+  # in normal flow; here we simulate the post-clear session ending after p2-init).
+  printf '{"session_id":"FIXTURE-P2-CC"}' \
+    | bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh"
+  [[ -e .claude-tmp/apex-active/cafebabe.json ]] && return 1
+  return 0
+}
+run_fixture "apex session-end-hook.sh p2cc-clean" 0 apex_session_end_p2cc_clean_fixture
 
 # 5. admin-apex-finalize.sh: rejects missing args (exit 1).
 run_fixture "admin-apex-finalize.sh missing-args" 1 \

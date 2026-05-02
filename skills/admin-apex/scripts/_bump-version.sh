@@ -31,7 +31,9 @@ case "$KIND" in
     ;;
 esac
 
-REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# admin-apex always operates on the apex framework at ~/.claude; pwd fallback
+# would walk an unrelated project tree if invoked from outside the framework root.
+REPO_ROOT="${CLAUDE_PROJECT_DIR:-$HOME/.claude}"
 VFILE="$REPO_ROOT/VERSION"
 
 if [[ ! -f "$VFILE" ]]; then

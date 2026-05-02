@@ -22,7 +22,9 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ADMIN_ACTIVE=".claude-tmp/admin-apex-active"
+# Anchored at framework root regardless of caller cwd.
+# APEX_ADMIN_ACTIVE_DIR override is reserved for test fixtures.
+ADMIN_ACTIVE="${APEX_ADMIN_ACTIVE_DIR:-$HOME/.claude/.claude-tmp/admin-apex-active}"
 
 [[ -d "$ADMIN_ACTIVE" ]] || exit 0
 

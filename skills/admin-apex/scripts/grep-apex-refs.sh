@@ -30,7 +30,8 @@ if [[ $# -ne 1 ]]; then
 fi
 
 NEEDLE="$1"
-REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# admin-apex always operates on the apex framework at ~/.claude.
+REPO_ROOT="${CLAUDE_PROJECT_DIR:-$HOME/.claude}"
 cd "$REPO_ROOT"
 
 ROOTS=()

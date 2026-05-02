@@ -28,6 +28,17 @@ APEX_ACTIVE=".claude-tmp/apex-active"
 derive_session_from_stdin() {
   # Read hook event JSON from stdin, extract session_id, match against active
   # manifests' cc_session_id / p2_cc_session_id, echo apex {session} token.
+  #
+  # Match priority + Path-2-transition guard:
+  #   - p2_cc_session_id == session_id  -> post-context-clear CC session ending; cleanup OK.
+  #   - cc_session_id == session_id     -> entry-flow CC session ending. SKIP cleanup if
+  #     (a) p2_cc_session_id is also set (p2 session owns lifecycle), OR
+  #     (b) {session}-plan-candidate.json exists on disk - the canonical "Path 2
+  #         mid-transition" marker (written at p2.0b before context clear, removed
+  #         by cleanup-session.sh). The post-clear p2.md session inherits the
+  #         manifest + scopes; SessionEnd for the post-clear CC session (matched
+  #         via p2_cc_session_id) cleans up after p2.6 / p2.7.
+  #   - neither field matches           -> non-/apex CC session; nothing to clean.
   local stdin_json session_id
   stdin_json=$(cat 2>/dev/null || true)
   [[ -z "$stdin_json" ]] && return 1
@@ -48,14 +59,23 @@ except Exception:
     [[ "$(basename "$manifest")" =~ ^[0-9a-f]{8}\.json$ ]] || continue
     local matched
     matched=$(python3 -c "
-import json, sys
+import json, os, sys
 try:
     d = json.load(open(sys.argv[1], encoding='utf-8'))
 except Exception:
     sys.exit(0)
 sid = sys.argv[2]
-if d.get('cc_session_id') == sid or d.get('p2_cc_session_id') == sid:
-    print(d.get('session', ''))
+sess = d.get('session', '')
+cc = d.get('cc_session_id')
+p2cc = d.get('p2_cc_session_id')
+if p2cc == sid:
+    print(sess)
+elif cc == sid:
+    if not p2cc and sess:
+        active_dir = os.path.dirname(sys.argv[1])
+        plan_candidate = os.path.join(active_dir, sess + '-plan-candidate.json')
+        if not os.path.exists(plan_candidate):
+            print(sess)
 " "$manifest" "$session_id" 2>/dev/null || true)
     if [[ -n "$matched" ]]; then
       printf '%s' "$matched"

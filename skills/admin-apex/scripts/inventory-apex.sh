@@ -52,7 +52,15 @@ if [[ -z "$OUT" ]]; then
   exit 1
 fi
 
-REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# admin-apex/apex-improve always inventory the apex framework at ~/.claude;
+# falling back to pwd would walk an unrelated project tree if invoked from
+# outside the framework root. CLAUDE_PROJECT_DIR is honored only when it
+# matches $HOME/.claude (defensive: nominal CC state when CC is launched from
+# the framework dir).
+REPO_ROOT="$HOME/.claude"
+if [[ -n "${CLAUDE_PROJECT_DIR:-}" && "$CLAUDE_PROJECT_DIR" != "$REPO_ROOT" ]]; then
+  echo "inventory-apex.sh: ignoring CLAUDE_PROJECT_DIR='$CLAUDE_PROJECT_DIR' (admin-apex always operates on framework root $REPO_ROOT)" >&2
+fi
 cd "$REPO_ROOT"
 
 if [[ ! -f "VERSION" ]]; then

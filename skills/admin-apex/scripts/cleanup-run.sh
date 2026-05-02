@@ -37,7 +37,10 @@
 # failures surface to stderr via warn() while the script continues.
 set -uo pipefail
 
-ADMIN_ACTIVE=".claude-tmp/admin-apex-active"
+# Anchored at framework root regardless of caller cwd (SessionEnd hooks + manual
+# callers may run from any cwd; admin-apex artifacts ALWAYS live in ~/.claude).
+# APEX_ADMIN_ACTIVE_DIR override is reserved for test fixtures.
+ADMIN_ACTIVE="${APEX_ADMIN_ACTIVE_DIR:-$HOME/.claude/.claude-tmp/admin-apex-active}"
 
 RUN=""
 POST_SUCCESS=0

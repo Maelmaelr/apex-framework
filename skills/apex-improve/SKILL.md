@@ -64,12 +64,15 @@ Each task `blockedBy` the previous. Steps 3-6 conditional on Step 2 non-empty fi
 
 ## Step 1: Mint run + manifest (inline)
 
+**Cwd discipline (critical).** Before any other action, `cd "$HOME/.claude"`. apex-improve operates on the apex framework at `~/.claude` and writes artifacts under `~/.claude/.claude-tmp/admin-apex-active/`; running from a project repo would pollute that project's working tree and the SessionEnd hook for an unrelated cwd would never match this run's manifest (cleanup leak). Absolute paths below provide defense-in-depth.
+
 ```
+cd "$HOME/.claude"
 RUN=$(openssl rand -hex 4)
-ROOT=".claude-tmp/admin-apex-active"
+ROOT="$HOME/.claude/.claude-tmp/admin-apex-active"
 mkdir -p "$ROOT"
-CC_ID=$(bash skills/apex/scripts/get-cc-session-id.sh)   # env-then-jsonl resolver; abort on failure
-PID=$PPID                                                 # parent claude PID (NOT $$)
+CC_ID=$(bash "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh")   # env-then-jsonl resolver; abort on failure
+PID=$PPID                                                                # parent claude PID (NOT $$)
 ```
 
 **Write** `$ROOT/$RUN.json` with `{"run":"<RUN>","cc_session_id":"<CC_ID>","pid":<PID>,"producer":"apex-improve"}`. NEVER write `cc_session_id:""` - empty makes `session-end-hook.sh` unable to match the manifest, leaking the run. `cc_session_id` arms `skills/admin-apex/scripts/session-end-hook.sh` to sweep at CC SessionEnd (covers no-signals exit, cap-reached abort, standalone-without-commit); `pid` arms `skills/admin-apex/scripts/sweep-stale-runs.sh` to drain orphans from crashed sessions. `{run}-deferred-findings.json` is preserved by `cleanup-run.sh` for a future run.
