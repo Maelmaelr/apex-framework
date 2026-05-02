@@ -23,16 +23,13 @@
 
 set -uo pipefail
 
-# CWD anchor: derive repo root from script location (skills/apex/scripts/ -> ../../..).
-# Without this, agents/reflector.md spawned subagents inherit a CWD other than
-# ~/.claude and the relative ADMIN_DIR / APEX_TRACES paths below resolve to
-# nonexistent directories - falling through to the empty-EXISTING placeholder
-# and producing a false-negative "[no source files for {phase} / {token}]"
-# (root cause of the 0109cadd "admin-apex run artifacts not yet available"
-# incident).
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
-cd "$REPO_ROOT"
+# CWD anchor: $CLAUDE_PROJECT_DIR (set by Claude Code) is the orchestrator's
+# project root - apex hot path -> <project>/.claude-tmp/, admin-apex -> ~/.claude/.
+# Subagent CWD inheritance is unreliable; the env var is the canonical anchor.
+# Mirrors inventory-apex.sh / _bump-version.sh / grep-apex-refs.sh / test-apex-scripts.sh.
+# Past incident (0109cadd, 2026-05-02): hardcoded REPO_ROOT=~/.claude silently
+# broke apex hot path when /apex ran outside ~/.claude.
+cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
 
 TOKEN=""
 PHASE=""

@@ -1,23 +1,87 @@
 #!/usr/bin/env bash
-# PreToolUse hook: oversize file gate.
-# See user-global CLAUDE.md "File health" rule.
+# PreToolUse hook: file-health gate.
+# Spec: user-global CLAUDE.md "File health (enforced gate)".
 #
-# Behavior:
-#   - Reads PreToolUse event JSON from stdin
-#   - Extracts target file path from Edit / Write / MultiEdit / NotebookEdit input
-#   - Runs wc -l on existing file (skip if file does not exist - new file)
-#   - If file > 400 lines AND tool would add > 10 lines: block with message instructing split first
-#   - If file > 500 lines AND tool would add > 10 lines: block (split regardless of change size)
+# Blocks Edit / Write / MultiEdit when:
+#   - the existing target file is > 400 lines, AND
+#   - the proposed change adds > 10 lines (net delta).
 #
-# Exception: single-concern continuous documents (terms / privacy legal prose) - convention-enforced
-# at prompt layer; this hook does not have semantic awareness of file purpose.
+# Trivial edits (<= 10 lines net) always pass, even on > 500-line files.
+# New files (target does not exist on disk) always pass.
+# NotebookEdit is excluded - .ipynb is JSON-encoded; line-count gating on the
+# wire format is not meaningful (the rule is about source-text files).
 #
-# Exit codes (Claude Code hook contract):
-#   0   = pass (allow tool call)
-#   2   = block (deny + return reason to Claude)
-#   1   = error (treat as pass to avoid breaking flow)
+# Exception: single-concern continuous documents (legal prose, central spec
+# docs) are exempt by convention - enforced at the prompt layer. This hook
+# has no semantic awareness of file purpose and applies the rule uniformly.
+# To bypass, the orchestrator must split first.
 #
-# TODO: implement.
+# Exit 0 always; block via JSON output per hook protocol (matches the
+# protect-env-hook.sh / block-destructive-hook.sh idiom in this repo).
 
 set -euo pipefail
+
+ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
+
+INPUT=$(cat)
+
+DECISION=$(printf '%s' "$INPUT" | python3 -c '
+import json, sys
+
+ALLOW = "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\"}}"
+
+def deny(reason):
+    return json.dumps({"hookSpecificOutput": {
+        "hookEventName": "PreToolUse",
+        "permissionDecision": "deny",
+        "permissionDecisionReason": reason,
+    }})
+
+try:
+    event = json.load(sys.stdin)
+except (json.JSONDecodeError, ValueError):
+    print(ALLOW); sys.exit(0)
+
+tool = event.get("tool_name", "")
+inputs = event.get("tool_input", {}) or {}
+target = inputs.get("file_path", "")
+
+if tool not in ("Edit", "Write", "MultiEdit") or not target:
+    print(ALLOW); sys.exit(0)
+
+try:
+    with open(target, "r", encoding="utf-8") as f:
+        existing = sum(1 for _ in f)
+except (FileNotFoundError, IsADirectoryError, OSError):
+    print(ALLOW); sys.exit(0)
+
+if existing == 0:
+    print(ALLOW); sys.exit(0)
+
+if tool == "Write":
+    content = inputs.get("content", "")
+    new_lines = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+    added = max(0, new_lines - existing)
+elif tool == "Edit":
+    added = inputs.get("new_string", "").count("\n") - inputs.get("old_string", "").count("\n")
+else:  # MultiEdit
+    added = sum(
+        e.get("new_string", "").count("\n") - e.get("old_string", "").count("\n")
+        for e in inputs.get("edits", [])
+    )
+
+if added <= 10:
+    print(ALLOW); sys.exit(0)
+
+if existing > 400:
+    threshold = 500 if existing > 500 else 400
+    msg = (f"file-health gate: {target} is {existing} lines (>{threshold}). "
+           f"Split first - extract a separable concern before adding {added}+ lines. "
+           f"See global CLAUDE.md File health.")
+    print(deny(msg)); sys.exit(0)
+
+print(ALLOW)
+' 2>/dev/null) || DECISION="$ALLOW"
+
+echo "$DECISION"
 exit 0
