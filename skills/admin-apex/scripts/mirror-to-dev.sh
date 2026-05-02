@@ -89,7 +89,9 @@ while IFS= read -r line; do
 done < <(cat "$DIRTY" "$DOCS" 2>/dev/null | awk 'NF' | sort -u)
 
 mirrored=()
-for p in "${paths[@]}"; do
+# `${arr[@]+"${arr[@]}"}` keeps `set -u` happy on macOS bash 3.2 when arr is
+# empty (manifests on the soft-skip path: no allowlisted paths to mirror).
+for p in ${paths[@]+"${paths[@]}"}; do
   if ! allowed "$p"; then
     echo "skip (denylist or non-allowlisted): $p"
     continue
