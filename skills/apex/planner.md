@@ -84,6 +84,10 @@ Safety paths (`.claude-tmp/`, `~/.claude/tmp/`, `/tmp/{session}-*`, `docs/**`, a
 
 After reassignment, re-validate. If still violating after one reassign pass, hard-fail: planner cannot produce a valid disjoint partition. The orchestrator surfaces the conflict via AskUserQuestion (continue with merged scope as a single teammate / abort Path 2).
 
+## Numerically-prefixed migration files
+
+When a teammate scope writes into a migrations directory whose files use a numeric or timestamp prefix (`database/migrations/`, `db/migrate/`, `prisma/migrations/`, `supabase/migrations/`, `migrations/<timestamp>__*`), the planner MUST NOT bake an explicit prefix into the task description. Instruct the teammate to scan the migrations dir at write-time and pick the next available prefix instead. Hardcoded prefixes collide silently when a concurrent change consumed the prefix between scout and apply (root cause: 6bb69410 / 2026-05-02 -- teammate 3367 scoped to write `53_purge_*` while `53_create_google_sheets_connections.ts` already existed).
+
 ## Plan embed template
 
 The plan embedded in plan mode (survives p2.0c context clear):

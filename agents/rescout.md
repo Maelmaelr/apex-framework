@@ -17,7 +17,7 @@ Fires only when `preflight-{session}.json.missed_regions != []`.
 
 ## Behavior
 
-For each missed region (file + optional line_range + reason), re-enumerate to surface files that the deterministic 6.a + screener 6.c missed. Use the same deterministic-layer toolkit (static imports, ast-grep, framework conventions) but scoped to the missed region.
+For each missed region (file + optional line_range + reason), re-enumerate to surface files that the deterministic 6.a + screener 6.c missed. Use the same deterministic-layer toolkit (static imports, ast-grep, framework conventions, nested-folder walk) but scoped to the missed region. When a region path is a directory or a known feature parent (e.g., `app/components/`, `src/features/<feature>/`, admin BFF route directories), enumerate immediate children by structural convention -- ripgrep symbol search misses subcomponent folders like `maintenance-banner/` whose only entry is an import in the parent.
 
 ## Outputs
 

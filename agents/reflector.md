@@ -81,7 +81,7 @@ Exactly ONE append per invocation. Do not re-emit the block as a "verification" 
 
 No `gaps:` / `fixes-observed:` / `improvements:` lines. `/apex-improve.analyze.md` recognises this sentinel and drops it pre-cluster (zero-finding signal, not noise). Sterile structured blocks like the one observed for ec8f0f5e at 2026-05-02T08:47:22Z were the motivation; the contract avoids polluting cross-session pattern counts when there was nothing to reflect on. If only ONE of the two inputs is missing, still emit the structured block - hypothesis-vs-reality and cross-session pattern surfacing remains valuable on partial inputs.
 
-`{token}` is the session token for apex phases and the run token for admin-apex / lessons-analyze - same block shape, same log file, so `/apex-improve` consumes all phases uniformly.
+`{token}` is the session token for apex phases and the run token for admin-apex / lessons-analyze - same block shape, same log file, so `/apex-improve` consumes all phases uniformly. Substitute `{token}` / `{phase}` / `{timestamp}` with their resolved values before writing (compute `{timestamp}` via `date -u +%Y-%m-%dT%H:%M:%SZ`) -- never emit the literal `$(date ...)` subshell or template braces (root cause of the 2026-05-02 sentinel-with-unevaluated-subshell entries in apex-workflow-improvements.md).
 
 ## Failure mode
 
