@@ -31,6 +31,12 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# CWD anchor: mirrors snapshot-traces.sh / inventory-apex.sh / grep-apex-refs.sh.
+# The Python heredoc below reads `.claude-tmp/apex-active/{session}-traces` as a
+# relative path; without this anchor an unexpected caller CWD silently produces
+# all-zero heuristics (root cause of the ec8f0f5e 2026-05-02 sterile-block incident).
+cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
+
 SESSION=""
 PHASE=""
 while [[ $# -gt 0 ]]; do

@@ -40,6 +40,8 @@ Block-structured. Two block kinds:
 
 **Dedup adjacent identical blocks** (same `{token}+{phase}+{ts}` header AND byte-identical body) before clustering. Older logs contain reflector double-write artifacts (Haiku occasionally emitted the structured block twice in one tool-call sequence; the once-only contract is now in `agents/reflector.md` Output, but pre-fix logs persist). Treat back-to-back duplicates as one block; do NOT inflate cluster severity.
 
+**Drop SKIPPED-no-inputs sentinels** (`## {token} - {phase} - SKIPPED-no-inputs - {ts}` - no body lines). These are reflector outputs from runs where both snapshot and manifest were absent (per `agents/reflector.md` Empty-input gate). Treat as zero-finding signals - drop pre-cluster. Do NOT count them toward severity or cross-session patterns.
+
 **Cluster across sessions**: 3+ Haiku blocks suggesting the same improvement -> severity **high**. Single-session one-off -> **low** (often noise).
 
 ### tech-updates.md

@@ -49,7 +49,7 @@ You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and fo
 
 Session:  {session}
 Phase:    {phase}             # entryflow | entryflow+p1 | p2
-Manifest: .claude-tmp/apex-active/{session}.json
+Manifest: .claude-tmp/apex-active/{session}.json   # CWD-relative; CWD is the project root (subagent inherits orchestrator CWD; mirrors apex-lessons-analyze/reflect.md). If both this manifest read AND the snapshot show no inputs, follow the SKIPPED-no-inputs sentinel contract in agents/reflector.md Output.
 Snapshot: /tmp/{session}-{snapshot_suffix}-snapshot.txt
 ```
 

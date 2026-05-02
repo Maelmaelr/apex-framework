@@ -73,6 +73,14 @@ EOF
 
 Exactly ONE append per invocation. Do not re-emit the block as a "verification" or "self-check" step - prior logs show two adjacent byte-identical blocks for the same {token}+{phase}+{timestamp} (root cause: agent emitted the structured output twice in a single tool-call sequence). The helper's fcntl.flock guarantees atomicity per-write, not per-invocation; the once-only contract is on the agent.
 
+**Empty-input gate (SKIPPED-no-inputs sentinel).** When BOTH (a) the snapshot file at `/tmp/{token}-{suffix}-snapshot.txt` is the literal `[no source files for {phase} / {token}]` placeholder written by `snapshot-traces.sh` AND (b) the manifest read at the path supplied by the caller fails (file missing or unparseable), emit a single sentinel line in place of the structured block:
+
+```
+## {token} - {phase} - SKIPPED-no-inputs - {timestamp}
+```
+
+No `gaps:` / `fixes-observed:` / `improvements:` lines. `/apex-improve.analyze.md` recognises this sentinel and drops it pre-cluster (zero-finding signal, not noise). Sterile structured blocks like the one observed for ec8f0f5e at 2026-05-02T08:47:22Z were the motivation; the contract avoids polluting cross-session pattern counts when there was nothing to reflect on. If only ONE of the two inputs is missing, still emit the structured block - hypothesis-vs-reality and cross-session pattern surfacing remains valuable on partial inputs.
+
 `{token}` is the session token for apex phases and the run token for admin-apex / lessons-analyze - same block shape, same log file, so `/apex-improve` consumes all phases uniformly.
 
 ## Failure mode

@@ -162,6 +162,7 @@ For a lighter, easier-to-read summary of steps, skill/agent/script used, and rou
         - fixes-observed: <one-line per p1.2/p2.3 fix-attempt observed in traces, max 3>
         - improvements: <one-line per suggestion, max 3>
 
+      - empty-input gate: same SKIPPED-no-inputs sentinel as p1.4 / p2.5 (see `agents/reflector.md` Output / Empty-input gate).
       - errors logged to `~/.claude/tmp/reflector-errors.log` (silent failure otherwise)
       - shuts down silently (no main-session output)
 
@@ -254,6 +255,7 @@ For agents whose internal reasoning matters (provenance, failure analysis), the 
       - fixes-observed: <one-line per p1.2/p2.3 fix-attempt observed in traces, max 3>
       - improvements: <one-line per suggestion, max 3>
 
+    - empty-input gate: when BOTH the snapshot is the `[no source files ...]` placeholder AND the manifest read fails, the reflector emits the SKIPPED-no-inputs sentinel (`## {session} - {phase} - SKIPPED-no-inputs - {ts}`) instead of the structured block; `/apex-improve.analyze.md` drops these pre-cluster. See `agents/reflector.md` Output / Empty-input gate.
     - errors logged to `~/.claude/tmp/reflector-errors.log` (silent failure otherwise)
     - shuts down silently (no main-session output)
 
@@ -375,6 +377,7 @@ Delegation to N teammates via plan mode, where N is sized by the planner (p2.0b)
       - fixes-observed: <one-line per p1.2/p2.3 fix-attempt observed in traces, max 3>
       - improvements: <one-line per suggestion, max 3>
 
+    - empty-input gate: same SKIPPED-no-inputs sentinel as p1.4 / step 10 (see `agents/reflector.md` Output / Empty-input gate).
     - errors logged to `~/.claude/tmp/reflector-errors.log` (silent failure otherwise)
     - shuts down silently (no main-session output)
 
