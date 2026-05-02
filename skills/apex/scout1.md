@@ -33,16 +33,23 @@ AskUserQuestion at 6.b (> 8 shards; exit code 11 from shard-findings.sh):
   Read shard-plan-{session}.json _meta to branch the option set.
   Always present: "refine" (abort cleanly so user can re-prompt with narrower scope).
 
+  All listed options for the matched branch MUST be surfaced verbatim - the
+  orchestrator MUST NOT collapse the option set by judgment call (e.g., dropping
+  "proceed-with-prompt-paths" because the orchestrator believes it already knows
+  the right files). Option labels MUST NOT add freelance descriptions that imply
+  any path other than the one defined below ("refine" is hard abort, NOT a
+  license for inline implementation).
+
   Branch A - _meta.ripgrep_poisoned == true (zero deterministic-layer files; the
   hypothesis text fed generic words to ripgrep; the wide shard plan is noise):
-    - "refine"                       (recommended)
+    - "refine"                       (recommended; hard abort - see post-gate routing rule)
     - "proceed-with-prompt-paths"    (reuse zero-layer-extract.sh per "Zero-layer
                                       proceed" below; SKIP 6.b/6.c/7/8/9, call p1.md)
     - "continue"                     (last resort; fans out N screeners on noise)
 
   Branch B - _meta.ripgrep_poisoned == false (real deterministic signal AND
   ripgrep noise AND too many shards):
-    - "refine"                       (recommended for highly oversized plans)
+    - "refine"                       (recommended for highly oversized plans; hard abort)
     - "screen-deterministic-only"    (re-invoke shard-findings.sh with
                                       --min-confidence medium; drops ripgrep-only
                                       entries and re-shards; proceed to 6.c with
@@ -99,6 +106,8 @@ The script reads `original_prompt` from `{session}-hypothesis.json`, regex-extra
 Then SKIP 6.b / 6.c / 7 / 8 / 9 (mark TaskList completed as no-op) and call `p1.md` directly with NO preflight artifact written. p1.0 reads absent preflight as no-findings-consultation branch.
 
 **Anti-rule (post-gate routing).** The script writes the scope; the orchestrator MUST NOT pre-write or post-write `{session}-main-scope.json` freehand. After `zero-layer-extract.sh` returns 0, the orchestrator MUST call `p1.md` directly. Forbidden from this branch: `EnterPlanMode`, `plan-mode.md`, `planner.md`, freehand inline `Write` of the scope JSON, manual scope synthesis from grep results, marking 6.c / 7 / 8 / 9 completed without their actual scripts having run as a stand-in for "I have my own scope". Path 2 is unreachable from the 6.a / 6.b proceed branches by design - if Path 2 is needed, the user must `refine` and re-prompt with a scope the deterministic layers can pick up.
+
+**Anti-rule (post-`refine` routing).** When the user picks `refine` at the 6.a / 6.b gate, the orchestrator MUST run `bash $HOME/.claude/skills/apex/scripts/session-end-hook.sh {session}` inline and exit cleanly. Forbidden from this branch: any inline `Edit` / `Write` / `MultiEdit` / `NotebookEdit` to files mentioned in the original prompt, freehand p1.0 baseline / conflict-check execution, freehand p1.1 implementation, freehand p1.2 verify, freehand p1.3 tail spawns. `refine` means "the user will re-prompt with a narrower scope"; it is a hard abort, NOT a license to bypass the apex chain by editing inline. Implementing the user's request from prompt-extracted file paths is exactly what `proceed-with-prompt-paths` does (via `zero-layer-extract.sh` -> `p1.md` -> `implement.md` -> `executor.md`); if the orchestrator believes it has the right files, it MUST surface `proceed-with-prompt-paths` as an option (per "AskUserQuestion contracts" above) and let the user pick - it MUST NOT silently re-route a `refine` choice into an inline implementation.
 
 ## Ripgrep-poisoned proceed (6.b exit code 11, branch A)
 

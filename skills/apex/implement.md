@@ -11,6 +11,17 @@ Owner: TaskCreates per-task implementation tasks; dependencies wired via TaskUpd
 
 Executor: `agents/executor.md` (Sonnet latest).
 
+## Hard rule: dispatch only
+
+p1.1 is a **dispatch-only step**. The orchestrator MUST NOT call `Edit` / `Write` / `MultiEdit` / `NotebookEdit` on slice files at p1.1; every code modification flows through an `agents/executor.md` subagent (one per task, parallel where dependencies allow). No exceptions: not for trivial single-file edits, not for "I already grepped the files", not for post-gate proceeds (zero-layer 6.a, ripgrep-poisoned 6.b proceed-with-prompt-paths). Reasons:
+
+- the file-health PreToolUse hook fires inside the executor's own tool calls (sized per-task, not on the orchestrator's accumulated slice work)
+- the scope-check PreToolUse hook resolves the active scope from the executor's session, not the orchestrator's mid-flight state
+- the executor's trace path (`{session}-traces/p1/executor-{task-id}.md`) captures per-slice failure mode for the reflector; inline edits leave no trace and the reflector cannot learn from them
+- per-task latency is bounded by the slowest executor, not by the serial orchestrator turn
+
+Inline editing at p1.1 is a **framework violation**. If the orchestrator finds itself tempted to skip executor spawn (small slice, files already in hand), the correct action is still TaskCreate + spawn - the executor handles trivial slices fine and the parallelism is free.
+
 ## Findings consultation
 
 When `preflight-{session}.json` is present and schema-valid (medium mode dispatched from step 9), `implement.md` consults `screened-{session}.json` BEFORE TaskCreate so each task's slice maps onto kept-file relevance:

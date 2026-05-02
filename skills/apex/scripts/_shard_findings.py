@@ -26,6 +26,7 @@ import _validate  # noqa: E402
 
 DETERMINISTIC = {"static-imports", "ast-grep", "framework"}
 SHARD_CAP = 15
+NOISE_POOL_TARGET_SHARDS = 8
 
 
 def is_deterministic(entry: dict) -> bool:
@@ -143,10 +144,6 @@ def main() -> int:
 
     project_root = os.path.realpath(os.getcwd())
 
-    by_dir: dict[str, list[str]] = defaultdict(list)
-    for f in files:
-        by_dir[top_level_dir(f, project_root)].append(f)
-
     shards: list[dict] = []
     shard_idx = 0
 
@@ -157,25 +154,34 @@ def main() -> int:
         shards.append({"shard_id": f"s{shard_idx:02d}", "files": chunk, "boundary_kind": boundary})
         shard_idx += 1
 
-    for d, group in sorted(by_dir.items()):
-        if len(group) <= SHARD_CAP:
-            emit_shard(sorted(group), "top-level-dir")
-            continue
-        by_ext: dict[str, list[str]] = defaultdict(list)
-        for f in group:
-            by_ext[extension(f)].append(f)
-        for _ext, ext_group in sorted(by_ext.items()):
-            ext_group = sorted(ext_group)
-            for i in range(0, len(ext_group), SHARD_CAP):
-                emit_shard(ext_group[i: i + SHARD_CAP], "file-type")
+    if ripgrep_poisoned:
+        sorted_files = sorted(files)
+        chunk_size = max(1, math.ceil(len(sorted_files) / NOISE_POOL_TARGET_SHARDS))
+        for i in range(0, len(sorted_files), chunk_size):
+            emit_shard(sorted_files[i: i + chunk_size], "ripgrep-noise-pool")
+    else:
+        by_dir: dict[str, list[str]] = defaultdict(list)
+        for f in files:
+            by_dir[top_level_dir(f, project_root)].append(f)
+        for d, group in sorted(by_dir.items()):
+            if len(group) <= SHARD_CAP:
+                emit_shard(sorted(group), "top-level-dir")
+                continue
+            by_ext: dict[str, list[str]] = defaultdict(list)
+            for f in group:
+                by_ext[extension(f)].append(f)
+            for _ext, ext_group in sorted(by_ext.items()):
+                ext_group = sorted(ext_group)
+                for i in range(0, len(ext_group), SHARD_CAP):
+                    emit_shard(ext_group[i: i + SHARD_CAP], "file-type")
 
-    expected_min = math.ceil(len(files) / SHARD_CAP)
-    if len(shards) < expected_min:
-        print(
-            f"_shard_findings.py: shard count {len(shards)} < ceil({len(files)}/{SHARD_CAP})={expected_min}",
-            file=sys.stderr,
-        )
-        return 1
+        expected_min = math.ceil(len(files) / SHARD_CAP)
+        if len(shards) < expected_min:
+            print(
+                f"_shard_findings.py: shard count {len(shards)} < ceil({len(files)}/{SHARD_CAP})={expected_min}",
+                file=sys.stderr,
+            )
+            return 1
 
     with open(args.hypothesis, encoding="utf-8") as f:
         hyp = json.load(f)

@@ -14,7 +14,7 @@
         "properties": {
           "shard_id": { "type": "string" },
           "files": { "type": "array", "items": { "type": "string" } },
-          "boundary_kind": { "enum": ["top-level-dir", "file-type"] }
+          "boundary_kind": { "enum": ["top-level-dir", "file-type", "ripgrep-noise-pool"] }
         }
       }
     },

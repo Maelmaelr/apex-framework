@@ -39,7 +39,20 @@ HEAD_DJANGO_URLS = 50
 HEAD_DJANGO_SETTINGS = 10
 HEAD_RIPGREP = 100
 
-STOPWORDS = {"the", "and", "for", "with", "from", "this", "that", "into"}
+STOPWORDS = {
+    "the", "and", "for", "with", "from", "this", "that", "into",
+    "are", "was", "were", "have", "had", "has", "been", "they", "them",
+    "but", "not", "out", "off", "now", "via", "per", "etc",
+    "when", "while", "where", "what", "which", "who", "how", "why",
+    "your", "you", "our", "their", "his", "her", "its",
+    "page", "site", "user", "data", "info", "file", "type",
+    "name", "value", "state", "list", "item", "text",
+    "title", "description", "content", "context",
+    "true", "false", "null", "none",
+    "more", "less", "than", "some", "any", "all", "many",
+    "just", "like", "make", "made", "use", "using", "used",
+    "stale", "fresh",
+}
 
 
 def extract_seeds(hypothesis_path: str) -> tuple[list[str], list[str]]:

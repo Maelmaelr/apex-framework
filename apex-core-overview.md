@@ -30,8 +30,12 @@ Step 0 TaskCreates 1-5.
       - zero-layer-extract.sh -> p1.md
       - skip tasks 6.b/c, 7-9
   6.b Shard: shard script -> shard-plan-{session}.json
+    - ripgrep_poisoned: collapse to NOISE_POOL_TARGET_SHARDS=8 consolidated shards
     - if >8 shards:
-      - AskUserQuestion: refine | proceed-with-prompt-paths | continue
+      - AskUserQuestion (all options surfaced verbatim):
+        - ripgrep_poisoned: refine | proceed-with-prompt-paths | continue
+        - else:           refine | screen-deterministic-only | continue
+      - refine = hard abort (session-end-hook.sh inline; NOT a license for inline edits)
       - if proceed-with-prompt-paths:
         - p1.md
         - skip tasks 6.c, 7-9
@@ -57,7 +61,7 @@ p1.0 TaskCreates p1.1 -> p1.6 (main mode) | p1.1, p1.1b, p1.3, p1.6 (teammate tr
 
 ```
 p1.0 Init: p1.md (main: baseline + concurrent-apex conflict-check)
-p1.1 Implement: implement.md -> executor.md (per task, parallel where possible)
+p1.1 Implement: implement.md -> executor.md (per task, parallel where possible; orchestrator MUST NOT inline-Edit slice files - dispatch-only)
 p1.1b Polish: polish.md (inline; touched-by-apex INTERSECT scope)
 p1.2 Verify+fix: verify-fix.md -> verify-build.sh
   - if errors:
