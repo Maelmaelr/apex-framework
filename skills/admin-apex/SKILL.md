@@ -9,7 +9,7 @@ Apex internals administrator. Out-of-band - not part of /apex hot path. No proje
 
 Two-repo model: `~/.claude` is the **private** working tree (personal config + apex framework). `/Users/mael/dev/apex-framework` is the **public** mirror (apex framework only). Every commit produced by this skill is replicated to the public mirror via task 10 (allowlisted paths only) and both repos are pushed alongside. Pushes happen ONLY via task 10.
 
-Per-run artifacts live under `.claude-tmp/admin-apex-active/{run}-*` (mirrors apex-active). `{run}` token = `openssl rand -hex 4`, minted at task 1; swept by `scripts/cleanup-run.sh` at SessionEnd (manifest-matched), task 10 (post mirror+push), or task 9's no-commit branch.
+Per-run artifacts live under `.claude-tmp/admin-apex-active/{run}-*` (mirrors apex-active). `{run}` token = `openssl rand -hex 4`, minted at task 1; swept by `scripts/cleanup-run.sh` at SessionEnd (manifest-matched), task 11 (post-success after mirror+push), task 9's no-commit branch, task 4 hard-stops (audit-only / stale-spec), task 8 `rollback-evolve`, or evolve.md task 6 `rollback`. Test failure `abort` and task 10 mirror failure intentionally leave artifacts for inspection.
 
 Inputs: `skills/apex/**`, `skills/admin-apex/**`, `agents/**`, `apex-core.md`, `apex-core-overview.md`, `README.md`, `settings.json`, repo-root `CLAUDE.md`, `VERSION`.
 
@@ -57,7 +57,7 @@ Read and follow `skills/admin-apex/audit.md`. Produces `{run}-drift-report.json`
 
 ## Task 4: Audit gate
 
-Read drift report. Hard-stops (skip 5-10, exit 0, no commit, even if private deltas exist):
+Read drift report. Hard-stops (skip 5-10, exit 0, no commit, even if private deltas exist; then sweep via `bash skills/admin-apex/scripts/cleanup-run.sh --run {run} --post-success`):
 - mode == `audit-only` (user explicitly asked for inspection only)
 - any cluster has `kind == stale-spec` (state is racing; do not commit anything from this run)
 
@@ -81,7 +81,7 @@ Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.t
 
 `bash skills/admin-apex/scripts/test-apex-scripts.sh`. Non-zero -> AskUserQuestion (header: "Test failure"):
 - `auto-fix` -> re-enter evolve.md task 6 scoped to failing files
-- `rollback-evolve` -> `git restore` on `{run}-dirty-paths.txt`, exit cleanly
+- `rollback-evolve` -> `git restore` on `{run}-dirty-paths.txt`, then `bash skills/admin-apex/scripts/cleanup-run.sh --run {run} --post-success`, exit cleanly
 - `abort` -> exit cleanly without rollback (preserve dirty state for inspection)
 - Dismiss / cancel = `abort`
 

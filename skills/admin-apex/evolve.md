@@ -59,7 +59,7 @@ Per-op loop. Before each op:
 3. On drift -> AskUserQuestion (header: "Mid-flight drift on op {N}"):
    - `restart` - abort current op, re-run audit (SKILL task 3) with current state
    - `commit-partial` - skip remaining ops, jump to task 7 (sync-docs) with applied ops so far
-   - `rollback` - explicit user-confirmed `git restore` on every path in `{run}-applied-ops.json`. **This is the only admin-apex codepath that runs `git restore`**, and only via this gate. Untouched paths are NOT restored.
+   - `rollback` - explicit user-confirmed `git restore` on every path in `{run}-applied-ops.json`, then `bash skills/admin-apex/scripts/cleanup-run.sh --run {run} --post-success`. Untouched paths are NOT restored. (Task 8 `rollback-evolve` is the other admin-apex codepath that runs `git restore`.)
    - Dismiss / cancel = `restart`
 
 ### Per-op execution
