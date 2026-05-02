@@ -34,7 +34,7 @@ See `shared-guardrails.md` for: scope enforcement, safety paths, manifest schema
 
 ## Step 0: TaskCreate the entry chain
 
-Each line below is one `TaskCreate(subject, description)`. Tasks run in TaskCreate order; `TaskCreate` has no `blockedBy` / `blocks` parameter - if a parallel branch needs an explicit merge dependency, set it after the fact via `TaskUpdate addBlockedBy`. Orchestrator marks each task `in_progress` when dispatching its per-step skill / script and `completed` on clean return (mirrors `apex-lessons-analyze/SKILL.md` Step 0b). Stale-task reminders mid-run indicate this contract was missed.
+Each line below is one `TaskCreate(subject, description)`. Tasks run in TaskCreate order; `TaskCreate` has no `blockedBy` / `blocks` parameter - if a parallel branch needs an explicit merge dependency, set it after the fact via `TaskUpdate addBlockedBy`. Orchestrator marks each task `in_progress` when dispatching its per-step skill / script and `completed` on clean return (mirrors `apex-lessons-analyze/SKILL.md` Step 0b). A task may be marked `completed` ONLY after its owning script/skill has actually been invoked and returned cleanly - bulk-marking tasks `completed` (or jumping over them via inline ad-hoc edits) without invocation is forbidden. Stale-task reminders mid-run indicate this contract was missed.
 
 ```
 TaskCreate "1. Analyze"            (inline; AskUserQuestion if ambiguous)
@@ -99,9 +99,9 @@ See `scripts/grep-lessons.sh` and `scripts/update-hit.sh` headers for full I/O c
 
 ## Step 5: Trivial detection (inline)
 
-Trivial = ALL of: single file edit (or single new file), no cross-file dependencies in `{session}-hypothesis.json`, no new abstractions (no new public symbol / component / endpoint). **Default to non-trivial when uncertain** - hidden-blast-radius cost dominates the latency saving.
+Trivial = ALL of: single file edit (or single new file), no cross-file dependencies in `{session}-hypothesis.json`, no new abstractions (no new public symbol / component / endpoint). **If ANY criterion is not unambiguously met, treat as non-trivial** - hidden-blast-radius cost dominates the latency saving. Touching 2+ files (even within one module / "bounded UI surgery") is non-trivial by definition. There is NO third path: phrasings like "trivial-equivalent", "bounded enough", "simple enough to skip ahead", or "proceed directly" are NOT sanctioned bypasses - every non-trivial task MUST flow through Steps 6-9 -> `p1.md` (medium) or `plan-mode.md` (complex).
 
-- trivial -> read and follow `~/.claude/skills/apex/trivial.md` (writes scope inline + scope pointer, marks queued 6-9 completed if any, calls `p1.md`; no preflight artifact written).
+- trivial -> read and follow `~/.claude/skills/apex/trivial.md` (the ONLY sanctioned shortcut; itself dispatches into `p1.md`. Writes scope inline + scope pointer, marks queued 6-9 completed if any, calls `p1.md`; no preflight artifact written).
 - non-trivial -> TaskCreate tasks 6-9 per Step 0 template; proceed to Step 6.
 
 ## Step 6 routing
@@ -133,7 +133,7 @@ On exit 1: run `scripts/session-end-hook.sh {session}` inline before exiting (mi
 | `medium` | Read and follow `~/.claude/skills/apex/p1.md` directly (p1.md TaskCreates p1.1 -> p1.6 inline at its Step 3). No entry-flow task append. Mirrors trivial -> `trivial.md` -> p1.md. |
 | `complex` | Tasks 10 + p2.0a/b/c queued per Step 0 append; proceed. p2.0c `ExitPlanMode` clears context; the embedded plan routes the post-clear session into `p2.md`. |
 
-Without an explicit medium dispatch the model finishes task 9 with no pending tasks and silently terminates - p1.X never gets created.
+Without an explicit medium dispatch the model finishes task 9 with no pending tasks and silently terminates - p1.X never gets created. The same silent-termination risk applies to every entry-flow step (2-9): skipping a step's owning script/skill (e.g., not invoking `create-session.sh`, `decide-path.sh`, or `p1.md`) leaves the orchestrator with no pending tasks and exits without producing the expected artifacts.
 
 ## Path 2 plan-mode chain (p2.0a / p2.0b / p2.0c)
 
