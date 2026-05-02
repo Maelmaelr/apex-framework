@@ -40,7 +40,7 @@ Always exits 0; always appends a block (under `flock` via `append-with-lock.sh`)
 
 ## Step 2: Spawn agents/reflector.md (Haiku)
 
-Foreground vs background per the table above (`run_in_background: true` for `entryflow`, default foreground for `entryflow+p1` / `p2`). One Agent tool call, model = haiku.
+Foreground vs background per the table above (`run_in_background: true` for `entryflow`, default foreground for `entryflow+p1` / `p2`). One Agent tool call, model = haiku. When background-spawned (entryflow phase), the orchestrator MUST mark the corresponding task `completed` in the SAME response as the spawn - the reflector is a fire-and-forget telemetry signal, never a blocking dependency, and waiting for it soft-blocks p2.0a.
 
 Spawn-prompt template (substitute `{session}`, `{phase}`, `{snapshot_suffix}` per the table - `entryflow` | `p1` | `p2`):
 

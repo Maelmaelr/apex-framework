@@ -7,7 +7,7 @@ description: Path 2 plan-mode chain (p2.0a/b/c). Sequential entry-flow tasks que
 
 Spec: `apex-core.md` "Path 2 (p2)" p2.0a/b/c | `apex-core-overview.md` p2.0a/b/c.
 
-Three sequential tasks in the entry-flow Claude Code session, immediately after step 10 (entry-flow self-reflect runs in the background and does NOT block p2.0a). The plan composed in p2.0b is what survives the p2.0c context clear.
+Three sequential tasks in the entry-flow Claude Code session, immediately after step 10 (entry-flow self-reflect runs in the background; orchestrator marks the step-10 task `completed` in the SAME response as the spawn and proceeds to p2.0a without waiting). The plan composed in p2.0b is what survives the p2.0c context clear.
 
 ## p2.0a Enter plan mode
 

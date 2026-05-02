@@ -34,7 +34,7 @@ See `shared-guardrails.md` for: scope enforcement, safety paths, manifest schema
 
 ## Step 0: TaskCreate the entry chain
 
-Each line below is one `TaskCreate(subject, description)`. Tasks run in TaskCreate order; `TaskCreate` has no `blockedBy` / `blocks` parameter - if a parallel branch needs an explicit merge dependency, set it after the fact via `TaskUpdate addBlockedBy`.
+Each line below is one `TaskCreate(subject, description)`. Tasks run in TaskCreate order; `TaskCreate` has no `blockedBy` / `blocks` parameter - if a parallel branch needs an explicit merge dependency, set it after the fact via `TaskUpdate addBlockedBy`. Orchestrator marks each task `in_progress` when dispatching its per-step skill / script and `completed` on clean return (mirrors `apex-lessons-analyze/SKILL.md` Step 0b). Stale-task reminders mid-run indicate this contract was missed.
 
 ```
 TaskCreate "1. Analyze"            (inline; AskUserQuestion if ambiguous)
@@ -138,7 +138,7 @@ Without an explicit medium dispatch the model finishes task 9 with no pending ta
 
 ## Path 2 plan-mode chain (p2.0a / p2.0b / p2.0c)
 
-Read and follow `~/.claude/skills/apex/plan-mode.md`. Sequential post-step-9 tasks (entry-flow self-reflect runs in the background and does NOT block p2.0a): `EnterPlanMode` -> embed plan via `planner.md` + disjoint-scope validator -> `ExitPlanMode` (rejection -> `session-end-hook.sh {session}` inline).
+Read and follow `~/.claude/skills/apex/plan-mode.md`. Sequential post-step-9 tasks (entry-flow self-reflect runs in the background; orchestrator marks the step-10 task `completed` in the SAME response as the spawn and proceeds to p2.0a without waiting): `EnterPlanMode` -> embed plan via `planner.md` + disjoint-scope validator -> `ExitPlanMode` (rejection -> `session-end-hook.sh {session}` inline).
 
 ## Mid-/apex abort cleanup
 
