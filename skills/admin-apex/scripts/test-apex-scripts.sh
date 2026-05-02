@@ -148,6 +148,19 @@ run_fixture() {
   check_fixtures "$label" "$expected" "$got"
 }
 
+# Age mtime of every arg by 120s. Required for fixtures that exercise
+# cleanup-run.sh / sweep-stale-runs.sh: those refuse cleanup when the latest
+# manifest + {run}-* mtime is < 60s old (in-flight guard, cleanup-run.sh:93).
+# Python-based for portability across BSD (macOS) and GNU touch.
+age_mtime() {
+  python3 -c "
+import os, sys, time
+ts = time.time() - 120
+for p in sys.argv[1:]:
+    os.utime(p, (ts, ts))
+" "$@"
+}
+
 # 1. Each new script rejects missing/bad {session} arg.
 run_fixture "apex-baseline.sh missing-arg" 1 \
   bash "$REPO_ROOT/skills/apex/scripts/apex-baseline.sh"
@@ -190,6 +203,9 @@ session_end_happy_fixture() {
     > .claude-tmp/admin-apex-active/deadbe01.json
   printf 'inv\n'      > .claude-tmp/admin-apex-active/deadbe01-inventory.json
   printf 'summary\n'  > .claude-tmp/admin-apex-active/deadbe01-summary.md
+  age_mtime .claude-tmp/admin-apex-active/deadbe01.json \
+            .claude-tmp/admin-apex-active/deadbe01-inventory.json \
+            .claude-tmp/admin-apex-active/deadbe01-summary.md
   printf '{"session_id":"FIXTURE-SID"}' \
     | bash "$REPO_ROOT/skills/admin-apex/scripts/session-end-hook.sh"
   # Assert all three artifacts gone (exit 1 if any survives -> fixture fails).
@@ -232,6 +248,8 @@ sweep_stale_dead_pid_fixture() {
   printf '{"run":"deadbe03","cc_session_id":"X","pid":%d,"producer":"admin-apex"}\n' "$dead_pid" \
     > .claude-tmp/admin-apex-active/deadbe03.json
   printf 'inv\n' > .claude-tmp/admin-apex-active/deadbe03-inventory.json
+  age_mtime .claude-tmp/admin-apex-active/deadbe03.json \
+            .claude-tmp/admin-apex-active/deadbe03-inventory.json
   bash "$REPO_ROOT/skills/admin-apex/scripts/sweep-stale-runs.sh"
   for f in deadbe03.json deadbe03-inventory.json; do
     [[ -e ".claude-tmp/admin-apex-active/$f" ]] && return 1
