@@ -59,7 +59,8 @@ Producers and consumers:
 ```
 {session, pid, cc_session_id, p2_cc_session_id?}
 ```
-- `pid` and `cc_session_id` are NEVER overwritten
+- `cc_session_id` is NEVER overwritten (entry-flow audit trail)
+- `pid` tracks the live claude main process. Resolved by `scripts/find-claude-pid.sh` (walks up the process tree until comm basename == "claude"). Refreshed by `apex-p2-init.sh` on Path 2 post-context-clear init when the claude pid changes. NEVER captured as `$PPID` directly inside a `bash script.sh` invocation - that is the transient zsh subshell, and a transient pid in the manifest gets the live session classified stale by sibling /apex.
 - `p2_cc_session_id` appended by `p2.md` after the p2.0c context clear
 - Reflectors locate TaskList at `~/.claude/todos/{id}-agent-{id}.json` using `cc_session_id` (entry-flow / Path 1) or `p2_cc_session_id` (p2.5)
 

@@ -59,13 +59,14 @@ Then read `<project-root>/docs/project-context.md` (best-effort; absent = silent
 Resolve the current Claude Code session id via `scripts/get-cc-session-id.sh` (canonical: env-var fast path, latest-jsonl fallback - single source of truth). Then call `scripts/create-session.sh --cc-session-id "$(bash scripts/get-cc-session-id.sh)"`. Exit codes:
 - `0` - manifest written + producer-validated against `manifest.schema.json`, `{session}` token printed to stdout. Capture and use throughout.
 - `10` - overlap detected. Script writes detected state to stderr (active / stale manifests). Orchestrator branches on parsed state:
-  - **Stale-only** (`active:` absent, `stale:` present): auto-cleanup-and-proceed without prompting. Stale = PID dead OR comm-mismatched, so no concurrent file overlap is possible by construction. For each stale token: `bash scripts/session-end-hook.sh <stale-token>`; then re-run `create-session.sh` (if it exits 10 again, fall through to the prompt with whatever state is now reported).
+  - **Stale-only** (`active:` absent, `stale:` present): auto-cleanup-and-proceed without prompting. Stale = PID dead OR comm-mismatched, so no concurrent file overlap is possible by construction. For each stale token: `bash scripts/session-end-hook.sh <stale-token> --foreign`; then re-run `create-session.sh` (if it exits 10 again, fall through to the prompt with whatever state is now reported). The `--foreign` flag is what arms the live-PID guard in `cleanup-session.sh` against sibling classifier bugs - if the classifier wrongly marked a live session stale, the guard refuses cleanup so the live manifest survives.
   - **Active-detected** (`active:` present): AskUserQuestion (options filtered to detected state):
     ```
     - "abort"              (always present)
     - "proceed alongside"  (active session detected; new {session} token issued)
     - "cleanup-stale-and-proceed" (only if stale also present; for each stale,
-                            invoke session-end-hook.sh <stale-token>; then re-run create-session.sh)
+                            invoke session-end-hook.sh <stale-token> --foreign;
+                            then re-run create-session.sh)
     Dismiss / cancel = abort
     ```
 On abort: no manifest exists yet, so `session-end-hook.sh` is skipped; exit cleanly.

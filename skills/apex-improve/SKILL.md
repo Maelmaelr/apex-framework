@@ -71,11 +71,11 @@ cd "$HOME/.claude"
 RUN=$(openssl rand -hex 4)
 ROOT="$HOME/.claude/.claude-tmp/admin-apex-active"
 mkdir -p "$ROOT"
-CC_ID=$(bash "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh")   # env-then-jsonl resolver; abort on failure
-PID=$PPID                                                                # parent claude PID (NOT $$)
+CC_ID=$(bash "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh")            # env-then-jsonl resolver; abort on failure
+PID=$(bash "$HOME/.claude/skills/apex/scripts/find-claude-pid.sh" 2>/dev/null || echo "$PPID")  # live claude pid; falls back to $PPID on non-standard launcher
 ```
 
-**Write** `$ROOT/$RUN.json` with `{"run":"<RUN>","cc_session_id":"<CC_ID>","pid":<PID>,"producer":"apex-improve"}`. NEVER write `cc_session_id:""` - empty makes `session-end-hook.sh` unable to match the manifest, leaking the run. `cc_session_id` arms `skills/admin-apex/scripts/session-end-hook.sh` to sweep at CC SessionEnd (covers no-signals exit, cap-reached abort, standalone-without-commit); `pid` arms `skills/admin-apex/scripts/sweep-stale-runs.sh` to drain orphans from crashed sessions. `{run}-deferred-findings.json` is preserved by `cleanup-run.sh` for a future run.
+**Write** `$ROOT/$RUN.json` with `{"run":"<RUN>","cc_session_id":"<CC_ID>","pid":<PID>,"producer":"apex-improve"}`. NEVER write `cc_session_id:""` - empty makes `session-end-hook.sh` unable to match the manifest, leaking the run. NEVER use `$PPID` directly inside a `bash -c` subshell as the pid value - that captures the transient zsh pid; sibling `sweep-stale-runs.sh` would mark this run stale and wipe it mid-flight. `cc_session_id` arms `skills/admin-apex/scripts/session-end-hook.sh` to sweep at CC SessionEnd (covers no-signals exit, cap-reached abort, standalone-without-commit); `pid` arms `skills/admin-apex/scripts/sweep-stale-runs.sh` to drain orphans from crashed sessions. `{run}-deferred-findings.json` is preserved by `cleanup-run.sh` for a future run.
 
 ## Step 2: Analyze signals
 

@@ -3,9 +3,15 @@
 # Spec: apex-core.md p2.0 (Steps 3 + 4) + p2.md.
 #
 # Two side effects, executed in order:
-#   1. Append p2_cc_session_id to .claude-tmp/apex-active/{session}.json (manifest).
-#      cc_session_id and pid are NEVER overwritten. Producer-validates the
-#      appended manifest against schemas/manifest.schema.json.
+#   1. Append p2_cc_session_id to .claude-tmp/apex-active/{session}.json (manifest)
+#      AND refresh `pid` to the live claude pid (resolved via find-claude-pid.sh).
+#      `cc_session_id` is NEVER overwritten (entry-flow audit trail). `pid`
+#      tracks the live claude process owning the session, which on most CC
+#      builds is the same process as entry-flow but on launchers that swap the
+#      process across context-clear, the entry-flow pid is dead and would mark
+#      the live session stale to sibling /apex. Refreshing pid here keeps the
+#      live-session classifier honest. Producer-validates the appended manifest
+#      against schemas/manifest.schema.json.
 #   2. Write the post-context-clear scope-check pointer at
 #      .claude-tmp/apex-active/{session}-scopes/$CC_SESSION_ID.txt pointing at
 #      .claude-tmp/apex-active/{session}-main-scope.json.
@@ -62,9 +68,20 @@ if [[ ! -f "$MANIFEST" ]]; then
   exit 1
 fi
 
-# Step 1: append p2_cc_session_id (preserves cc_session_id + pid).
+# Step 1: append p2_cc_session_id and refresh pid (preserves cc_session_id).
+# Resolve live claude pid; fall back to existing manifest.pid on miss (defensive).
+CLAUDE_PID="$(bash "$SCRIPT_DIR/find-claude-pid.sh" 2>/dev/null)"
+if [[ -z "$CLAUDE_PID" || ! "$CLAUDE_PID" =~ ^[0-9]+$ ]]; then
+  echo "apex-p2-init.sh: find-claude-pid.sh found no claude ancestor; preserving existing manifest.pid" >&2
+  CLAUDE_PID=""
+fi
 TMP=$(mktemp)
-jq --arg id "$CC_SESSION_ID" '. + {p2_cc_session_id: $id}' "$MANIFEST" > "$TMP"
+if [[ -n "$CLAUDE_PID" ]]; then
+  jq --arg id "$CC_SESSION_ID" --argjson pid "$CLAUDE_PID" \
+     '. + {p2_cc_session_id: $id, pid: $pid}' "$MANIFEST" > "$TMP"
+else
+  jq --arg id "$CC_SESSION_ID" '. + {p2_cc_session_id: $id}' "$MANIFEST" > "$TMP"
+fi
 mv "$TMP" "$MANIFEST"
 
 PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$MANIFEST" <<'PY'

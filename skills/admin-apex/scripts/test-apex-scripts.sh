@@ -321,6 +321,61 @@ apex_session_end_p2cc_clean_fixture() {
 }
 run_fixture "apex session-end-hook.sh p2cc-clean" 0 apex_session_end_p2cc_clean_fixture
 
+# 4h. find-claude-pid.sh: smoke test. Walks up the process tree from $$ looking
+#     for a comm whose basename is "claude". When this test runs under /apex or
+#     /admin-apex (the production case), claude IS in the ancestry so exit 0 +
+#     stdout is a numeric pid. When run in CI without claude in the ancestry,
+#     exit 1 with a stderr warning. Both branches are valid - the fixture
+#     verifies stdout shape on the success branch and accepts either exit code.
+find_claude_pid_fixture() {
+  local out
+  out=$(bash "$REPO_ROOT/skills/apex/scripts/find-claude-pid.sh" 2>/dev/null)
+  local rc=$?
+  if (( rc == 0 )); then
+    [[ "$out" =~ ^[0-9]+$ ]] || return 1
+  elif (( rc == 1 )); then
+    [[ -z "$out" ]] || return 1
+  else
+    return 1
+  fi
+  return 0
+}
+run_fixture "find-claude-pid.sh smoke" 0 find_claude_pid_fixture
+
+# 4i. cleanup-session.sh: --post-success bypasses the live-PID guard. With
+#     manifest pid=$$ (definitely alive; comm=bash, not claude), the guard
+#     would fail open anyway via comm-mismatch - so this fixture verifies the
+#     happy-path (cleanup proceeds) and shape-check that --post-success is
+#     accepted as a known flag (no "unknown arg" warning). We can't easily
+#     mint a process with comm="claude" inside the harness, so the live-claude
+#     refuse branch is left as a manual / production check.
+cleanup_session_post_success_fixture() {
+  mkdir -p .claude-tmp/apex-active
+  printf '{"session":"deafbead","pid":%d,"cc_session_id":"X"}\n' "$$" \
+    > .claude-tmp/apex-active/deafbead.json
+  bash "$REPO_ROOT/skills/apex/scripts/cleanup-session.sh" \
+    --session deafbead --post-success
+  [[ -e .claude-tmp/apex-active/deafbead.json ]] && return 1
+  return 0
+}
+run_fixture "cleanup-session.sh --post-success" 0 cleanup_session_post_success_fixture
+
+# 4j. session-end-hook.sh manual mode --foreign: passes through to
+#     cleanup-session.sh WITHOUT --post-success (foreign cleanup-stale path).
+#     Manifest pid=$$ alive but comm=bash != claude -> guard fails open ->
+#     cleanup proceeds. Hypothesis fallback rm runs since manifest was wiped.
+session_end_foreign_clean_fixture() {
+  mkdir -p .claude-tmp/apex-active
+  printf '{"session":"deafdead","pid":%d,"cc_session_id":"X"}\n' "$$" \
+    > .claude-tmp/apex-active/deafdead.json
+  printf 'hyp\n' > .claude-tmp/apex-active/deafdead-hypothesis.json
+  bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh" deafdead --foreign
+  [[ -e .claude-tmp/apex-active/deafdead.json ]] && return 1
+  [[ -e .claude-tmp/apex-active/deafdead-hypothesis.json ]] && return 1
+  return 0
+}
+run_fixture "apex session-end-hook.sh manual --foreign" 0 session_end_foreign_clean_fixture
+
 # 5. admin-apex-finalize.sh: rejects missing args (exit 1).
 run_fixture "admin-apex-finalize.sh missing-args" 1 \
   bash "$REPO_ROOT/skills/admin-apex/scripts/admin-apex-finalize.sh"

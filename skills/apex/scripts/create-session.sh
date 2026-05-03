@@ -12,8 +12,15 @@
 #      active-detected -> AskUserQuestion (abort | proceed-alongside | cleanup-stale-and-proceed),
 #      options filtered to detected state.
 #   3. On no overlap: generate {session} via openssl rand -hex 4, write manifest:
-#        {session, pid: $PPID, cc_session_id}
-#      pid is $PPID (Claude Code main process), NOT $$ (this script's pid).
+#        {session, pid: <claude-pid>, cc_session_id}
+#      pid is the claude main process pid, resolved via find-claude-pid.sh
+#      (walks up the process tree until comm basename == "claude"). $PPID is
+#      NOT used: when this script is invoked as `bash create-session.sh ...`,
+#      $PPID is the transient zsh subshell that Claude Code's Bash tool
+#      spawned, not claude itself; that zsh exits as soon as the Bash tool
+#      call returns, leaving manifest.pid pointing at a dead pid and causing
+#      sibling /apex's create-session.sh to mis-classify the live session as
+#      stale and auto-cleanup-stale-and-proceed wipe its manifest.
 #   4. Echo {session} to stdout for orchestrator capture.
 #
 # Args:
@@ -126,13 +133,25 @@ fi
 SESSION="$(openssl rand -hex 4)"
 MANIFEST="$APEX_ACTIVE/$SESSION.json"
 
-printf '{"session":"%s","pid":%d,"cc_session_id":"%s"}\n' "$SESSION" "$PPID" "$CC_SESSION_ID" > "$MANIFEST"
+# Resolve claude pid via tree walk (see header doc). Fall back to $PPID only if
+# the walk fails - $PPID is the transient zsh subshell when this script runs
+# under `bash` invocation, but it is the best signal we have if claude is not
+# in the ancestry (defensive fallback; will mis-classify as stale on next
+# sibling check, surfacing the install issue rather than silently corrupting).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CLAUDE_PID="$(bash "$SCRIPT_DIR/find-claude-pid.sh" 2>/dev/null)"
+if [[ -z "$CLAUDE_PID" || ! "$CLAUDE_PID" =~ ^[0-9]+$ ]]; then
+  echo "create-session.sh: find-claude-pid.sh found no claude ancestor; falling back to \$PPID=$PPID (manifest may be classified stale by sibling /apex)" >&2
+  CLAUDE_PID="$PPID"
+fi
+
+printf '{"session":"%s","pid":%d,"cc_session_id":"%s"}\n' "$SESSION" "$CLAUDE_PID" "$CC_SESSION_ID" > "$MANIFEST"
 
 # Producer-validates-before-write: shells the manifest through validate-json.sh
 # (jsonschema-fallback is parse-only when the lib is missing, but the call
 # point uniformly enforces the rule across script + inline-LLM producers).
 # validate-json.sh ships in this script's dir; missing = corrupt install -> hard fail.
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# (SCRIPT_DIR resolved above for find-claude-pid.sh; reuse.)
 if [[ ! -x "$SCRIPT_DIR/validate-json.sh" ]]; then
   rm -f "$MANIFEST"
   echo "create-session.sh: validate-json.sh missing or non-executable at $SCRIPT_DIR (install corruption); aborting" >&2

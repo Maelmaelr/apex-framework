@@ -2,12 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "manifest.schema.json",
   "title": "{session}.json (session manifest)",
-  "description": "Created by step 2; appended by p2.0. PID + cc_session_id are NEVER overwritten. See apex-core.md Conventions / Session manifest schema.",
+  "description": "Created by step 2; appended by p2.0. cc_session_id is never overwritten (entry-flow audit trail); pid tracks the live claude main process and is refreshed on Path 2 post-context-clear init when the claude pid changes. See apex-core.md Conventions / Session manifest schema.",
   "type": "object",
   "required": ["session", "pid", "cc_session_id"],
   "properties": {
     "session": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "8-char lowercase hex" },
-    "pid": { "type": "integer", "minimum": 1, "description": "OS pid of the Claude Code main process; never overwritten" },
+    "pid": { "type": "integer", "minimum": 1, "description": "OS pid of the live claude main process owning the session. Resolved at create-session.sh time via find-claude-pid.sh (walks up the process tree until comm basename == claude). Refreshed by apex-p2-init.sh on Path 2 post-context-clear init. NEVER set to a transient subshell pid - that would mark the session stale to sibling /apex." },
     "cc_session_id": { "type": "string", "description": "Entry-flow Claude Code session id; never overwritten" },
     "p2_cc_session_id": { "type": "string", "description": "Appended by p2.0 after the p2.0c context clear" }
   }

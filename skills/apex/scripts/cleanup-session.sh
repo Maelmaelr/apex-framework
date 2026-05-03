@@ -22,6 +22,14 @@
 #
 # Args:
 #   --session <token>  (required; 8-char lowercase hex per Conventions / Session token format)
+#   --post-success     (optional; bypasses the live-PID guard. Reserved for callers
+#                       with authoritative knowledge that cleanup is safe -- p1.5
+#                       / p2.6 success path, mid-/apex abort paths, SessionEnd of
+#                       the OWN session. Without this flag the guard fires when
+#                       manifest.pid is alive AND comm=claude, and refuses
+#                       cleanup as defense against sibling cleanup-stale-and-
+#                       proceed misclassification. Mirrors admin-apex/scripts/
+#                       cleanup-run.sh --post-success.)
 #
 # Exit code: always 0 (idempotent contract; warnings to stderr).
 
@@ -34,11 +42,16 @@ APEX_ACTIVE=".claude-tmp/apex-active"
 SCOUT_DIR=".claude-tmp/scout"
 
 SESSION=""
+POST_SUCCESS=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --session)
       SESSION="${2:-}"
       shift 2
+      ;;
+    --post-success)
+      POST_SUCCESS=1
+      shift
       ;;
     *)
       echo "cleanup-session.sh: unknown arg: $1" >&2
@@ -68,24 +81,30 @@ warn() {
 
 # Live-session guard. Refuse cleanup if the manifest still exists AND its PID
 # is alive AND `ps -o comm` matches "claude" - the same active-classification
-# create-session.sh uses. Defends against any caller path (manual mode,
-# stdin-derived SessionEnd, cleanup-stale-and-proceed misclassification) that
-# would wipe a mid-run session's manifest/scope/baseline. Mirrors the in-flight
-# mtime guard in admin-apex/scripts/cleanup-run.sh.
-APEX_ACTIVE_MANIFEST="$APEX_ACTIVE/${SESSION}.json"
-if [[ -f "$APEX_ACTIVE_MANIFEST" ]]; then
-  manifest_pid=$(python3 -c "
+# create-session.sh uses. Defends against sibling cleanup-stale-and-proceed
+# misclassification (foreign caller wrongly classifies a live session as stale
+# and tries to wipe its manifest/scope/baseline). --post-success bypasses this
+# guard and is required by trusted own-session callers (p1.5/p2.6 success
+# path, mid-/apex abort, SessionEnd of own session); without that flag the
+# guard would block legit own-cleanup since manifest.pid is the live caller's
+# claude pid (resolved via find-claude-pid.sh at create-session.sh time).
+# Mirrors the in-flight mtime guard in admin-apex/scripts/cleanup-run.sh.
+if (( POST_SUCCESS == 0 )); then
+  APEX_ACTIVE_MANIFEST="$APEX_ACTIVE/${SESSION}.json"
+  if [[ -f "$APEX_ACTIVE_MANIFEST" ]]; then
+    manifest_pid=$(python3 -c "
 import json, sys
 try:
     print(json.load(open(sys.argv[1], encoding='utf-8')).get('pid', ''))
 except Exception:
     pass
 " "$APEX_ACTIVE_MANIFEST" 2>/dev/null || true)
-  if [[ -n "$manifest_pid" && "$manifest_pid" =~ ^[0-9]+$ ]] && kill -0 "$manifest_pid" 2>/dev/null; then
-    comm_base="$(basename "$(ps -o comm= -p "$manifest_pid" 2>/dev/null || true)" 2>/dev/null || true)"
-    if [[ "$comm_base" == "claude" ]]; then
-      warn "refusing cleanup: session $SESSION pid=$manifest_pid is live (comm=claude); manifest preserved"
-      exit 0
+    if [[ -n "$manifest_pid" && "$manifest_pid" =~ ^[0-9]+$ ]] && kill -0 "$manifest_pid" 2>/dev/null; then
+      comm_base="$(basename "$(ps -o comm= -p "$manifest_pid" 2>/dev/null || true)" 2>/dev/null || true)"
+      if [[ "$comm_base" == "claude" ]]; then
+        warn "refusing cleanup: session $SESSION pid=$manifest_pid is live (comm=claude); manifest preserved"
+        exit 0
+      fi
     fi
   fi
 fi
