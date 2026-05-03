@@ -66,6 +66,30 @@ warn() {
   echo "cleanup-session.sh: $*" >&2
 }
 
+# Live-session guard. Refuse cleanup if the manifest still exists AND its PID
+# is alive AND `ps -o comm` matches "claude" - the same active-classification
+# create-session.sh uses. Defends against any caller path (manual mode,
+# stdin-derived SessionEnd, cleanup-stale-and-proceed misclassification) that
+# would wipe a mid-run session's manifest/scope/baseline. Mirrors the in-flight
+# mtime guard in admin-apex/scripts/cleanup-run.sh.
+APEX_ACTIVE_MANIFEST="$APEX_ACTIVE/${SESSION}.json"
+if [[ -f "$APEX_ACTIVE_MANIFEST" ]]; then
+  manifest_pid=$(python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1], encoding='utf-8')).get('pid', ''))
+except Exception:
+    pass
+" "$APEX_ACTIVE_MANIFEST" 2>/dev/null || true)
+  if [[ -n "$manifest_pid" && "$manifest_pid" =~ ^[0-9]+$ ]] && kill -0 "$manifest_pid" 2>/dev/null; then
+    comm_base="$(basename "$(ps -o comm= -p "$manifest_pid" 2>/dev/null || true)" 2>/dev/null || true)"
+    if [[ "$comm_base" == "claude" ]]; then
+      warn "refusing cleanup: session $SESSION pid=$manifest_pid is live (comm=claude); manifest preserved"
+      exit 0
+    fi
+  fi
+fi
+
 # Best-effort remove of a single literal path. Silences rm's own stderr (the
 # warn message we emit on failure is enough) and converts any non-zero exit
 # into a stderr warning so the script keeps going.

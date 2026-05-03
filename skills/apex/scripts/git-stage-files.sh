@@ -19,6 +19,10 @@
 #
 # Args:
 #   --head-sha <sha>   required; baseline head_sha read from {session}-baseline.json
+#   --session <token>  required; calling apex {session} (8-hex). Used to scope the
+#                      cross-session filter: paths in OTHER sessions' main-scope
+#                      allowed_files are skipped (concurrent-session contamination
+#                      guard - mirrors apex-conflict-check.sh granularity).
 #   --dry-run          optional; emits surviving paths to stdout WITHOUT staging
 #                      (callers that only need the filtered list use this)
 #
@@ -30,12 +34,17 @@
 set -uo pipefail
 
 HEAD_SHA=""
+SESSION=""
 DRY_RUN=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --head-sha)
       HEAD_SHA="${2:-}"
+      shift 2
+      ;;
+    --session)
+      SESSION="${2:-}"
       shift 2
       ;;
     --dry-run)
@@ -59,6 +68,16 @@ if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{7,40}$ ]]; then
   exit 2
 fi
 
+if [[ -z "$SESSION" ]]; then
+  echo "git-stage-files.sh: --session is required" >&2
+  exit 2
+fi
+
+if [[ ! "$SESSION" =~ ^[0-9a-f]{8}$ ]]; then
+  echo "git-stage-files.sh: invalid session token shape: $SESSION (expected 8-char lowercase hex)" >&2
+  exit 2
+fi
+
 # Closed template allowlist - any other .env* basename is blocked. Keep in sync
 # with `protect-env-hook.sh` (the analogous gate for Edit/Write).
 is_env_template() {
@@ -73,6 +92,28 @@ is_env_template() {
 TRACKED=$(git diff --name-only "$HEAD_SHA" 2>/dev/null || true)
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 CHANGE_SET=$(printf '%s\n%s\n' "$TRACKED" "$UNTRACKED" | grep -v '^$' | sort -u)
+
+# Cross-session contamination guard. Build the union of `allowed_files` from
+# every OTHER active session's main-scope (excluding our own SESSION). Any
+# path in CHANGE_SET that appears in that union is dropped before staging -
+# that file belongs to a sibling /apex run, and committing it under our
+# session's commit would silently steal their work. Mirrors the granularity
+# of apex-conflict-check.sh (main-scope only, not teammate scopes).
+APEX_ACTIVE=".claude-tmp/apex-active"
+OTHER_SCOPE_FILES=""
+if command -v jq >/dev/null 2>&1 && [[ -d "$APEX_ACTIVE" ]]; then
+  shopt -s nullglob
+  for scope in "$APEX_ACTIVE"/*-main-scope.json; do
+    [[ -f "$scope" ]] || continue
+    [[ "$scope" == *"$SESSION-main-scope.json" ]] && continue
+    while IFS= read -r f; do
+      [[ -z "$f" ]] && continue
+      OTHER_SCOPE_FILES+="$f"$'\n'
+    done < <(jq -r '.allowed_files[]?' "$scope" 2>/dev/null || true)
+  done
+  shopt -u nullglob
+fi
+OTHER_SCOPE_FILES=$(printf '%s' "$OTHER_SCOPE_FILES" | grep -v '^$' | sort -u || true)
 
 if [[ -z "$CHANGE_SET" ]]; then
   # Nothing changed since baseline. Not an error.
@@ -98,6 +139,13 @@ while IFS= read -r path; do
   # gitignore guard. `git check-ignore` exits 0 if the path is ignored.
   if git check-ignore -q -- "$path" 2>/dev/null; then
     echo "git-stage-files.sh: skipping gitignored: $path" >&2
+    continue
+  fi
+
+  # Cross-session guard. Drop paths claimed by another active session's
+  # main-scope allowed_files (sibling /apex run owns this file).
+  if [[ -n "$OTHER_SCOPE_FILES" ]] && printf '%s\n' "$OTHER_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
+    echo "git-stage-files.sh: skipping cross-session (claimed by sibling main-scope): $path" >&2
     continue
   fi
 

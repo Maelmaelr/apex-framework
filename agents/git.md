@@ -13,9 +13,9 @@ Spec: `apex-core.md` p1.3 / p2.4 | `apex-core-overview.md` p1.3.
 1. Read `head_sha` from `.claude-tmp/apex-active/{session}-baseline.json`.
 2. Stage the change set via the deterministic helper:
    ```
-   bash $HOME/.claude/skills/apex/scripts/git-stage-files.sh --head-sha {baseline.head_sha}
+   bash $HOME/.claude/skills/apex/scripts/git-stage-files.sh --head-sha {baseline.head_sha} --session {session}
    ```
-   The helper computes `(git diff --name-only {head_sha}; git ls-files --others --exclude-standard) | sort -u` and stages each survivor with per-file `git add` after the closed dotenv allowlist + `git check-ignore` filter. Per-file (not `git add -A`); the untracked branch is REQUIRED because `git diff` excludes untracked, so a new file apex created would otherwise never get committed. Filter rules are owned by the script (single source of truth) - do NOT re-implement them in this agent.
+   The helper computes `(git diff --name-only {head_sha}; git ls-files --others --exclude-standard) | sort -u` and stages each survivor with per-file `git add` after the closed dotenv allowlist + `git check-ignore` filter + cross-session filter (drops paths claimed by another active session's `*-main-scope.json` allowed_files). Per-file (not `git add -A`); the untracked branch is REQUIRED because `git diff` excludes untracked, so a new file apex created would otherwise never get committed. Filter rules are owned by the script (single source of truth) - do NOT re-implement them in this agent.
 3. Read `git diff --staged --stat` + `git diff --staged` for commit-message context.
 4. `git commit` with the derived message. NO push.
 

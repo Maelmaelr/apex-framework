@@ -66,13 +66,14 @@ p1.1b Polish: polish.md (inline; touched-by-apex INTERSECT scope)
 p1.2 Verify+fix: verify-fix.md -> verify-build.sh
   - if errors:
     - executor.md (cap 3) [main only]
-p1.3 Tail: detect-tail-mode.sh -> agents (parallel)
+p1.3 Tail: detect-tail-mode.sh -> agents (two-phase: parallel A, then git)
   - if economy:
-    - git.md
+    - phase B: git.md
   - if full:
-    - learn.md + documentation.md + git.md
+    - phase A (parallel): learn.md + documentation.md
+    - phase B: git.md
   - if teammate:
-    - documentation.md
+    - documentation.md (no git)
 p1.4 Self-reflect: reflect-traces.sh + reflector.md (fg, param=entryflow+p1) [main only]
 p1.5 Cleanup session: cleanup-session.sh [main only]
 p1.6 Inline summary: inline (reads hypothesis | {teammate-id}-task.md; removes hypothesis on success)
@@ -103,8 +104,9 @@ p2.2 Shutdown: p2-shutdown.md (inline; per-teammate)
 p2.3 Verify+fix: verify-fix.md -> verify-build.sh
   - if errors:
     - executor.md (cap 3)
-p2.4 Tail+shared docs: detect-tail-mode.sh -> agents (parallel)
-  - documentation.md owns first-write on planner's shared_files
+p2.4 Tail+shared docs: detect-tail-mode.sh -> agents (two-phase: parallel A, then git)
+  - phase A (parallel): learn.md + documentation.md (documentation owns first-write on planner's shared_files)
+  - phase B: git.md
 p2.5 Self-reflect: reflect-traces.sh + reflector.md (Haiku, fg, param=p2)
 p2.6 Cleanup session: cleanup-session.sh
 p2.7 Inline summary: inline (reads hypothesis; removes on success)
