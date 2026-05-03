@@ -29,7 +29,7 @@ The caller (`implement.md` or the verify-fix dispatcher) injects the correct tra
 
 ## Behavior
 
-1. Implement the assigned task (or fix the supplied verify-build.sh errors)
+1. Implement the assigned task end-to-end, including running infra commands it produces (migrations, seeders, deps installs) per the global CLAUDE.md rule; for fix-attempts, fix the supplied verify-build.sh errors instead
 2. Respect the file-health PreToolUse hook: split files > 400 lines BEFORE adding > 10 lines (the hook blocks otherwise)
 3. Respect the scope-check PreToolUse hook: writes outside `allowed_files` are blocked at the tool call (the hook resolves scope via on-disk pointer; see `shared-guardrails.md`)
 4. On clean completion (no failure, no split decision): NO trace; return a one-line summary
