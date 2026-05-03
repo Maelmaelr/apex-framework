@@ -26,6 +26,7 @@
 #   - skills/README.md                  (internal index; dev has its own public README at root)
 #   - skills/apex-eod/**                (private orchestration: chains private skills)
 #   - skills/apex-fix/**                (private orchestration)
+#   - skills/apex-git/**                (private orchestration: personal git wrapper)
 #   - skills/apex-init/**               (private orchestration)
 #   - skills/apex-file-health/**        (private orchestration)
 #   - skills/apex-lessons/**            (private orchestration: extract + analyze)
