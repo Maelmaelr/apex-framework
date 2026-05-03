@@ -40,6 +40,7 @@ The caller (`implement.md` or the verify-fix dispatcher) injects the correct tra
 Read `<project-root>/docs/project-context.md` ONLY when one of these holds:
 - The slice spans modules / packages
 - The slice introduces a new abstraction (new public symbol, component, endpoint, route)
+- The slice adds, removes, or renames an env var or config key (re-read the "Config Surface" section to enumerate parallel files - env templates, docker compose / prod compose, k8s manifests, deploy yaml, terraform vars - and update them in the same slice)
 - Findings flag an "unfamiliar area" or cross-cutting dependency the orchestrator did not pre-bias
 
 Skip the read for:
