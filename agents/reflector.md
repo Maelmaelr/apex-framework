@@ -38,7 +38,8 @@ Process the snapshot, NOT live files (p2.6 / admin-apex / lessons-analyze / less
 ## Inputs
 
 Apex phases (entryflow / entryflow+p1 / p2):
-- `.claude-tmp/apex-active/{session}.json` - reads `cc_session_id` (entryflow / p1.4) or `p2_cc_session_id` (p2.5) to locate TaskList at `~/.claude/todos/{id}-agent-{id}.json`
+- `<absolute project root>/.claude-tmp/apex-active/{session}.json` - reads `cc_session_id` (entryflow / p1.4) or `p2_cc_session_id` (p2.5) to locate TaskList at `~/.claude/todos/{id}-agent-{id}.json`. The caller (`skills/apex/reflect.md` spawn prompt) supplies the absolute path with project root pre-resolved via `pwd` - subagent CWD inheritance is unreliable so a relative `.claude-tmp/...` would silently miss when the subagent CWD ends up at `~/.claude` (where the agent file lives) instead of the project root, causing every `Read` to fail and every reflector run to fall through to SKIPPED-no-inputs (root cause of the 5616f4dd / 2026-05-03 incident and the broader run of 4-out-of-5 SKIPPED entryflow+p1 reflections in 2026-05-03T07-41-33Z-workflow-improvements.md).
+- `<absolute project root>/.claude-tmp/apex-active/{session}-hypothesis.json` - the hypothesis written at /apex Step 3 and preserved across p1.5 / p2.6 cleanup precisely for reflectors. ALWAYS present at p1.4 / p2.5. Used for hypothesis-vs-reality audit; carries `original_prompt`, `hypothesis`, `complexity_hint`, `alternatives`, `discovered_paths`. This is the canonical "richer reflection on the success-no-traces case" input - successful executor runs do not write trace files (executor only traces on failure or split per `skills/apex/implement.md`), so the snapshot file is the `[no source files...]` placeholder for most well-behaved sessions; the hypothesis + manifest pair carries the reflection signal in that case.
 - Latest `## {session} - {phase}-heuristics` block in `~/.claude/tmp/apex-workflow-improvements.md` (parse `novel_traces:` line for focus paths)
 - Trace files (snapshotted as above)
 - (p1.4 / p2.5 only) `git diff --stat {baseline.head_sha}` + `git ls-files --others --exclude-standard`
@@ -87,7 +88,19 @@ The `workflow-respected:` line is a step-respect audit: walk the per-phase spec 
 
 Exactly ONE append per invocation. Do not re-emit the block as a "verification" or "self-check" step - prior logs show two adjacent byte-identical blocks for the same {token}+{phase}+{timestamp} (root cause: agent emitted the structured output twice in a single tool-call sequence). The helper's fcntl.flock guarantees atomicity per-write, not per-invocation; the once-only contract is on the agent.
 
-**Empty-input gate (SKIPPED-no-inputs sentinel).** When BOTH (a) the snapshot file at `/tmp/{token}-{suffix}-snapshot.txt` is the literal `[no source files for {phase} / {token}]` placeholder written by `snapshot-traces.sh` AND (b) the manifest read at the path supplied by the caller fails (file missing or unparseable), emit a single sentinel line in place of the structured block:
+**Empty-input gate (SKIPPED-no-inputs sentinel).** Strict 2-AND contract; treat ambiguity as "emit structured block":
+
+(a) the snapshot file at `/tmp/{token}-{suffix}-snapshot.txt` exists AND its entire content equals the literal `[no source files for {phase} / {token}]` placeholder written by `snapshot-traces.sh` (any other content - including a single trace - disqualifies SKIPPED), AND
+
+(b) the manifest file at the path supplied by the caller cannot be Read OR can be Read but does not parse as JSON. A manifest that exists on disk and parses successfully DISQUALIFIES SKIPPED, regardless of how sparse its keys are. Sparse-content manifests (e.g., only `session` + `cc_session_id` populated) still carry enough signal for hypothesis-vs-reality + workflow-respected + token-reductions when paired with `{session}-hypothesis.json` and the per-phase TaskList - emit the structured block.
+
+When BOTH (a) and (b) hold, emit the sentinel via the dedicated helper script (do NOT compose the line in a heredoc - quoted-EOF preserves any agent-side `$(date ...)` literal verbatim, which has bitten the log multiple times - 5616f4dd 2026-05-03, 2026-05-02 lost-block precedent):
+
+```
+bash $HOME/.claude/skills/apex/scripts/emit-reflector-skipped.sh {token} {phase}
+```
+
+The helper resolves the timestamp via `date -u +%Y-%m-%dT%H:%M:%SZ` in bash (NOT in agent-composed text) and pipes through `append-with-lock.sh`. Output line shape:
 
 ```
 ## {token} - {phase} - SKIPPED-no-inputs - {timestamp}
@@ -95,7 +108,7 @@ Exactly ONE append per invocation. Do not re-emit the block as a "verification" 
 
 No `gaps:` / `fixes-observed:` / `improvements:` / `workflow-respected:` / `token-reductions:` lines. `/apex-improve.analyze.md` recognises this sentinel and drops it pre-cluster (zero-finding signal, not noise). Sterile structured blocks like the one observed for ec8f0f5e at 2026-05-02T08:47:22Z were the motivation; the contract avoids polluting cross-session pattern counts when there was nothing to reflect on. If only ONE of the two inputs is missing, still emit the structured block - hypothesis-vs-reality and cross-session pattern surfacing remains valuable on partial inputs.
 
-`{token}` is the session token for apex phases and the run token for admin-apex / lessons-analyze - same block shape, same log file, so `/apex-improve` consumes all phases uniformly. Substitute `{token}` / `{phase}` / `{timestamp}` with their resolved values before writing (compute `{timestamp}` via `date -u +%Y-%m-%dT%H:%M:%SZ`) -- never emit the literal `$(date ...)` subshell or template braces (root cause of the 2026-05-02 sentinel-with-unevaluated-subshell entries in apex-workflow-improvements.md).
+`{token}` is the session token for apex phases and the run token for admin-apex / lessons-analyze - same block shape, same log file, so `/apex-improve` consumes all phases uniformly. For STRUCTURED blocks (the heredoc path above), substitute `{token}` / `{phase}` / `{timestamp}` with their resolved values before writing (compute `{timestamp}` via `date -u +%Y-%m-%dT%H:%M:%SZ` in a bash variable BEFORE the heredoc, e.g. `ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)` then unquoted `<<EOF` so `$ts` expands - or pre-substitute the resolved string into the template) -- never emit the literal `$(date ...)` subshell or template braces.
 
 ## Failure mode
 

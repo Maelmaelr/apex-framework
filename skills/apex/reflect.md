@@ -42,16 +42,21 @@ Always exits 0; always appends a block (under `flock` via `append-with-lock.sh`)
 
 Foreground vs background per the table above (`run_in_background: true` for `entryflow`, default foreground for `entryflow+p1` / `p2`). One Agent tool call, model = haiku. When background-spawned (entryflow phase), the orchestrator MUST mark the corresponding task `completed` in the SAME response as the spawn - the reflector is a fire-and-forget telemetry signal, never a blocking dependency, and waiting for it soft-blocks p2.0a.
 
-Spawn-prompt template (substitute `{session}`, `{phase}`, `{snapshot_suffix}` per the table - `entryflow` | `p1` | `p2`):
+**Resolve project root before composing the prompt.** Run `pwd` (orchestrator CWD = project root by /apex contract) and capture the output as `{project_root}`. The Manifest + Hypothesis paths in the spawn prompt MUST be absolute - subagent CWD inheritance is unreliable (Haiku subagents have been observed to land at `~/.claude` where the agent file lives, NOT the project root), and the manifest sits at `<project>/.claude-tmp/apex-active/...` for apex hot path. A relative path silently misses, every Read fails, the reflector falls through to SKIPPED-no-inputs, and `workflow-respected` / `token-reductions` checks never reach the log. Fixed in 2026-05-04 after 4-out-of-5 SKIPPED entryflow+p1 reflections accumulated in the per-day archives.
+
+Spawn-prompt template (substitute `{session}`, `{phase}`, `{snapshot_suffix}` per the table - `entryflow` | `p1` | `p2` - and `{project_root}` per the resolution above):
 
 ```
 You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and follow it.
 
-Session:  {session}
-Phase:    {phase}             # entryflow | entryflow+p1 | p2
-Manifest: .claude-tmp/apex-active/{session}.json   # CWD-relative; CWD is the project root (subagent inherits orchestrator CWD; mirrors apex-lessons/reflect.md). If both this manifest read AND the snapshot show no inputs, follow the SKIPPED-no-inputs sentinel contract in agents/reflector.md Output.
-Snapshot: /tmp/{session}-{snapshot_suffix}-snapshot.txt
+Session:    {session}
+Phase:      {phase}             # entryflow | entryflow+p1 | p2
+Manifest:   {project_root}/.claude-tmp/apex-active/{session}.json          # absolute (orchestrator pwd-resolved)
+Hypothesis: {project_root}/.claude-tmp/apex-active/{session}-hypothesis.json  # absolute; preserved across p1.5 / p2.6 cleanup; carries original_prompt + hypothesis + complexity_hint + alternatives
+Snapshot:   /tmp/{session}-{snapshot_suffix}-snapshot.txt                  # absolute
 ```
+
+Manifest-readable + Hypothesis-readable -> structured block (gaps / fixes-observed / improvements / workflow-respected / token-reductions). Both unreadable AND snapshot is the literal `[no source files...]` placeholder -> SKIPPED-no-inputs sentinel via `bash $HOME/.claude/skills/apex/scripts/emit-reflector-skipped.sh {session} {phase}`. See agents/reflector.md "Empty-input gate" for the strict 2-AND contract.
 
 ## Fail-silent contract
 
