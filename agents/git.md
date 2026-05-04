@@ -17,7 +17,16 @@ Spec: `apex-core.md` p1.3 / p2.4 | `apex-core-overview.md` p1.3.
    ```
    The helper computes `(git diff --name-only {head_sha}; git ls-files --others --exclude-standard) | sort -u` and stages each survivor with per-file `git add` after the closed dotenv allowlist + `git check-ignore` filter + cross-session filter (drops paths claimed by another active session's `*-main-scope.json` allowed_files). Per-file (not `git add -A`); the untracked branch is REQUIRED because `git diff` excludes untracked, so a new file apex created would otherwise never get committed. Filter rules are owned by the script (single source of truth) - do NOT re-implement them in this agent.
 3. Read `git diff --staged --stat` + `git diff --staged` for commit-message context.
-4. `git commit` with the derived message, then `git push`. Push failure (no upstream, non-fast-forward) is logged to `~/.claude/tmp/git-agent-errors.log` per the fail-silent contract; do NOT auto-set-upstream or `--force`.
+4. **Commit and push in a SINGLE chained Bash call** - non-negotiable. Issue exactly ONE Bash tool call that contains both `git commit -m "..."` AND `&& git push` in the same command line. Do NOT issue commit and push as two separate Bash calls; the agent has demonstrably forgotten the push step in that shape (sessions where the transcript shows commit-only and zero `git push` invocations). Required form:
+
+   ```bash
+   git commit -m "$(cat <<'EOF'
+   <derived message>
+   EOF
+   )" && git push
+   ```
+
+   Push failure (no upstream, non-fast-forward) leaves `&&` short-circuiting - the commit is already in place; append the failure to `~/.claude/tmp/git-agent-errors.log` per the fail-silent contract. Do NOT auto-set-upstream, do NOT `--force`, do NOT retry. The chained shape is mandatory even when the commit message is short.
 
 The dotenv allowlist + `git check-ignore` are the only protection for `git add` of dotenv-shaped paths (`protect-env-hook.sh` covers `Edit`/`Write` but not Bash `git add`); the helper makes that filter deterministic instead of LLM-implemented.
 
