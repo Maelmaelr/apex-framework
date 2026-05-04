@@ -99,7 +99,6 @@ Tail produces no session-keyed artifacts of its own. Lessons are appended to `.c
 
 - Does NOT decide what to learn / what to document / what to commit - the agents do, with the baseline-pinned diff as input.
 - Does NOT consult `screened-{session}.json` / findings - tail is post-implementation, not implementation.
-- Does NOT push commits - `git.md` commits, never pushes (matches Git Safety policy in CLAUDE.md).
 - Does NOT extend scope - the agents inherit the orchestrator's scope-check pointer; cross-cutting writes are limited to the standard safety paths (docs/**, README* at any depth).
 - Does NOT write traces - tail agents are non-trace per `shared-guardrails.md`.
 
