@@ -18,13 +18,18 @@
 # runtime caches out of the index.
 #
 # Args:
-#   --run     <8-hex>           required
-#   --bump    patch|minor|none  required (decided by caller per SKILL.md task 9 bump rule)
-#   --message <one-liner>       required when bump != none OR commit will fire
-#   --body    <op-list>         required when bump != none OR commit will fire
+#   --run     <8-hex>                 required
+#   --bump    patch|minor|major|none  required (decided by caller per SKILL.md task 9 bump rule)
+#   --message <one-liner>             required when bump != none OR commit will fire
+#   --body    <op-list>               required when bump != none OR commit will fire
 #
-# Defensive validation: if --bump=none but {run}-applied-ops.json contains any
-# non-doc_only op, exit 1 (caught caller-side mistake; bump rule was misapplied).
+# Defensive validation against {run}-applied-ops.json (catches caller-side
+# bump-rule misapplication). Required tier per applied-op kinds:
+#   any of {rename, split, merge, retire, schema-remove, hook-remove}  -> major
+#   else any of {create, schema-add, hook-add}                          -> minor
+#   else (only edit ops, or empty)                                      -> patch
+# --bump must be at least the required tier; lower tier -> exit 1.
+# --bump=none with any applied op (regardless of doc_only) -> exit 1.
 #
 # Exit codes:
 #   0   commit created (caller proceeds to task 10)
@@ -65,13 +70,13 @@ if ! [[ "$RUN" =~ ^[0-9a-f]{8}$ ]]; then
   exit 1
 fi
 case "$BUMP" in
-  patch|minor|none) ;;
+  patch|minor|major|none) ;;
   "")
-    echo "admin-apex-finalize.sh: --bump is required (patch|minor|none)" >&2
+    echo "admin-apex-finalize.sh: --bump is required (patch|minor|major|none)" >&2
     exit 1
     ;;
   *)
-    echo "admin-apex-finalize.sh: invalid --bump value: $BUMP (expected patch|minor|none)" >&2
+    echo "admin-apex-finalize.sh: invalid --bump value: $BUMP (expected patch|minor|major|none)" >&2
     exit 1
     ;;
 esac
@@ -80,25 +85,50 @@ DIRTY="$ADMIN_ACTIVE/${RUN}-dirty-paths.txt"
 DOCS="$ADMIN_ACTIVE/${RUN}-docs-changed.txt"
 APPLIED="$ADMIN_ACTIVE/${RUN}-applied-ops.json"
 
-# Defensive validation: --bump=none must imply zero non-doc_only ops applied.
-# Catches caller-side mistake where bump rule was misapplied (any structural op
-# requires minor; any non-doc_only op forbids none).
-if [[ "$BUMP" == "none" && -s "$APPLIED" ]]; then
-  has_nondoc=$(python3 -c "
+# Defensive validation: --bump must match the tier required by the applied-ops
+# kinds. Catches caller-side mistake where bump rule was misapplied.
+#   any of {rename, split, merge, retire, schema-remove, hook-remove}  -> major
+#   else any of {create, schema-add, hook-add}                          -> minor
+#   else (only edit ops, or empty)                                      -> patch
+# --bump=none with any applied op (regardless of kind) -> rejected.
+# --bump < required tier -> rejected (e.g., --bump=patch with create op).
+# --bump > required tier is permitted (caller-elected over-bump is intentional).
+if [[ -s "$APPLIED" ]]; then
+  required=$(python3 -c "
 import json, sys
 try:
     ops = json.load(open(sys.argv[1], encoding='utf-8'))
 except Exception:
     sys.exit(0)
-if isinstance(ops, list):
-    for op in ops:
-        if isinstance(op, dict) and not op.get('doc_only', False):
-            print('1')
-            break
+if not isinstance(ops, list) or not ops:
+    sys.exit(0)
+MAJOR = {'rename', 'split', 'merge', 'retire', 'schema-remove', 'hook-remove'}
+MINOR = {'create', 'schema-add', 'hook-add'}
+tier = 'patch'
+for op in ops:
+    if not isinstance(op, dict):
+        continue
+    k = op.get('kind', '')
+    if k in MAJOR:
+        tier = 'major'
+        break
+    if k in MINOR and tier != 'major':
+        tier = 'minor'
+print(tier)
 " "$APPLIED" 2>/dev/null || true)
-  if [[ "$has_nondoc" == "1" ]]; then
-    echo "admin-apex-finalize.sh: --bump=none but $APPLIED contains non-doc_only ops (bump rule misapplied)" >&2
-    exit 1
+  if [[ -n "$required" ]]; then
+    if [[ "$BUMP" == "none" ]]; then
+      echo "admin-apex-finalize.sh: --bump=none but $APPLIED contains applied ops (required tier=$required)" >&2
+      exit 1
+    fi
+    rank_required=0
+    rank_chosen=0
+    case "$required" in patch) rank_required=1 ;; minor) rank_required=2 ;; major) rank_required=3 ;; esac
+    case "$BUMP"     in patch) rank_chosen=1   ;; minor) rank_chosen=2   ;; major) rank_chosen=3   ;; esac
+    if (( rank_chosen < rank_required )); then
+      echo "admin-apex-finalize.sh: --bump=$BUMP but applied ops require at least --bump=$required (bump rule misapplied)" >&2
+      exit 1
+    fi
   fi
 fi
 
@@ -115,11 +145,12 @@ if [[ "$BUMP" != "none" ]]; then
     exit 1
   fi
   # Compute expected post-bump value (mirrors _bump-version.sh: patch +1 on
-  # patch field; minor +1 on minor field, patch reset 0). Sibling-bump race
-  # detector: if a parallel finalize.sh advances WT VERSION between this point
-  # and _bump-version.sh below, WT_VERSION_POST will not match EXPECTED and we
-  # abort. The pre-check above catches HEAD drift; this check catches concurrent
-  # WT drift from a parallel sibling that targets the same starting VERSION.
+  # patch field; minor +1 on minor field, patch reset 0; major +1 on major
+  # field, minor and patch reset 0). Sibling-bump race detector: if a parallel
+  # finalize.sh advances WT VERSION between this point and _bump-version.sh
+  # below, WT_VERSION_POST will not match EXPECTED and we abort. The pre-check
+  # above catches HEAD drift; this check catches concurrent WT drift from a
+  # parallel sibling that targets the same starting VERSION.
   EXPECTED=$(python3 -c "
 import sys
 parts = sys.argv[1].split('.')
@@ -128,6 +159,10 @@ if sys.argv[2] == 'patch':
     pat += 1
 elif sys.argv[2] == 'minor':
     min_ += 1
+    pat = 0
+elif sys.argv[2] == 'major':
+    maj += 1
+    min_ = 0
     pat = 0
 print(f'{maj}.{min_}.{pat}')
 " "$WT_VERSION_PRE" "$BUMP" 2>/dev/null || true)

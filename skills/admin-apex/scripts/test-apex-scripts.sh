@@ -380,16 +380,16 @@ run_fixture "apex session-end-hook.sh manual --foreign" 0 session_end_foreign_cl
 run_fixture "admin-apex-finalize.sh missing-args" 1 \
   bash "$REPO_ROOT/skills/admin-apex/scripts/admin-apex-finalize.sh"
 
-# 6. admin-apex-finalize.sh: defensive validation - --bump=none with non-doc_only
+# 6. admin-apex-finalize.sh: defensive validation - --bump=none with any applied
 #    op in applied-ops.json must exit 1 (caller-side bump-rule misapplication).
 finalize_defensive_fixture() {
   mkdir -p .claude-tmp/admin-apex-active
-  printf '%s' '[{"op":"create","target":"foo","doc_only":false}]' \
+  printf '%s' '[{"kind":"create","target":"foo","doc_only":false}]' \
     > .claude-tmp/admin-apex-active/abcdef01-applied-ops.json
   bash "$REPO_ROOT/skills/admin-apex/scripts/admin-apex-finalize.sh" \
     --run abcdef01 --bump none
 }
-run_fixture "admin-apex-finalize.sh bump=none-with-nondoc-op" 1 finalize_defensive_fixture
+run_fixture "admin-apex-finalize.sh bump=none-with-applied-op" 1 finalize_defensive_fixture
 
 # 7. Entry-flow 7-10 script argv contracts. Each rejects missing/invalid args
 #    with the documented exit code; reflect-traces.sh stays fail-silent (exit 0).

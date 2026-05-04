@@ -92,9 +92,10 @@ Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.t
 ## Task 9: VERSION + commit
 
 Bump rule (only applies when evolve ran in tasks 5-8 and produced applied ops):
-- `patch` (0.2.1 -> 0.2.2): every applied op has `doc_only: true` (regardless of kind)
-- `minor` (0.2.1 -> 0.3.0): any structural-mutation kind (create/rename/split/merge/retire, schema-add/schema-remove, hook-add/hook-remove) OR any `edit` op with `doc_only: false` (touches skills/agents/scripts/schemas/settings)
-- no bump: soft-skip outcome (only private-tracked-root deltas, no evolve ops) OR nothing staged (no commit)
+- `patch` (0.2.1 -> 0.2.2): tweaks. Only `edit` ops applied (in-place changes within existing files; `doc_only` does not affect tier).
+- `minor` (0.2.1 -> 0.3.0): new features. Any additive kind: `create` / `schema-add` / `hook-add`.
+- `major` (0.2.1 -> 1.0.0): major evolution. Any restructuring/removal kind: `rename` / `split` / `merge` / `retire` / `schema-remove` / `hook-remove`.
+- Mixed plans pick the highest matched tier. `none`: soft-skip outcome (only private-tracked-root deltas, no evolve ops) OR nothing staged (no commit).
 
 ```
 bash skills/admin-apex/scripts/admin-apex-finalize.sh \
@@ -143,6 +144,6 @@ After reflector returns, invoke `bash skills/admin-apex/scripts/cleanup-run.sh -
 
 ## Out of scope
 
-Reflector log consolidation (owned by `/apex-improve`, called by `/apex-eod` step 3); weekly tech-watch fetching (owned by `/apex-tech-watch`); project app code/build/lint/tests; major version bumps; full reconciliation between private and public repos (task 10 mirrors only this run's dirty paths, not the whole tree).
+Reflector log consolidation (owned by `/apex-improve`, called by `/apex-eod` step 3); weekly tech-watch fetching (owned by `/apex-tech-watch`); project app code/build/lint/tests; full reconciliation between private and public repos (task 10 mirrors only this run's dirty paths, not the whole tree).
 
 See `audit.md`, `evolve.md`, `sync-docs.md` for per-task contracts; `schemas/inventory.schema.json` + `schemas/evolve-plan.schema.json` for artifact shapes; `skills/apex/shared-guardrails.md` for the broader apex conventions admin-apex follows.
