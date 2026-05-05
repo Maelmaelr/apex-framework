@@ -48,16 +48,11 @@
 #                             messages of all private commits in the range, oldest
 #                             first. Single-commit default preserves byte-identical
 #                             behavior with the prior `git log -1 --pretty=%B` form.
-#   APEX_MIRROR_INCLUDE_PRE_DIRTY
-#                             if set non-empty, additionally include pre-dirty
-#                             top-level spec docs (apex-core.md, apex-core-overview.md)
-#                             whose private-vs-public content differs - even when
-#                             they are not in {run}-dirty-paths.txt. Reconciles
-#                             spec-doc-only commits that landed outside an admin-apex
-#                             run (where the per-run dirty filter would otherwise
-#                             skip them). Differs are dedup-merged into the existing
-#                             paths set and flow through the same allowlist + copy
-#                             logic as dirty-paths entries.
+# Pre-dirty spec-doc reconcile: top-level allowlisted spec docs (apex-core.md,
+# apex-core-overview.md) are always swept and dedup-merged into the path set
+# when their private-vs-public content differs - even when not listed in
+# {run}-dirty-paths.txt. Covers spec-doc commits that landed outside an
+# admin-apex run.
 #
 # Exit codes:
 #   0  mirrored + pushed (or nothing-to-do)
@@ -98,26 +93,23 @@ while IFS= read -r line; do
   paths+=("$line")
 done < <(cat "$DIRTY" "$DOCS" 2>/dev/null | awk 'NF' | sort -u)
 
-# Opt-in: include pre-dirty top-level spec docs whose private-vs-public
-# content differs. Covers spec-doc commits that landed outside an admin-apex
-# run (where {run}-dirty-paths.txt would not list them).
-if [[ -n "${APEX_MIRROR_INCLUDE_PRE_DIRTY:-}" ]]; then
-  for sp in apex-core.md apex-core-overview.md; do
-    src="$PRIVATE/$sp"
-    dst="$PUBLIC/$sp"
-    [[ -f "$src" ]] || continue
-    if [[ ! -f "$dst" ]] || ! cmp -s "$src" "$dst"; then
-      already=0
-      for ep in ${paths[@]+"${paths[@]}"}; do
-        if [[ "$ep" == "$sp" ]]; then already=1; break; fi
-      done
-      if [[ $already -eq 0 ]]; then
-        paths+=("$sp")
-        echo "include (pre-dirty drift): $sp"
-      fi
+# Always sweep top-level spec docs and include any with private-vs-public
+# drift. Covers spec-doc commits that landed outside an admin-apex run.
+for sp in apex-core.md apex-core-overview.md; do
+  src="$PRIVATE/$sp"
+  dst="$PUBLIC/$sp"
+  [[ -f "$src" ]] || continue
+  if [[ ! -f "$dst" ]] || ! cmp -s "$src" "$dst"; then
+    already=0
+    for ep in ${paths[@]+"${paths[@]}"}; do
+      if [[ "$ep" == "$sp" ]]; then already=1; break; fi
+    done
+    if [[ $already -eq 0 ]]; then
+      paths+=("$sp")
+      echo "include (pre-dirty drift): $sp"
     fi
-  done
-fi
+  fi
+done
 
 mirrored=()
 # `${arr[@]+"${arr[@]}"}` keeps `set -u` happy on macOS bash 3.2 when arr is
