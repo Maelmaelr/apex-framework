@@ -6,8 +6,8 @@
 # Cleans (idempotent; exit 0 on partial cleanup with warnings to stderr):
 #   - .claude-tmp/admin-apex-active/{run}-* EXCEPT {run}-deferred-findings.json
 #     ({run}-deferred-findings.json is apex-improve's session-spanning artifact
-#     per skills/apex-improve/SKILL.md "Output of Phase 1" - kept for a future
-#     run.)
+#     per skills/apex-improve/analyze.md "Output" (Step 2 cap-12 overflow) -
+#     kept for a future run.)
 #   - .claude-tmp/admin-apex-active/{run}.json (the manifest itself)
 #   - /tmp/{run}-* (apex-improve hygiene rename target; forward-compat)
 #

@@ -1,6 +1,6 @@
 ---
 name: apply
-description: apex-improve Step 4 - Phase 3 op application. Path A applies semantic / replace ops via inline Edit (preferred). Path B delegates structural ops to admin-apex/evolve.md task 6. Appends to {run}-applied-ops.json + {run}-dirty-paths.txt with actual delta_lines per op.
+description: apex-improve Step 4 - op application. Step 4a applies semantic / replace ops via inline Edit (preferred). Step 4b delegates structural ops to admin-apex/evolve.md task 6. Appends to {run}-applied-ops.json + {run}-dirty-paths.txt with actual delta_lines per op.
 ---
 
 # apply (apex-improve Step 4)
@@ -16,7 +16,7 @@ Spec: `skills/apex-improve/SKILL.md` Step 4.
 - `.claude-tmp/admin-apex-active/{run}-applied-ops.json` - JSON array of applied ops (verbatim from plan) with **actual** `delta_lines` field per op (computed post-edit)
 - `.claude-tmp/admin-apex-active/{run}-dirty-paths.txt` - one repo-relative path per line; appended after each successful op
 
-## Path A: Semantic / replace ops -- inline Edit
+## Step 4a: Semantic / replace ops - inline Edit
 
 For each `op.kind == edit` operation:
 
@@ -30,7 +30,7 @@ For each `op.kind == edit` operation:
 
 If an Edit tool call fails (string not found, ambiguous match), surface AskUserQuestion (header: "Edit failure on op {N}"; options: `retry-with-context | skip-finding | abort-run`; dismiss = `abort-run`). Never silently move on.
 
-## Path B: Structural ops -- delegate to admin-apex/evolve.md
+## Step 4b: Structural ops - delegate to admin-apex/evolve.md
 
 For any operation in `{create, rename, split, merge, retire, schema-add, schema-remove, hook-add, hook-remove}`:
 
@@ -46,15 +46,15 @@ Skip the admin-apex audit (tasks 2-4) entirely - the plan came from session-refl
 
 ## File-health gate
 
-If a Path A semantic edit would push the target past 400 lines (or 150 for `skills/*/SKILL.md` and `agents/*.md`), the file-health PreToolUse hook fires. apex-improve MUST AskUserQuestion (header: "file-health gate"; options: `split-now | reduce-edit | abort`; dismiss = `abort`). NEVER bypass the hook - same gate every apex skill respects.
+If a Step 4a semantic edit would push the target past 400 lines (or 150 for `skills/*/SKILL.md` and `agents/*.md`), the file-health PreToolUse hook fires. apex-improve MUST AskUserQuestion (header: "file-health gate"; options: `split-now | reduce-edit | abort`; dismiss = `abort`). NEVER bypass the hook - same gate every apex skill respects.
 
 ## Cap-reached / no-progress abort
 
-If after iterating every op in the plan, **zero** ops were applied (every Path A Edit failed AND every Path B structural op hit drift -> rollback / restart), still proceed to Step 5 (archive + truncate + stamp + minimal report) and skip Steps 7-8. Signals were *seen* by analyze + plan - the failure was in apply, not the signal track - so consumed inputs reset normally; deferred findings live on in `{run}-deferred-findings.json` (preserved across SessionEnd by `cleanup-run.sh`) for the next run. Exit message: `apex-improve: 0 ops applied; consumed signals archived, deferred preserved`.
+If after iterating every op in the plan, **zero** ops were applied (every Step 4a Edit failed AND every Step 4b structural op hit drift -> rollback / restart), still proceed to Step 5 (archive + truncate + stamp + minimal report) and skip Steps 7-8. Signals were *seen* by analyze + plan - the failure was in apply, not the signal track - so consumed inputs reset normally; deferred findings live on in `{run}-deferred-findings.json` (preserved across SessionEnd by `cleanup-run.sh`) for the next run. Exit message: `apex-improve: 0 ops applied; consumed signals archived, deferred preserved`.
 
 ## What this step does NOT do
 
-- Does NOT commit or push (Steps 7-8 own commit + mirror + push in standalone mode via `sync-git.md`; under apex-eod, the subagent prompt suppresses 7-8 and apex-eod step 5 commits inline). Step 5 here is just archive + version-stamp cleanup, not git.
+- Does NOT commit or push (Steps 7-8 own commit + mirror + push in standalone mode via `sync-git.md`; under apex-eod, the subagent prompt suppresses 7-8 and apex-eod step 4 commits inline). Step 5 here is just archive + version-stamp cleanup, not git.
 - Does NOT mirror to public repo (Step 8 / `sync-git.md` does).
 - Does NOT decide on its own that a structural op should be downgraded to semantic - that decision lives in `plan.md`.
 - Does NOT bypass the file-health hook to make an oversized edit fit (Principle 3 again: if it doesn't fit, the finding belongs elsewhere).

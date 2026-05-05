@@ -1,6 +1,6 @@
 ---
 name: analyze
-description: apex-improve Step 2 - Phase 1 signal extraction. Reads workflow-improvements.md / tech-updates.md / apex-claude-code-version.txt, extracts findings per source-specific rules (dedup, cluster, severity), caps at 12, writes {run}-findings.json (+ {run}-deferred-findings.json for overflow).
+description: apex-improve Step 2 - signal extraction. Reads workflow-improvements.md / tech-updates.md / apex-claude-code-version.txt, extracts findings per source-specific rules (dedup, cluster, severity), caps at 12, writes {run}-findings.json (+ {run}-deferred-findings.json for overflow).
 ---
 
 # analyze (apex-improve Step 2)

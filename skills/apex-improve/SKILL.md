@@ -9,7 +9,7 @@ triggers:
 
 Self-improvement engine. Reads accumulated session-reflection signals + weekly tech-watch updates, proposes edits to the apex framework, applies semantic adjustments inline (preferred), delegates structural mutations to `~/.claude/skills/admin-apex/evolve.md`. Out-of-band - not part of /apex hot path; no project app code, no project lint/build.
 
-Shares `.claude-tmp/admin-apex-active/` with admin-apex (8-hex token collisions negligible); Step 4 structural ops produce the same `{run}-applied-ops.json` + `{run}-dirty-paths.txt` shape admin-apex expects. **Standalone runs sync git at session end** (Steps 7+8: VERSION bump + commit + mirror to public repo + push both, mirroring admin-apex tasks 9+10). **Subagent runs under apex-eod skip Steps 7+8** (apex-eod step 5 owns the inline commit; the subagent prompt explicitly instructs the skill to skip).
+Shares `.claude-tmp/admin-apex-active/` with admin-apex (8-hex token collisions negligible); Step 4 structural ops produce the same `{run}-applied-ops.json` + `{run}-dirty-paths.txt` shape admin-apex expects. **Standalone runs sync git at session end** (Steps 7+8: VERSION bump + commit + mirror to public repo + push both, mirroring admin-apex tasks 9+10). **Subagent runs under apex-eod skip Steps 7+8** (apex-eod step 4 owns the inline commit; the subagent prompt explicitly instructs the skill to skip).
 
 ## Guiding principle (Principle 3)
 
@@ -40,10 +40,10 @@ If all three signals empty / current at Step 2 -> exit `apex-improve: no signals
 |------|-------|-------|
 | 0 | this skill | TaskCreate the chain |
 | 1 | this skill | Mint run + manifest (inline) |
-| 2 | `analyze.md` | Phase 1: signal extraction; produces `{run}-findings.json` |
-| 3 | `plan.md` | Phase 2: planning + schema validation; produces `{run}-evolve-plan.json` |
-| 4 | `apply.md` | Phase 3: apply ops (3a semantic Edit, 3b delegate to admin-apex/evolve.md) |
-| 5-6 | `finalize.md` | Cleanup + version stamp + structured report |
+| 2 | `analyze.md` | signal extraction; produces `{run}-findings.json` |
+| 3 | `plan.md` | planning + schema validation; produces `{run}-evolve-plan.json` |
+| 4 | `apply.md` | apply ops (4a semantic Edit, 4b delegate to admin-apex/evolve.md) |
+| 5-6 | `finalize.md` | Polish + cleanup + version stamp + structured report |
 | 7-8 | `sync-git.md` | VERSION + commit + mirror + push (standalone-mode only; mirrors admin-apex tasks 9+10) |
 | 9 | this skill | Lessons sweep: spawn `/apex-lessons` if `.claude/lessons.md` exists (standalone-mode only) |
 
@@ -54,7 +54,7 @@ If all three signals empty / current at Step 2 -> exit `apex-improve: no signals
 2. Analyze signals              - analyze.md (early-exit on no signals)
 3. Plan ops                     - plan.md
 4. Apply ops                    - apply.md
-5-6. Cleanup + stamp + Report   - finalize.md
+5-6. Polish + cleanup + stamp + Report - finalize.md
 7. VERSION + commit             - sync-git.md (standalone only)
 8. Mirror + push both           - sync-git.md (standalone only)
 9. Lessons sweep                - inline (standalone only; pre-flight `.claude/lessons.md` exists)
@@ -129,11 +129,11 @@ When `apex-eod` step 3 runs apex-improve as a subagent, the prompt template is:
 ```
 ASCII only. No tables, no diagrams. Read and follow all instructions in
 ~/.claude/skills/apex-improve/SKILL.md. Execute every step. You are running
-as a subagent under apex-eod - do NOT commit or push (apex-eod step 5
+as a subagent under apex-eod - do NOT commit or push (apex-eod step 4
 owns the inline commit). Report the Step 6 summary verbatim.
 ```
 
-The "do NOT commit or push" line is the explicit signal that suppresses Steps 7+8 AND Step 9 (apex-eod step 4 owns lessons-analyze separately). apex-eod step 5 remains the only commit driver in EOD context; standalone `/apex-improve` runs execute Steps 7+8 (mirrors admin-apex tasks 9+10) and Step 9 (lessons sweep).
+The "do NOT commit or push" line is the explicit signal that suppresses Steps 7+8 AND Step 9 (apex-eod step 2 owns lessons-analyze separately). apex-eod step 4 remains the only commit driver in EOD context; standalone `/apex-improve` runs execute Steps 7+8 (mirrors admin-apex tasks 9+10) and Step 9 (lessons sweep).
 
 ## What this skill does NOT do
 

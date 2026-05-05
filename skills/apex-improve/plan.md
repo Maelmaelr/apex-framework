@@ -1,6 +1,6 @@
 ---
 name: plan
-description: apex-improve Step 3 - Phase 2 op planning. Translates {run}-findings.json into an evolve-plan (smallest op-class per finding, Principle 3 promotion rules), validates against admin-apex/schemas/evolve-plan.schema.json, writes {run}-evolve-plan.json.
+description: apex-improve Step 3 - op planning. Translates {run}-findings.json into an evolve-plan (smallest op-class per finding, Principle 3 promotion rules), validates against admin-apex/schemas/evolve-plan.schema.json, writes {run}-evolve-plan.json.
 ---
 
 # plan (apex-improve Step 3)

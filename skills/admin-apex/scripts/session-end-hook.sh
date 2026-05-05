@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # SessionEnd hook for admin-apex / apex-improve runs.
 # Spec: skills/admin-apex/SKILL.md (per-run lifecycle bound to cc_session_id) +
-#       skills/apex-improve/SKILL.md "Step 0: Mint run token + workspace".
+#       skills/apex-improve/SKILL.md "Step 1: Mint run + manifest".
 #
 # Reads SessionEnd hook event JSON from stdin, extracts session_id, iterates
 # .claude-tmp/admin-apex-active/*.json manifests, invokes cleanup-run.sh for
