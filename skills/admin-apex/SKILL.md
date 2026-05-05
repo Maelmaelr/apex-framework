@@ -118,7 +118,7 @@ bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"
 
 See `scripts/mirror-to-dev.sh:13-54` for allowlist, path mapping, and exit codes (3-7). On success: proceed to task 11 (reflector); cleanup is deferred until after task 11 returns. On failure: leave artifacts; surface the script's exit code to the user; skip task 11 (no successful run to reflect on).
 
-To inspect without pushing during development: `APEX_MIRROR_NO_PUSH=1 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"`.
+Env knobs: `APEX_MIRROR_NO_PUSH=1` skips both pushes (commit-only inspect). `APEX_MIRROR_INCLUDE_PRE_DIRTY=1` opt-in adds top-level spec docs (apex-core.md, apex-core-overview.md) whose private-vs-public content differs but were not in `{run}-dirty-paths.txt` - reconciles spec-doc commits that landed outside an admin-apex run.
 
 ## Task 11: Self-reflect
 
