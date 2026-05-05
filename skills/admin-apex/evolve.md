@@ -87,7 +87,7 @@ After each successful op, append the op (verbatim from the plan) to `.claude-tmp
 
 ## Mid-flight drift example
 
-Task 6 op 3 expects `skills/apex/discover.md`. Re-snapshot at op 3 shows `discover.md` is gone (a sibling /apex session moved it). Surface AskUserQuestion. `restart` -> SKILL re-enters task 3; `commit-partial` -> jump to task 7 with ops 1-2 only; `rollback` -> `git restore` on `{run}-dirty-paths.txt`.
+Task 6 op 3 expects `agents/discoverer.md`. Re-snapshot at op 3 shows `discoverer.md` is gone (a sibling /apex session moved it). Surface AskUserQuestion. `restart` -> SKILL re-enters task 3; `commit-partial` -> jump to task 7 with ops 1-2 only; `rollback` -> `git restore` on `{run}-dirty-paths.txt`.
 
 ## What this skill does NOT do
 

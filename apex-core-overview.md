@@ -8,11 +8,11 @@ Legend: `inline` = main-orchestrator inline prompt | `skill` = `~/.claude/skills
 
 ## Tiers
 
-| Tier     | Decided at | Effect                                                                       |
-|----------|------------|------------------------------------------------------------------------------|
-| trivial  | step 3     | step 3.1 inline edit -> jump to 14. Skips 4-13.                              |
-| economy  | step 7     | step 8 executors = sonnet; step 11 learn skipped. All other steps run.       |
-| standard | step 7     | step 8 executors = main session model; full tail.                            |
+| Tier     | Decided at | Effect                                                                 |
+| -------- | ---------- | ---------------------------------------------------------------------- |
+| trivial  | step 3     | step 3.1 inline edit -> jump to 14. Skips 4-13.                        |
+| economy  | step 7     | step 8 executors = sonnet; step 11 learn skipped. All other steps run. |
+| standard | step 7     | step 8 executors = main session model; full tail.                      |
 
 ---
 
@@ -44,13 +44,13 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - project-context.md cached from step 1
    - tolerate empty output (no lessons-index.md = silent skip)
 
-6. Discovery: discover.md
+6. Discovery: agents/discoverer.md (Sonnet; spawn-prompt carries seeds + hypothesis + session/cc_session_id; subagents do NOT inherit working memory)
    seeds: prompt regex + hypothesis.discovered_paths + lessons paths + project-context paths
    cascade (stop at lowest non-empty bounded set):
      a. LSP find-references / definition (when seeds name a symbol; TS-only today)
      b. Glob sibling-pattern expansion (routing/registry/index splits)
      c. Grep keyword search (capped ~150 lines)
-     d. Screener LLM gate: screener.md (single Sonnet call; always fires when cascade reaches this layer)
+     d. Screener inner subagent: agents/screener.md (single Sonnet call; spawned by discoverer.md; always fires when cascade reaches this layer)
    output: {session}-main-scope.json
    write scope-check pointer: .claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt
 
@@ -68,7 +68,8 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - executor model: sonnet if economy, main session model if standard
    - dispatch-only: orchestrator MUST NOT inline Edit/Write/MultiEdit/NotebookEdit slice files at step 8
 
-9. Polish: inline (touched INTERSECT scope)
+9. Polish: agents/polish.md (Sonnet; spawn-prompt carries scope path + baseline.head_sha + lessons hits; subagents do NOT inherit working memory)
+   - touched INTERSECT scope
    - staleness / inconsistency / unused check
    - lessons context advisory
 
@@ -80,10 +81,10 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - standard: parallel(documentation.md, learn.md)
     - economy: documentation.md only (learn skipped)
 
-12. VERSION bump + git sync: bump-version.sh -> single chained git command
-    - read <project-root>/VERSION (vX.Y.Z); missing = silent skip
-    - inline classify diff -> minor | patch (never major; major is user-set)
-    - increment + reset patch=0 on minor
+12. VERSION bump + git sync: agents/git-sync.md (Haiku; spawn-prompt carries session + baseline.head_sha + version_path; subagents do NOT inherit working memory)
+    - read <project-root>/VERSION (vX.Y.Z); missing = silent skip the bump (still commit/push)
+    - agent classifies diff -> minor | patch (never major; major is user-set)
+    - bump-version.sh increments matching segment + resets patch=0 on minor
     - git-stage-files.sh (change-set + pre-dirty/dotenv/check-ignore/cross-session filters + per-file add) && git commit -m "<freeform>" && git push (one chain)
 
 13. Self-reflect: reflect-traces.sh + reflector.md (foreground)
@@ -104,6 +105,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 ## Mid-flow abort cleanup
 
 Any orchestrator exit bypassing step 14 runs `session-end-hook.sh {session}` inline. Triggers:
+
 - AskUserQuestion-abort at step 1 (no manifest yet -> skip session-end-hook)
 - AskUserQuestion-abort at step 2 active-detected (no manifest written for this session -> skip)
 - Step 6 cascade-empty (abort, or proceed-with-discovered-or-prompt-paths but zero validated)
@@ -115,21 +117,21 @@ Any orchestrator exit bypassing step 14 runs `session-end-hook.sh {session}` inl
 
 ## Skip matrix
 
-| Step | trivial | economy | standard |
-|------|---------|---------|----------|
-| 1    | run     | run     | run      |
-| 2    | run     | run     | run      |
-| 3    | run     | run     | run      |
-| 3.1  | run     | -       | -        |
-| 4    | skip    | run     | run      |
-| 5    | skip    | run     | run      |
-| 6    | skip    | run     | run      |
-| 7    | skip    | run     | run      |
-| 8    | skip    | run (sonnet) | run (main) |
-| 9    | skip    | run     | run      |
-| 10   | skip    | run     | run      |
+| Step | trivial | economy        | standard   |
+| ---- | ------- | -------------- | ---------- |
+| 1    | run     | run            | run        |
+| 2    | run     | run            | run        |
+| 3    | run     | run            | run        |
+| 3.1  | run     | -              | -          |
+| 4    | skip    | run            | run        |
+| 5    | skip    | run            | run        |
+| 6    | skip    | run            | run        |
+| 7    | skip    | run            | run        |
+| 8    | skip    | run (sonnet)   | run (main) |
+| 9    | skip    | run            | run        |
+| 10   | skip    | run            | run        |
 | 11   | skip    | run (no learn) | run (full) |
-| 12   | skip    | run     | run      |
-| 13   | skip    | run     | run      |
-| 14   | run     | run     | run      |
-| 15   | run     | run     | run      |
+| 12   | skip    | run            | run        |
+| 13   | skip    | run            | run        |
+| 14   | run     | run            | run        |
+| 15   | run     | run            | run        |

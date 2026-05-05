@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "main-scope.schema.json",
   "title": "{session}-main-scope.json",
-  "description": "Main scope (allowed_files = discovery-confirmed files + standard safety paths). Single source of truth for the scope-check hook. Producers (exactly one fires per session): step 3.1 trivial inline Write, step 6 discover.md (writes after the screener gate). See apex-core.md Conventions / Scope write producers.",
+  "description": "Main scope (allowed_files = discovery-confirmed files + standard safety paths). Single source of truth for the scope-check hook. Producers (exactly one fires per session): step 3.1 trivial inline Write, step 6 agents/discoverer.md (writes after the screener gate). See apex-core.md Conventions / Scope write producers.",
   "type": "object",
   "required": ["session", "allowed_files"],
   "properties": {
@@ -12,7 +12,7 @@
       "items": { "type": "string" },
       "description": "Repo-relative paths; standard safety paths from apex-core.md Conventions are implicit at the hook layer and need not be listed here"
     },
-    "produced_by": { "enum": ["trivial", "discover"] },
+    "produced_by": { "enum": ["trivial", "discoverer"] },
     "produced_at": { "type": "string", "format": "date-time" }
   }
 }

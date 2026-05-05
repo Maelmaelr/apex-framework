@@ -13,13 +13,13 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
 ## Conventions
 
 - **Standard safety paths** (always allowed in any scope artifact): `.claude-tmp/`, `~/.claude/tmp/`, `/tmp/{session}-*`, project `docs/**`, and any `README*` file at any depth. The set is closed. `.env*` and `.git/` are NEVER safety paths regardless of scope contents.
-- **Project context** (architecture entry point): `<project-root>/docs/project-context.md`. Read at step 1 (best-effort; absent = silent skip). Cached for downstream steps via working memory; consumers re-read directly when their work requires it.
+- **Project context** (architecture entry point): `<project-root>/docs/project-context.md`. Read at step 1 (best-effort; absent = silent skip; cap read at ~200 lines). Cached for downstream steps via working memory; consumers re-read directly when their work requires it.
 - **Project lessons paths**: `<project-root>/.claude/lessons-index.md` (curated index; consumed by step 5 `grep-lessons.sh`), `<project-root>/.claude/lessons.md` (curated body), `<project-root>/.claude/lessons-archive.md` (older / superseded). `learn.md` (step 11) appends novel patterns to `.claude-tmp/lessons-tmp.md`; curation is out of scope for /apex.
 - **Session token format**: 8-char lowercase hex (short guid generated at step 2 via `openssl rand -hex 4`).
 - **cc_session_id resolution**: Claude Code does NOT export the active session id as a bash env var. Every apex script that needs `cc_session_id` resolves through `scripts/get-cc-session-id.sh` (env-var fast path then most-recent-jsonl fallback at `~/.claude/projects/<encoded-cwd>/`, where `<encoded-cwd> = pwd | tr '/.' '--'`). Step 2 invokes `create-session.sh --cc-session-id "$(bash scripts/get-cc-session-id.sh)"`.
 - **JSON Schema validation helpers**: `scripts/_validate.py` (python module - `producer_validate(data, schema_name)` raises `ValidationError`; `consumer_load(path, schema_name)` returns `None` on missing/invalid; schema dir resolved via `APEX_SCHEMA_DIR` env var if set, otherwise defaults to `skills/apex/schemas/` relative to the module) and `scripts/validate-json.sh <schema-name> <json-path>`. Producer scripts validate before write; orchestrator inline-LLM producers (steps 4, 7) validate immediately after `Write`. Apex hot path falls back to JSON-parse-only when `jsonschema` is not importable (one-line stderr warning).
 - **Session manifest schema** (`.claude-tmp/apex-active/{session}.json`): `{session, pid, cc_session_id}`. `pid` is the OS process id of the live claude main process - resolved by `scripts/find-claude-pid.sh` (walks up the process tree from the script's `$$` until a process with `comm` basename `claude` is found). `cc_session_id` is the Claude Code session id captured at step 2.
-- **Scope write producers** (single source of truth for `{session}-main-scope.json`, exactly one fires per session): trivial path -> orchestrator inline `Write` at step 3.1; non-trivial path -> `discover.md` at step 6.
+- **Scope write producers** (single source of truth for `{session}-main-scope.json`, exactly one fires per session): trivial path -> orchestrator inline `Write` at step 3.1; non-trivial path -> `agents/discoverer.md` at step 6.
 - **Scope-check pointer**: written immediately after each scope write at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single-line absolute path to the scope JSON). The PreToolUse hook reads this pointer to gate `Edit` / `Write` / `MultiEdit` / `NotebookEdit`.
 - **Trace path schema**: `.claude-tmp/apex-active/{session}-traces/{phase}/{agent}[-{disambiguator}].md` where `{phase}` is `entry` (steps 1-7), `execute` (step 8), `verify` (step 10), or `tail` (step 11). `{disambiguator}` is optional (task-id, attempt-N).
 - **scope-check hook** (`skills/apex/scripts/scope-check-hook.sh`): PreToolUse on `Edit` / `Write` / `MultiEdit` / `NotebookEdit`. Bash file operations (`sed -i`, redirection, `cp`, `mv`, etc.) are NOT gated by the hook; subagent and skill prompts must restrict file modifications to the hook-gated tools (convention-enforced at the prompt layer). Resolves the active scope file via on-disk pointer (env-var indirection rejected: Claude Code's Bash tool runs each invocation in a fresh subshell). The hook extracts `session_id` from its stdin event JSON and globs `.claude-tmp/apex-active/*-scopes/{session_id}.txt` (any apex `{session}` matches; in practice exactly one matches the calling session_id). When no pointer file matches, the hook is pass-through.
@@ -35,7 +35,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
    - inline task prompt
      - analyzes prompt
      - AskUserQuestion if ambiguous; abort = clean exit (no manifest yet)
-     - reads `<project-root>/docs/project-context.md` if present (best-effort; absent = silent skip)
+     - reads `<project-root>/docs/project-context.md` if present (best-effort; absent = silent skip; cap read at ~200 lines)
 
 2. Create session manifest | Blocked by #1
    - script `scripts/create-session.sh --cc-session-id "$(bash scripts/get-cc-session-id.sh)"`
@@ -58,7 +58,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
      - emits `hypothesis` (1 - 2 sentence working interpretation; not a plan, not a task list)
      - emits `complexity_hint: low|medium|high` (advisory; consumed by step 7 economy classifier as one signal)
      - emits `alternatives: [{interpretation, status: kept|rejected, reason}]` - 1 - 3 narrower / broader scope readings, each a structured anti-bias check. minItems: 1 schema-required.
-     - emits `discovered_paths: [<paths>]` (optional) - validated repo-relative paths captured via bounded inline `Glob` / `Grep` / `Read` (cap ~5 calls) when the prompt is conceptual. Persist only paths that exist on disk. Empty / absent when the prompt itself names paths or is too abstract.
+     - emits `discovered_paths: [<paths>]` (optional) - when `original_prompt` has no path tokens AND `complexity_hint != "low"`, spawn a small Explore subagent (`Agent(subagent_type: "Explore")`) to gather candidate repo-relative paths; the subagent returns ONLY paths that exist on disk. Empty / absent when the prompt itself names paths, when complexity is low, or when the prompt is too abstract for the Explore subagent to anchor.
      - writes `.claude-tmp/apex-active/{session}-hypothesis.json`; producer-validates via `bash scripts/validate-json.sh hypothesis.schema.json <path>`. On validation failure: abort with explicit error.
 
 5. Load lessons + project docs | Blocked by #4
@@ -69,8 +69,8 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
    - working memory: lessons hits + matched paths + project context propagate to step 6 (discovery seeds) and steps 8 / 9 / 10 / 11 (advisory context for executor / polish / verify-fix / documentation / learn).
 
 6. Discovery | Blocked by #5
-   - skill `~/.claude/skills/apex/discover.md`
-   - **seeds** (cheap, pre-paid in working memory):
+   - agent `~/.claude/agents/discoverer.md` (Sonnet; subagents do NOT inherit working memory - orchestrator propagates seeds + hypothesis + session token + cc_session_id explicitly at the spawn site)
+   - **seeds** (cheap, pre-paid in main-orchestrator working memory; passed via spawn prompt):
      a. regex path-tokens from `original_prompt` (project-tree-shaped + quoted/backticked tokens)
      b. `hypothesis.discovered_paths`
      c. paths / symbols mentioned in step 5 lessons hits
@@ -79,10 +79,10 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
      a. **LSP** find-references / definition (when seeds name an identifier-shape symbol; TS-only via typescript-language-server; silent no-op on non-TS repos)
      b. **Glob** sibling-pattern expansion (routing / registry / index splits: when a seed is `routes.ts`, Glob `routes_*.ts` etc.)
      c. **Grep** keyword search (capped ~150 lines; narrower keywords if cap hit)
-     d. **Screener LLM gate**: agent `~/.claude/agents/screener.md` (Sonnet, single call). **Always fires** when the cascade reaches this layer (any non-empty layer output flows through screening; cheap Sonnet pass over a ranked top-K cap is the right default - prevents an unscreened LSP / Glob overshoot from becoming scope unilaterally). Reads ranked list + hypothesis; returns keep / drop + relevance per file. Writes `.claude-tmp/apex-active/{session}-screened.json` (`{kept: [{file, screener_reason}], dropped: [{file, screener_reason}]}`; producer-validated against `screened.schema.json`); trace at `.claude-tmp/apex-active/{session}-traces/entry/screener.md`. Consumed by step 13 reflector for accuracy / efficiency evaluation.
+     d. **Screener inner subagent**: `discoverer.md` spawns `~/.claude/agents/screener.md` (Sonnet, single call) directly as a child subagent. **Always fires** when the cascade reaches this layer (any non-empty layer output flows through screening; cheap Sonnet pass over a ranked top-K cap is the right default - prevents an unscreened LSP / Glob overshoot from becoming scope unilaterally). The screener does NOT inherit `discoverer.md`'s working memory; ranked list + hypothesis are passed explicitly in its spawn prompt. Reads ranked list + hypothesis; returns keep / drop + relevance per file. Writes `.claude-tmp/apex-active/{session}-screened.json` (`{kept: [{file, screener_reason}], dropped: [{file, screener_reason}]}`; producer-validated against `screened.schema.json`); trace at `.claude-tmp/apex-active/{session}-traces/entry/screener.md`. Consumed by step 13 reflector for accuracy / efficiency evaluation.
    - **output**: `.claude-tmp/apex-active/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json`.
    - writes scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt`.
-   - **cascade-empty abort**: if all layers exhaust with zero validated paths, AskUserQuestion (`abort` | `proceed-with-discovered-or-prompt-paths` -> first re-use `hypothesis.discovered_paths` (validated at step 4); fall back to regex-extract from `original_prompt` only if `discovered_paths` is empty/absent; validate on disk, write scope with those + safety paths). Both empty -> abort runs `session-end-hook.sh {session}` inline.
+   - **cascade-empty abort**: if all layers exhaust with zero validated paths, `discoverer.md` returns `{cascade_empty: true}` with no scope JSON written. The orchestrator then runs AskUserQuestion (`abort` | `proceed-with-discovered-or-prompt-paths` -> first re-use `hypothesis.discovered_paths` (validated at step 4); fall back to regex-extract from `original_prompt` only if `discovered_paths` is empty/absent; validate on disk, write scope with those + safety paths). Both empty -> abort runs `session-end-hook.sh {session}` inline.
 
 7. Economy pre-flight | Blocked by #6
    - inline task prompt (AI judgement; single inline emit, no subagent)
@@ -116,8 +116,8 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
    - **dispatch-only step**: orchestrator MUST NOT inline `Edit` / `Write` / `MultiEdit` / `NotebookEdit` slice files at step 8.
 
 9. Polish | Blocked by #8
-   - inline task prompt (runs on host model)
-   - touched-by-apex set: `(git diff --name-only {baseline.head_sha}; git ls-files --others --exclude-standard) | sort -u` from `{session}-baseline.json`
+   - agent `~/.claude/agents/polish.md` (Sonnet; subagents do NOT inherit working memory - orchestrator propagates `session`, `main_scope_path`, `baseline_head_sha`, and `lessons_hits` (advisory) explicitly at the spawn site)
+   - agent computes touched-by-apex set: `(git diff --name-only {baseline.head_sha}; git ls-files --others --exclude-standard) | sort -u` from `{session}-baseline.json`
    - INTERSECTED with `allowed_files` from `{session}-main-scope.json` (pre-existing user-dirty files outside scope are NOT polished; still committed as-is at step 12).
    - in-scope-only fixes:
      - unused imports orphaned by step 8 changes
@@ -126,7 +126,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
      - obvious naming inconsistencies in newly-touched lines
    - lessons hits from step 5 inform staleness signals (advisory).
    - HARD CAP: enforced by intersected set; scope-check hook is outer guard.
-   - no-op exit if nothing actionable.
+   - returns one-line summary; no-op exit if nothing actionable.
 
 10. Verify | Blocked by #9
     - script `scripts/verify-build.sh` runs lint + build (project-aware: detects `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`; runs only the available lint / typecheck / build commands; first-fail-stop)
@@ -146,12 +146,12 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
     - distinction: `learn.md` is project-specific (codebase patterns); `reflector.md` (step 13) is apex-specific (workflow / pipeline improvements).
 
 12. VERSION bump + git sync | Blocked by #11
-    - script `scripts/bump-version.sh`:
-      - reads `<project-root>/VERSION`. Expects `vX.Y.Z`; tolerates missing-`v` and trailing newlines. Missing file = silent skip (proceed to git without bump).
-      - inline classify diff (model judgement) -> `minor` | `patch`. **Never `major`** (major is user-set only; if a project needs a major bump the user edits VERSION manually outside /apex).
-        - **minor**: new feature, new public symbol / route / component, additive, OR breaking API change (removed/renamed public symbol, contract change, schema migration)
-        - **patch**: bug fix, refactor, tweak, internal-only change
-      - increments matching segment; resets patch=0 on minor bump; writes back to VERSION.
+    - agent `~/.claude/agents/git-sync.md` (Haiku; subagents do NOT inherit working memory - orchestrator propagates `session`, `baseline_head_sha`, and `version_path` (`<project-root>/VERSION`) explicitly at the spawn site)
+    - agent reads VERSION (expects `vX.Y.Z`; tolerates missing-`v` and trailing newlines; missing file = silent skip the bump but still commit / push)
+    - agent classifies diff -> `minor` | `patch`. **Never `major`** (major is user-set only; if a project needs a major bump the user edits VERSION manually outside /apex).
+      - **minor**: new feature, new public symbol / route / component, additive, OR breaking API change (removed/renamed public symbol, contract change, schema migration)
+      - **patch**: bug fix, refactor, tweak, internal-only change
+    - agent runs `bash scripts/bump-version.sh --kind {minor|patch}` (increments matching segment; resets patch=0 on minor; writes back to VERSION)
     - single chained git command (one Bash call): `bash scripts/git-stage-files.sh --head-sha {baseline.head_sha} --session {session} && git commit -m "<freeform>" && git push`
       - `git-stage-files.sh` is the single source of truth for the change-set + filter pipeline:
         - **change set**: `(git diff --name-only {baseline.head_sha}; git ls-files --others --exclude-standard) | sort -u` (covers apex-modified tracked files AND apex-newly-created untracked files; the latter required because `git diff` excludes untracked).

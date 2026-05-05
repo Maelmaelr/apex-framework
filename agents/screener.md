@@ -10,7 +10,7 @@ Spec: `apex-core.md` step 6 (discovery cascade, screener gate).
 
 A single screener call is the only LLM gate in the cascade. Always fires when the cascade reaches this layer, regardless of upstream layer (LSP / Glob / Grep) so an unscreened overshoot never becomes scope unilaterally.
 
-## Inputs (passed by orchestrator / discover.md)
+## Inputs (passed by agents/discoverer.md as inner subagent)
 
 - Ranked file list (top-K, default 30; ordered by upstream relevance score)
 - hypothesis (verbatim from `{session}-hypothesis.json`)
