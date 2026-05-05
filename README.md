@@ -1,57 +1,52 @@
 # APEX Framework
 
-> APEX turns feature requests into clean, integrated code, and leaves the codebase better than it found it. Every session stays in scope, verifies its own work, and learns from what went wrong - so the next one reaches further with less effort. APEX is allowed to grow new skills, but every skill file must stay lean: nothing new gets added inside unless something else earns its place. Today it ships features solo or via delegated teams. The goal is whole modules - you're the CEO with the vision, APEX is the CTO that ships it.
+> APEX turns feature requests into clean, integrated code, and leaves the codebase better than it found it. Every session stays in scope, verifies its own work, and learns from what went wrong - so the next one reaches further with less effort. APEX is allowed to grow new skills, but every skill file must stay lean: nothing new gets added inside unless something else earns its place. Today it ships features solo or via delegated executors. The goal is whole modules - you're the CEO with the vision, APEX is the CTO that ships it.
 
-An opinionated operating system for Claude Code. APEX replaces ad-hoc "just go fix it" prompting with a deliberate, self-improving pipeline: scout, plan, delegate, verify, learn.
+An opinionated operating system for Claude Code. APEX replaces ad-hoc "just go fix it" prompting with a deliberate, self-improving pipeline: hypothesize, discover, plan, execute, verify, learn.
 
-This is the installed skills directory. Source / public mirror lives at `apex-framework-new-dev`.
+This is the public mirror of the apex framework. Source lives in the maintainer's private `~/.claude` and is mirrored here by `admin-apex` on every framework commit.
 
 ---
 
 ## Why
 
-Out of the box an LLM assistant is fast but forgetful, confident but shallow, and drifts off scope the moment work gets delegated. Long sessions lose state. Subagents silently edit files nobody asked about. Scouts hallucinate findings that look plausible but cite wrong line ranges. Docs go stale. Audits rely on "I already checked that." Destructive commands and secret files are one typo away. Hard-won lessons evaporate the moment the session ends. APEX exists to remove those failure modes.
+Out of the box an LLM assistant is fast but forgetful, confident but shallow, and drifts off scope the moment work gets delegated. Long sessions lose state. Subagents silently edit files nobody asked about. Discovery hallucinates findings that look plausible but cite wrong line ranges. Docs go stale. Audits rely on "I already checked that." Destructive commands and secret files are one typo away. Hard-won lessons evaporate the moment the session ends. APEX exists to remove those failure modes.
 
 ---
 
 ## How
 
-The main coding workflow enters through `/apex <prompt>`. One entry point, execution shapes sized to the work.
+The main coding workflow enters through `/apex <prompt>`. One entry point, one linear 15-step flow, three execution tiers sized to the work.
 
-### Entry flow (every non-trivial run)
+### Linear 15-step flow (every run)
 
-1. **Analyze.** Ambiguous prompts trigger `AskUserQuestion` - assuming is forbidden.
-2. **Session manifest.** A `{session}` token is generated to isolate concurrent runs and persist state across context compaction.
-3. **Hypothesis.** A first-pass model of what the change touches, written down before scouting so bias is visible.
-4. **Lessons load.** Keywords from the hypothesis grep the lessons index; prior sessions speak first.
-5. **Triviality gate.** Single file, no cross-file deps, no new abstractions -> skip the scout pipeline and go straight to Path 1.
+Step 0 queues tasks 1-15. The trivial detector at step 3 collapses 4-13 into completed-skipped; the economy gate at step 7 picks Sonnet for executors and trims the tail.
 
-For everything else, the scout pipeline runs:
+1. Analyze prompt + read project context.
+2. Create session manifest (`{session}` token; survives context compaction).
+3. Trivial pre-flight (single named file + no cross-file deps -> jump to step 14).
+4. Hypothesis (interpretation, complexity hint, alternatives, discovered paths).
+5. Load lessons + project docs.
+6. Discovery (LSP -> Glob -> Grep -> Screener LLM gate; emits scope JSON with claim provenance).
+7. Economy pre-flight (tier classifier).
+8. Execute (per-task `executor.md` dispatch; Sonnet under economy, main session model under standard).
+9. Polish (in-scope unused-imports / dead-code / leftover comments).
+10. Verify (lint + build; bounded fix-loop with `executor.md`, cap 3).
+11. Tail (`documentation.md` + `learn.md` in standard; only `documentation.md` in economy).
+12. VERSION bump + git stage / commit / push.
+13. Self-reflect (`reflector.md`, Haiku, foreground, silent).
+14. Cleanup session artifacts.
+15. Inline summary.
 
-6. **Scout phase 1 - find what's relevant.**
-   - **6a. Deterministic enumeration** (scripts only): static imports, LSP refs, grep patterns, dynamic-import sweeps, framework conventions. Ground-truth file list, not an LLM guess. Falls back to grep-only with an explicit warning if the primary pass fails.
-   - **6b. Preflight sizing + shard plan.** A planner reads 6a and decides how many shards, where the boundaries fall (directory, dep-graph cluster, file-type), and what each shard's screening prompt looks like.
-   - **6c. Parallel LLM screening.** N Sonnet subagents fan out, one shard each. Each returns a pointer plus a one-line decision signal - never the findings body - so the orchestrator stays small.
-7. **Scout phase 2 preflight (Opus).** Reads the screened findings and decides `missed_regions`, `effective_blast`, and `mode`. If clean and small, it's medium mode. Otherwise complex mode, and a **7.x targeted re-scout** re-enumerates the missed regions and merges back in. Complex mode is sticky.
-8. **Claim verification.** Every reason-string and line range from steps 6c and 7 gets re-read and confirmed. Bad claims are dropped mechanically. >20% screened claims bad -> re-run 6c. >20% preflight claims bad -> abort and surface to the user. Anti-hallucination is a phase, not a hope.
-9. **Path decision.** A script reads the preflight mode: `medium -> Path 1`, `complex -> Path 2`.
-10. **Self-reflect (Path 2 only, in background).** The entry-flow run feeds the improvement log without blocking execution.
+### Tiers
 
-### Path 1 - Direct
+| Tier     | Decided at | Effect                                                                        |
+|----------|------------|-------------------------------------------------------------------------------|
+| trivial  | step 3     | Inline single Edit/Write -> jump to 14. Skips 4-13.                           |
+| economy  | step 7     | Step 8 executors = Sonnet; step 11 `learn` skipped.                           |
+| standard | step 7     | Step 8 executors = main session model; full tail (`documentation` + `learn`). |
 
-Small, single-concern changes. The implementer (Sonnet) runs the file-health check before adding >10 lines to any file, splits if oversized, then makes the change. A verify step runs lint and build and inserts fix tasks if needed. The tail phase updates lessons, docs, and audit/PRD documents. A reflection appends to the improvement log. Session artifacts get cleaned up. An inline summary closes the run.
-
-### Path 2 - Delegated
-
-Cross-cutting or multi-file work. The orchestrator enters **plan mode** and embeds the full plan (team size, per-teammate model, scoped tasks, allowed-files lists) into the plan itself - so it survives the context clearing that follows plan approval.
-
-After the user approves:
-
-1. Each teammate boots with its own Path 1 task list and an allowed-files scope written to `.claude-tmp/apex-active/{session}-{teammate-id}-scope.json`. A scope-check hook blocks any write outside that list at the tool call.
-2. Teammates work in parallel in their own fresh 1M-token contexts. The orchestrator coordinates and waits.
-3. Verify, tail, self-reflect, cleanup, summary - same discipline as Path 1, applied to the merged result.
-
-Both paths share the same memory, the same guardrails, and the same verification discipline. The only difference is how much planning and delegation the task warrants.
+Every executor runs in its own fresh 1M-token context with a scoped allowed-files list. Edits outside scope are blocked at the tool call by the scope-check hook, not caught in review.
 
 ---
 
@@ -59,60 +54,63 @@ Both paths share the same memory, the same guardrails, and the same verification
 
 Ten load-bearing ideas. Everything else in the repo is there to implement them.
 
-1. **Complexity-gated routing.** A triviality gate up front, then a script-driven path decision after scouting. Effort matches the task; one-liners stay one-liners.
-2. **Hypothesis before scouting, scouting before code.** The hypothesis is written down so bias is visible. Scouts confirm or correct it. Nothing gets edited before the picture is verified.
-3. **Deterministic enumeration first, LLMs second.** Mechanical work (file lists, ref maps, grep sweeps) runs as scripts. LLMs only screen and decide. The ground-truth list is never a hallucination.
-4. **Sharded parallel screening.** Scouts fan out across shards in their own contexts and return pointers, not bodies. Findings persist on disk; the orchestrator stays lean.
-5. **Anti-hallucination as a phase.** Every claim - file path, line range, reason - is re-read and confirmed before it's allowed to influence the path decision. Bad claims are dropped mechanically; bad-claim ratios trigger re-runs or aborts.
-6. **Plan that survives context clearing.** Path 2 embeds the full delegation plan into plan mode itself, so the post-approval context wipe doesn't lose the plan.
-7. **Scoped delegation, enforced at the tool call.** Every teammate has an allowed-files list. Edits outside it are blocked by a hook, not caught in review.
-8. **Verify, don't trust.** Build, lint, and tests run after every implementation. Failures block completion and insert fix tasks. "It looked right" is not a verdict.
-9. **Lessons and scout findings as persistent memory.** Every session reads the lessons index first and writes back what it learned. Scout findings persist on disk. Next run starts with what the last run discovered; duplicates merge, stale entries age out.
-10. **Self-improving, safe, lean, resilient.** A reflection step appends to the improvement log every run. Destructive commands, `.env` reads, and force-pushes to main are blocked outright. The session manifest survives context compaction and API failures. Skill files stay lean by rule: nothing new gets added unless something else earns its place.
+1. **Complexity-gated routing.** Trivial detection at step 3 short-circuits the full flow. The economy gate at step 7 picks Sonnet executors when the work fits. Effort matches the task; one-liners stay one-liners.
+2. **Hypothesis before discovery, discovery before code.** The hypothesis is written down at step 4 so bias is visible. Discovery confirms or corrects it. Nothing gets edited before the picture is verified.
+3. **Deterministic enumeration first, LLMs second.** Step 6 cascades LSP -> Glob -> Grep mechanically. The Screener LLM filters the keep/drop set but never invents file paths. The ground-truth list is never a hallucination.
+4. **Pointers, not bodies.** Discovery findings persist on disk as scope JSON; executors and the orchestrator read pointers. The main session never bloats with implementation noise.
+5. **Anti-hallucination as a phase.** Every claim - file path, line range, reason - is recorded with provenance and re-readable. Bad claims are dropped mechanically; bad-claim ratios trigger re-runs.
+6. **Session state that survives context clearing.** A `{session}` manifest persists across context compaction and API failures. Long runs do not lose state.
+7. **Scoped delegation, enforced at the tool call.** Every executor has an allowed-files list. Edits outside it are blocked by the scope-check hook, not caught in review. The file-health hook splits oversized files before writes land.
+8. **Verify, do not trust.** Step 10 runs lint and build. Failures block completion and feed `executor.md` a bounded fix-loop (cap 3). "It looked right" is not a verdict.
+9. **Lessons and discovery findings as persistent memory.** Every session reads the lessons index first and writes back what it learned. Discovery scope JSON persists per session. Next run starts with what the last run discovered; duplicates merge, stale entries age out.
+10. **Self-improving, safe, lean, resilient.** Step 13 reflection appends signals to the improvement log every run; `apex-improve` consumes those signals weekly to evolve the framework. Destructive commands, `.env` reads, and force-pushes to main are blocked outright. Skill files stay lean by rule: `apex-file-health` splits any file that crosses the threshold; nothing new gets added unless something else earns its place.
 
 ---
 
 ## What You Get
 
-- **Effort matches the task.** Trivial edits skip the ceremony. Big, cross-cutting changes get scouts, a plan, and delegation.
-- **No surprise edits.** Non-trivial work is scoped, planned, and user-approved before any file is touched.
-- **Findings you can trust.** Deterministic enumeration plus claim verification means "the scout said so" actually means something.
-- **Fewer silent failures.** Scope hooks stop runaway edits at the tool call. Bad-claim thresholds force re-runs instead of letting hallucinations drive routing.
-- **Shorter, cleaner sessions.** Scouts return pointers, teammates run in fresh contexts, the main session never bloats with implementation noise.
-- **Done means tested.** Every implementation run ends with build, lint, and tests. Failures block completion.
-- **Code and docs stay healthy.** Files get split before they hit the complexity cliff. Docs update alongside the code that changed them.
-- **Cumulative learning.** Lessons and scout findings both persist across sessions.
+- **Effort matches the task.** Trivial edits skip the ceremony. Cross-cutting changes get discovery, hypothesis, claim verification, and delegated executors.
+- **No surprise edits.** Non-trivial work is scoped before any file is touched; the scope-check hook blocks out-of-scope writes at the tool call.
+- **Findings you can trust.** Deterministic enumeration plus claim-provenance means "discovery said so" actually means something.
+- **Fewer silent failures.** Bad-claim thresholds force re-runs instead of letting hallucinations drive routing.
+- **Shorter, cleaner sessions.** Discovery returns pointers, executors run in fresh contexts, the main session stays small.
+- **Done means tested.** Every implementation run ends with build, lint, and a bounded fix-loop. Failures block completion.
+- **Code and docs stay healthy.** `apex-file-health` splits files before they hit the complexity cliff. `documentation.md` updates project docs alongside the code that changed them.
+- **Cumulative learning.** `learn.md` distills lessons every standard-tier run. `apex-lessons` curates them. `apex-improve` evolves the framework itself from accumulated reflection signals.
 - **Trustworthy autonomy.** Fail-closed guardrails mean APEX can run without supervision and still stay on rails.
-- **Long runs don't lose state.** Session state survives context compaction and API failures.
-- **A framework that evolves with you.** The improvement log turns your own transcripts into sharper skills - and the lean-skill rule keeps them sharp.
-
----
-
-## Install
-
-```
-npx create-apex
-```
-
-Re-run `npx create-apex upgrade` to refresh skills without touching your CLAUDE.md.
+- **A framework that evolves with you.** The reflector log + tech-watch fetcher feed `apex-improve`, which proposes edits to the framework on a weekly cadence.
 
 ---
 
 ## Skills
 
-- **apex/** - Main APEX workflow (entry: `apex/SKILL.md`)
-- **apex-fix/** - Fix lint/build errors, then capture lessons
-- **apex-lessons-extract/** - Consolidate temp lessons into master
-- **apex-lessons-analyze/** - Analyze lesson patterns
-- **apex-eod/** - End of day (chains file-health, lessons-extract, improve, lessons-analyze)
-- **apex-file-health/** - Remediate oversized files flagged by apex-verify
-- **apex-init/** - Initialize new projects with APEX structure
-- **admin-apex/** - APEX maintainer (audit / evolve / sync-docs / mirror-to-dev chain; commits ~/.claude, mirrors to public dev/apex-framework, pushes both)
+- **apex/** - Main coding orchestrator (entry: `apex/SKILL.md`). Sub-skills: `discover.md` (step 6), `execute.md` (step 8).
+- **apex-eod/** - End of day. Chains `apex-file-health` -> `apex-lessons` (extract + analyze) -> `apex-improve` -> inline git commit.
+- **apex-fix/** - Standalone lint/build fix loop. Mints a synthetic session, runs `verify-build.sh`, spawns `executor.md` capped at 3 attempts.
+- **apex-file-health/** - Remediate oversized files flagged by `/apex` verify (step 10). Splits, verifies, runs tail tasks.
+- **apex-init/** - Initialize a new project with apex-compatible structure (`.claude-tmp`, docs, `CLAUDE.md`).
+- **apex-improve/** - Self-improvement engine. Consumes reflector log + tech-watch updates + Claude Code version stamp. Slash-invokable; called by `apex-eod`.
+- **apex-lessons/** - Curate lessons. Two phases: extract (consolidate pending) + analyze (triage / dedupe / route).
+- **apex-tech-watch/** - Weekly tech-watch fetcher. Reads `sources.json`, summarizes via WebFetch / WebSearch, appends to `tech-updates.md`. Cron-driven (Sunday 06:00 local). Output consumed by `apex-improve`.
+- **admin-apex/** - Framework maintainer. Audit / evolve / sync-docs / test / commit / mirror-to-public / push / self-reflect chain. Maintainer-only.
+
+## Agents
+
+- **executor.md** - Per-task implementation. Step 8 dispatch + step 10 verify fix-loop.
+- **screener.md** - Step 6 discovery gate. Filters cascade output (LSP / Glob / Grep) to keep / drop set.
+- **documentation.md** - Step 11 tail subagent. Updates project docs / architecture notes when structural changes warrant.
+- **learn.md** - Step 11 tail subagent. Project-specific lesson distiller. Skipped under economy tier.
+- **reflector.md** - Self-reflection at apex step 13, admin-apex task 11, apex-improve. Haiku, foreground, silent.
+
+---
 
 ## Usage
 
 ```
-/apex "task description"    # Auto-routes to Path 1 or Path 2
+/apex "task description"    # main coding orchestrator (15 steps, tier auto-decided)
+/apex-fix                   # standalone lint/build fix loop
+/apex-eod                   # end-of-day: file-health + lessons + improve + commit
+/apex-lessons               # curate lessons index
 ```
 
 ---
@@ -122,12 +120,27 @@ Re-run `npx create-apex upgrade` to refresh skills without touching your CLAUDE.
 | Layer | Location | Convention |
 |-------|----------|------------|
 | Top-level skill (slash command) | `skills/<name>/SKILL.md` | `apex-<verb>` |
-| Skill sub-file (internal) | `skills/apex/<phase>.md` | `<phase>.md` |
-| Agent | `~/.claude/agents/<role>.md` | `<role>.md` |
-| Script | `skills/apex/scripts/` | `<verb>-<noun>.{sh,py}`; `<purpose>-hook.sh` |
+| Skill sub-file (internal) | `skills/apex/<phase>.md` | `<phase>.md` (e.g. `discover.md`, `execute.md`) |
+| Agent | `agents/<role>.md` | `<role>.md` |
+| Script | `skills/apex/scripts/` or `skills/admin-apex/scripts/` | `<verb>-<noun>.{sh,py}`; `<purpose>-hook.sh` |
+| Schema | `skills/apex/schemas/` or `skills/admin-apex/schemas/` | `<artifact>.schema.json`; `$id == basename(path)` |
+
+---
+
+## Versioning
+
+The apex framework follows semver in `VERSION`. `admin-apex` task 9 bumps on its own commits per the bump rule:
+
+- patch: only `edit` ops applied
+- minor: any additive op (`create` / `schema-add` / `hook-add`)
+- major: any restructuring/removal op (`rename` / `split` / `merge` / `retire` / `schema-remove` / `hook-remove`)
 
 ---
 
 ## Documentation
 
-See `admin-apex/SKILL.md` for full administration reference.
+Authoritative sources (in load order):
+
+1. `apex-core.md` - full `/apex` behavioral contract (15 steps, tiers, conventions, failure handling)
+2. `apex-core-overview.md` - skeleton/skim view of the same contract
+3. `skills/admin-apex/SKILL.md` - framework maintainer reference (audit, evolve, sync-docs, mirror, version, push, self-reflect)
