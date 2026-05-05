@@ -40,9 +40,10 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - original_prompt, hypothesis, complexity_hint, alternatives, discovered_paths
    - validate-json.sh hypothesis.schema.json
 
-5. Load lessons + project docs: grep-lessons.sh + update-hit.sh
+5. Load lessons + project docs: grep-lessons.sh -> agents/lesson-screener.md (Sonnet, single call; raw grep output + hypothesis explicit in spawn prompt; subagents do NOT inherit working memory) -> {session}-lesson-screened.json -> update-hit.sh on kept line ranges
+   - orchestrator reads kept[] only; raw grep blob never enters working memory
    - project-context.md cached from step 1
-   - tolerate empty output (no lessons-index.md = silent skip)
+   - tolerate empty output (no lessons-index.md = silent skip; screener also skipped)
 
 6. Discovery: agents/discoverer.md (Sonnet; spawn-prompt carries seeds + hypothesis + session/cc_session_id; subagents do NOT inherit working memory)
    seeds: prompt regex + hypothesis.discovered_paths + lessons paths + project-context paths

@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "lesson-screened.schema.json",
+  "title": "{session}-lesson-screened.json",
+  "description": "Step 5 lesson-screener output. Single Sonnet call; keep / drop with free-text reason per matched lesson section. See apex-core.md step 5 / agents/lesson-screener.md.",
+  "type": "object",
+  "required": ["kept", "dropped"],
+  "properties": {
+    "kept": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["line_range", "section_title", "screener_reason", "content"],
+        "properties": {
+          "line_range": {
+            "type": "string",
+            "pattern": "^[0-9]+-[0-9]+$",
+            "description": "Absolute line range in lessons.md, format `start-end` matching the `--- LINES s-e ---` marker from grep-lessons.sh; consumed by update-hit.sh."
+          },
+          "section_title": {
+            "type": "string",
+            "description": "Section header line, e.g., `## Canvas / Connection Rules`."
+          },
+          "screener_reason": {
+            "type": "string",
+            "description": "Free-text keep justification."
+          },
+          "content": {
+            "type": "string",
+            "description": "Verbatim section body (header + lesson lines) propagated forward as advisory context to steps 6 / 8 / 9 / 10 / 11."
+          }
+        }
+      }
+    },
+    "dropped": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["line_range", "section_title", "screener_reason"],
+        "properties": {
+          "line_range": {
+            "type": "string",
+            "pattern": "^[0-9]+-[0-9]+$"
+          },
+          "section_title": {
+            "type": "string"
+          },
+          "screener_reason": {
+            "type": "string",
+            "description": "Free-text drop justification."
+          }
+        }
+      }
+    },
+    "_meta": {
+      "type": "object",
+      "properties": {
+        "warnings": { "type": "array", "items": { "type": "string" } }
+      }
+    }
+  }
+}

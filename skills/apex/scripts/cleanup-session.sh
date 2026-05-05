@@ -6,6 +6,7 @@
 #   - .claude-tmp/apex-active/{session}-main-scope.json
 #   - .claude-tmp/apex-active/{session}-scopes/                (all scope-pointer files)
 #   - .claude-tmp/apex-active/{session}-screened.json
+#   - .claude-tmp/apex-active/{session}-lesson-screened.json
 #   - .claude-tmp/apex-active/{session}-tier.json
 #   - .claude-tmp/apex-active/{session}-traces/
 #   - .claude-tmp/apex-active/{session}.json                   (manifest)
@@ -106,6 +107,7 @@ rm_target() {
 rm_target "$APEX_ACTIVE/${SESSION}-main-scope.json"
 rm_target "$APEX_ACTIVE/${SESSION}-scopes"
 rm_target "$APEX_ACTIVE/${SESSION}-screened.json"
+rm_target "$APEX_ACTIVE/${SESSION}-lesson-screened.json"
 rm_target "$APEX_ACTIVE/${SESSION}-tier.json"
 rm_target "$APEX_ACTIVE/${SESSION}-traces"
 rm_target "$APEX_ACTIVE/${SESSION}.json"
