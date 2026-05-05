@@ -91,4 +91,4 @@ If task 5 emitted any op with `doc_only: true` and it survived the gate, this sk
 - Does NOT bump VERSION or commit; SKILL task 9 owns that.
 - Does NOT add new sections to docs; only rewrites existing references. New-section drafting is out of scope (would require human review).
 
-See `skills/admin-apex/SKILL.md` for the orchestrator chain and gate semantics; `skills/apex/shared-guardrails.md` for safety paths and Edit-tool conventions.
+See `skills/admin-apex/SKILL.md` for the orchestrator chain and gate semantics; `apex-core.md` Conventions for safety paths and Edit-tool conventions.

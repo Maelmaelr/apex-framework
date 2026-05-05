@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# p1.2 / p2.3: project-aware lint + build verifier.
-# Spec: apex-core.md p1.2 / p2.3.
+# Step 10: project-aware lint + build verifier.
+# Spec: apex-core.md step 10.
 #
 # Detects project type by manifest (priority order):
 #   package.json    -> node (pnpm | yarn | bun | npm by lockfile)

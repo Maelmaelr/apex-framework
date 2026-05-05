@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Thin shell wrapper around _validate.py producer_validate.
-# Spec: shared-guardrails.md "JSON Schema validation".
+# Spec: apex-core.md Conventions / "JSON Schema validation".
 #
 # Lets script and inline-LLM producers invoke the same validator after Write,
 # closing the producer-validates-before-write enforcement gap.

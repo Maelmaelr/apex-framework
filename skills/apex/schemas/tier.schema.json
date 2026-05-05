@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "tier.schema.json",
+  "title": "{session}-tier.json",
+  "description": "Step 7 economy pre-flight output. Inline AI-judged classification (no subagent). Drives step 8 executor model selection (sonnet vs main session model) and step 11 learn skip flag.",
+  "type": "object",
+  "required": ["tier", "reason"],
+  "properties": {
+    "tier": {
+      "enum": ["economy", "standard"],
+      "description": "economy = bounded scope, no new public surface, reversible risk; standard = unclear scope, new public surface, irreversible risk, or rewrite/migrate/redesign intent."
+    },
+    "reason": {
+      "type": "string",
+      "minLength": 1,
+      "description": "One-line classification rationale; consumed by step 13 reflector for tier-decision auditing."
+    }
+  }
+}

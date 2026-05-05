@@ -1,21 +1,26 @@
 ---
 name: learn
-description: p1.3 / p2.4 tail subagent. Project-specific lesson distiller. Reads baseline-pinned git diff for context, appends novel patterns / lessons to .claude-tmp/lessons-tmp.md for later curation into project lessons-index. Sonnet.
+description: Step 11 tail subagent. Project-specific lesson distiller. Reads baseline-pinned git diff for context, appends novel patterns / lessons to .claude-tmp/lessons-tmp.md for later curation into project lessons-index. Sonnet. Skipped under economy tier.
 model: sonnet
 ---
 
-# learn (p1.3 / p2.4)
+# learn (step 11)
 
-Spec: `apex-core.md` p1.3 / p2.4 | `apex-core-overview.md` p1.3.
+Spec: `apex-core.md` step 11.
 
 ## Inputs
 
-- `git diff {baseline.head_sha}` for context. `head_sha` sourced from `.claude-tmp/apex-active/{session}-baseline.json`.
-- Baseline-pinned diff is INDEPENDENT of `git.md`'s parallel staging+commit, avoiding the race where a default `git diff` would empty out once git.md commits.
+- `git diff {baseline.head_sha}` for context. `head_sha` from `.claude-tmp/apex-active/{session}-baseline.json`. Baseline-pinned diff is INDEPENDENT of step 12's parallel staging+commit, avoiding the race where a default `git diff` would empty out once step 12 commits.
 
 ## Output
 
-Appends novel patterns / lessons to `.claude-tmp/lessons-tmp.md` for later curation into project lessons-index (`.claude/lessons-index.md` + `.claude/lessons.md` + `.claude/lessons-archive.md`). Curation itself is OUT OF SCOPE for /apex.
+Appends novel patterns / lessons to `.claude-tmp/lessons-tmp.md` under `flock` via:
+
+```
+bash skills/apex/scripts/append-with-lock.sh .claude-tmp/lessons-tmp.md
+```
+
+Curation into the project lessons-index (`.claude/lessons-index.md` + `.claude/lessons.md` + `.claude/lessons-archive.md`) is OUT OF SCOPE for /apex (handled by `/apex-lessons`).
 
 ## Out of scope (do NOT record)
 
@@ -38,7 +43,7 @@ Different files, different consumers.
 
 ## Skipped contexts
 
-- Teammate p1.3 (under p2): SKIPPED. Central p2.4 owns learn for the whole p2 session.
-- Tail mode `economy` (single-spawn): SKIPPED. Small change yields no novel pattern.
+- Tier `economy`: SKIPPED. Bounded scope rarely produces novel project-specific patterns worth distilling.
+- Tier `standard`: runs in parallel with `documentation.md` at step 11.
 
-See `skills/apex/shared-guardrails.md` for safety paths.
+See `apex-core.md` Conventions for safety paths.

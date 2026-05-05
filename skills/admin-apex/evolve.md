@@ -87,7 +87,7 @@ After each successful op, append the op (verbatim from the plan) to `.claude-tmp
 
 ## Mid-flight drift example
 
-Task 6 op 3 expects `skills/apex/p1.md`. Re-snapshot at op 3 shows `p1.md` is gone (a sibling /apex session moved it). Surface AskUserQuestion. `restart` -> SKILL re-enters task 3; `commit-partial` -> jump to task 7 with ops 1-2 only; `rollback` -> `git restore` on `{run}-dirty-paths.txt`.
+Task 6 op 3 expects `skills/apex/discover.md`. Re-snapshot at op 3 shows `discover.md` is gone (a sibling /apex session moved it). Surface AskUserQuestion. `restart` -> SKILL re-enters task 3; `commit-partial` -> jump to task 7 with ops 1-2 only; `rollback` -> `git restore` on `{run}-dirty-paths.txt`.
 
 ## What this skill does NOT do
 
@@ -96,4 +96,4 @@ Task 6 op 3 expects `skills/apex/p1.md`. Re-snapshot at op 3 shows `p1.md` is go
 - Does NOT touch project app code; apex-internal only.
 - Does NOT silently retry on op failure; always surfaces via AskUserQuestion.
 
-See `skills/apex/shared-guardrails.md` for the JSON-Schema validation contract; admin-apex schemas live at `skills/admin-apex/schemas/`.
+See `apex-core.md` Conventions for the JSON-Schema validation contract; admin-apex schemas live at `skills/admin-apex/schemas/`.

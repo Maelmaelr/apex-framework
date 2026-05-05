@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # APEX scope-check hook (PreToolUse, matcher: Edit|Write|MultiEdit|NotebookEdit).
-# Spec: apex-core.md "Conventions" / scope-check hook + shared-guardrails.md.
+# Spec: apex-core.md "Conventions" / scope-check hook.
 #
 # Resolution mechanism (on-disk pointer, NOT mtime):
 #   1. Extract session_id from hook stdin event JSON.
@@ -16,7 +16,6 @@
 # Standard safety paths (closed set, always allowed):
 #   - .claude-tmp/
 #   - ~/.claude/tmp/
-#   - ~/.claude/plans/  (plan-mode artifacts; orchestrator-owned, not scoped)
 #   - /tmp/{session}-*  (any session token; the directory is shared)
 #   - project docs/**
 #   - any README* file at any depth
@@ -114,9 +113,6 @@ is_safety_path() {
   # ~/.claude/tmp/ - both literal $HOME and tilde-prefixed forms
   [[ "$target" == "$HOME/.claude/tmp/"* ]] && return 0
   [[ "$target" == "~/.claude/tmp/"* ]] && return 0
-  # ~/.claude/plans/ - plan-mode artifacts; same dual-form treatment
-  [[ "$target" == "$HOME/.claude/plans/"* ]] && return 0
-  [[ "$target" == "~/.claude/plans/"* ]] && return 0
   # /tmp/{session}-* - any session token; /tmp is shared
   [[ "$target" == /tmp/*-* ]] && return 0
   # project docs/**
@@ -169,7 +165,7 @@ print('no')
     deny "Scope check failed: could not read $SCOPE_BASENAME for $TARGET. Investigate apex session state."
     exit 0
   fi
-  deny "Scope violation: $TARGET not in apex allowed_files (scope=$SCOPE_BASENAME). Extend scope before writing, or route via shared_files at p2.4."
+  deny "Scope violation: $TARGET not in apex allowed_files (scope=$SCOPE_BASENAME). Extend the scope before writing."
   exit 0
 done
 

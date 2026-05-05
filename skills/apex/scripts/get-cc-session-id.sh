@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Canonical resolver for the current Claude Code session id.
-# Spec: shared-guardrails.md "cc_session_id resolution".
+# Spec: apex-core.md Conventions / cc_session_id resolution.
 #
 # Resolution order (first hit wins):
 #   1. $CC_SESSION_ID env var (if set + non-empty)        -- explicit override

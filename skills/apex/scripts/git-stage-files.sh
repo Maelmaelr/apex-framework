@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# p1.3 / p2.4 git.md helper: stage the apex-driven change set with a deterministic dotenv guard.
-# Spec: apex-core.md p1.3 / p2.4 (git.md "per-file pre-filter" contract).
+# Step 12 git-stage helper: stage the apex-driven change set with a deterministic dotenv guard.
+# Spec: apex-core.md step 12 ("per-file pre-filter" contract).
 #
 # Reads the baseline head_sha and stages, per-file, the union of:
 #   - git diff --name-only $HEAD_SHA            (tracked-modified)
@@ -98,7 +98,7 @@ CHANGE_SET=$(printf '%s\n%s\n' "$TRACKED" "$UNTRACKED" | grep -v '^$' | sort -u)
 # path in CHANGE_SET that appears in that union is dropped before staging -
 # that file belongs to a sibling /apex run, and committing it under our
 # session's commit would silently steal their work. Mirrors the granularity
-# of apex-conflict-check.sh (main-scope only, not teammate scopes).
+# of apex-conflict-check.sh (main-scope only).
 APEX_ACTIVE=".claude-tmp/apex-active"
 OTHER_SCOPE_FILES=""
 if command -v jq >/dev/null 2>&1 && [[ -d "$APEX_ACTIVE" ]]; then

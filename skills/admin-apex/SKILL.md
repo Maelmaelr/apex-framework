@@ -146,4 +146,4 @@ After reflector returns, invoke `bash skills/admin-apex/scripts/cleanup-run.sh -
 
 Reflector log consolidation (owned by `/apex-improve`, called by `/apex-eod` step 3); weekly tech-watch fetching (owned by `/apex-tech-watch`); project app code/build/lint/tests; full reconciliation between private and public repos (task 10 mirrors only this run's dirty paths, not the whole tree).
 
-See `audit.md`, `evolve.md`, `sync-docs.md` for per-task contracts; `schemas/inventory.schema.json` + `schemas/evolve-plan.schema.json` for artifact shapes; `skills/apex/shared-guardrails.md` for the broader apex conventions admin-apex follows.
+See `audit.md`, `evolve.md`, `sync-docs.md` for per-task contracts; `schemas/inventory.schema.json` + `schemas/evolve-plan.schema.json` for artifact shapes; `apex-core.md` Conventions for the broader apex conventions admin-apex follows.

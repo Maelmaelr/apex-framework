@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "screened.schema.json",
-  "title": "screened-{session}.json",
-  "description": "Step 6.c output. Single-call screener writes this directly (the prior parallel-shard fan-out + aggregator was retired in apex 1.x). See apex-core.md step 6.c.",
+  "title": "{session}-screened.json",
+  "description": "Step 6 screener output. Single Sonnet call; keep / drop with free-text reason per file. See apex-core.md step 6 / agents/screener.md.",
   "type": "object",
   "required": ["kept", "dropped"],
   "properties": {
@@ -10,12 +10,10 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["file", "screener_reason", "reasons", "confidence"],
+        "required": ["file", "screener_reason"],
         "properties": {
           "file": { "type": "string" },
-          "screener_reason": { "type": "string", "description": "Free-text keep justification" },
-          "reasons": { "type": "array", "description": "Forwarded verbatim from findings entry" },
-          "confidence": { "enum": ["high", "medium"] }
+          "screener_reason": { "type": "string", "description": "Free-text keep justification" }
         }
       }
     },
@@ -33,17 +31,7 @@
     "_meta": {
       "type": "object",
       "properties": {
-        "warnings": { "type": "array", "items": { "type": "string" } },
-        "dropped_per_layer": {
-          "type": "object",
-          "properties": {
-            "static-imports": { "type": "integer", "minimum": 0 },
-            "ast-grep": { "type": "integer", "minimum": 0 },
-            "framework": { "type": "integer", "minimum": 0 },
-            "lsp": { "type": "integer", "minimum": 0 },
-            "rescout": { "type": "integer", "minimum": 0 }
-          }
-        }
+        "warnings": { "type": "array", "items": { "type": "string" } }
       }
     }
   }

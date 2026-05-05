@@ -119,9 +119,10 @@ check_bash skills/apex/scripts/*.sh skills/admin-apex/scripts/*.sh
 check_py   skills/apex/scripts/*.py
 check_schemas skills/apex/schemas/*.json skills/admin-apex/schemas/*.json
 
-# Fixture tests for the dispatcher-extracted scripts (apex-baseline, apex-
-# conflict-check, apex-p2-init, zero-layer-extract). One assertion per script
-# covers the critical exit code path the orchestrator reads.
+# Fixture tests for v2 scripts that have orchestrator-visible exit-code
+# contracts (apex-baseline, apex-conflict-check, cleanup-session, session-end,
+# reflect-traces, find-claude-pid). One assertion per script covers the
+# critical exit code path the orchestrator reads.
 check_fixtures() {
   local label="$1"
   local expected="$2"
@@ -168,25 +169,15 @@ for p in sys.argv[1:]:
 " "$@"
 }
 
-# 1. Each new script rejects missing/bad {session} arg.
+# 1. Each script rejects missing/bad {session} arg.
 run_fixture "apex-baseline.sh missing-arg" 1 \
   bash "$REPO_ROOT/skills/apex/scripts/apex-baseline.sh"
 run_fixture "apex-conflict-check.sh missing-arg" 2 \
   bash "$REPO_ROOT/skills/apex/scripts/apex-conflict-check.sh"
-run_fixture "apex-p2-init.sh missing-arg" 1 \
-  bash "$REPO_ROOT/skills/apex/scripts/apex-p2-init.sh"
-run_fixture "zero-layer-extract.sh missing-arg" 1 \
-  bash "$REPO_ROOT/skills/apex/scripts/zero-layer-extract.sh"
-
-# 2. zero-layer-extract.sh exits 10 on zero validated paths (orchestrator runs
-#    verify-exit-1 abort surface).
-zero_paths_fixture() {
-  mkdir -p .claude-tmp/apex-active
-  echo '{"original_prompt": "no real paths here just plain words"}' \
-    > .claude-tmp/apex-active/aabbccdd-hypothesis.json
-  CC_SESSION_ID=test-cc bash "$REPO_ROOT/skills/apex/scripts/zero-layer-extract.sh" aabbccdd
-}
-run_fixture "zero-layer-extract.sh zero-validated-paths" 10 zero_paths_fixture
+run_fixture "bump-version.sh missing-arg" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/bump-version.sh"
+run_fixture "bump-version.sh bad-kind" 1 \
+  bash "$REPO_ROOT/skills/apex/scripts/bump-version.sh" --kind major
 
 # 3. cleanup-run.sh: idempotent contract (always exit 0; warnings to stderr).
 run_fixture "cleanup-run.sh missing-arg" 0 \
@@ -279,25 +270,8 @@ sweep_stale_no_pid_fixture() {
 }
 run_fixture "sweep-stale-runs.sh no-pid-preserved" 0 sweep_stale_no_pid_fixture
 
-# 4e-g. apex/scripts/session-end-hook.sh Path-2-transition guard regression:
-#       cc_session_id match + plan-candidate.json present -> SKIP cleanup
-#       (manifest survives so post-context-clear p2.md inherits the state).
-#       Path-1 / aborted-entryflow case (cc match, no plan-candidate) still cleans.
-#       p2_cc_session_id match (post-clear session ending) always cleans.
-apex_session_end_p2_transition_skip_fixture() {
-  mkdir -p .claude-tmp/apex-active
-  printf '{"session":"deadbabe","pid":1,"cc_session_id":"FIXTURE-CC"}\n' \
-    > .claude-tmp/apex-active/deadbabe.json
-  printf '{}' > .claude-tmp/apex-active/deadbabe-plan-candidate.json
-  printf '{"session_id":"FIXTURE-CC"}' \
-    | bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh"
-  [[ -f .claude-tmp/apex-active/deadbabe.json ]] || return 1
-  [[ -f .claude-tmp/apex-active/deadbabe-plan-candidate.json ]] || return 1
-  return 0
-}
-run_fixture "apex session-end-hook.sh p2-transition-skip" 0 apex_session_end_p2_transition_skip_fixture
-
-apex_session_end_path1_clean_fixture() {
+# 4e. apex session-end-hook.sh: cc_session_id match -> manifest cleaned.
+apex_session_end_clean_fixture() {
   mkdir -p .claude-tmp/apex-active
   printf '{"session":"feedface","pid":1,"cc_session_id":"FIXTURE-CC1"}\n' \
     > .claude-tmp/apex-active/feedface.json
@@ -306,20 +280,7 @@ apex_session_end_path1_clean_fixture() {
   [[ -e .claude-tmp/apex-active/feedface.json ]] && return 1
   return 0
 }
-run_fixture "apex session-end-hook.sh path1-clean" 0 apex_session_end_path1_clean_fixture
-
-apex_session_end_p2cc_clean_fixture() {
-  mkdir -p .claude-tmp/apex-active
-  printf '{"session":"cafebabe","pid":1,"cc_session_id":"FIXTURE-CC2","p2_cc_session_id":"FIXTURE-P2-CC"}\n' \
-    > .claude-tmp/apex-active/cafebabe.json
-  # Plan-candidate intentionally absent (cleanup-session.sh removed it at p2.6
-  # in normal flow; here we simulate the post-clear session ending after p2-init).
-  printf '{"session_id":"FIXTURE-P2-CC"}' \
-    | bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh"
-  [[ -e .claude-tmp/apex-active/cafebabe.json ]] && return 1
-  return 0
-}
-run_fixture "apex session-end-hook.sh p2cc-clean" 0 apex_session_end_p2cc_clean_fixture
+run_fixture "apex session-end-hook.sh clean" 0 apex_session_end_clean_fixture
 
 # 4h. find-claude-pid.sh: smoke test. Walks up the process tree from $$ looking
 #     for a comm whose basename is "claude". When this test runs under /apex or
@@ -391,22 +352,12 @@ finalize_defensive_fixture() {
 }
 run_fixture "admin-apex-finalize.sh bump=none-with-applied-op" 1 finalize_defensive_fixture
 
-# 7. Entry-flow 7-10 script argv contracts. Each rejects missing/invalid args
-#    with the documented exit code; reflect-traces.sh stays fail-silent (exit 0).
-run_fixture "verify-claims.sh missing-arg" 1 \
-  bash "$REPO_ROOT/skills/apex/scripts/verify-claims.sh"
-run_fixture "verify-claims.sh invalid-token" 1 \
-  bash "$REPO_ROOT/skills/apex/scripts/verify-claims.sh" --session BADTOKEN
-run_fixture "decide-path.sh missing-arg" 1 \
-  bash "$REPO_ROOT/skills/apex/scripts/decide-path.sh"
-run_fixture "decide-path.sh invalid-token" 1 \
-  bash "$REPO_ROOT/skills/apex/scripts/decide-path.sh" --session BADTOKEN
+# 7. v2 step-13 reflect-traces.sh fail-silent contract: missing or bad args
+#    still exit 0 (the heuristic block is best-effort, never blocks the flow).
 run_fixture "reflect-traces.sh missing-args" 0 \
   bash "$REPO_ROOT/skills/apex/scripts/reflect-traces.sh"
-run_fixture "reflect-traces.sh invalid-phase" 0 \
-  bash "$REPO_ROOT/skills/apex/scripts/reflect-traces.sh" --session aabbccdd --phase nope
-run_fixture "merge-scout-findings.py missing-args" 2 \
-  python3 "$REPO_ROOT/skills/apex/scripts/merge-scout-findings.py"
+run_fixture "reflect-traces.sh invalid-token" 0 \
+  bash "$REPO_ROOT/skills/apex/scripts/reflect-traces.sh" --session BADTOKEN
 
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"

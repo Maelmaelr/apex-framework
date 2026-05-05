@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # apex-conflict-check.sh -- detect concurrent-apex scope overlap.
-# Spec: apex-core.md p1.0 main-mode (Step 2b) + p2.0 (Step 2).
+# Spec: apex-core.md step 8.0 (concurrent-apex conflict check).
 #
 # Computes pre-dirty union (tracked-modified UNION untracked-non-ignored), scans
 # every other active apex *-main-scope.json (excluding our own {session}) for

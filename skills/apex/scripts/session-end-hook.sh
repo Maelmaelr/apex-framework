@@ -3,23 +3,23 @@
 # Spec: apex-core.md Conventions / Failure handling / "session-end-hook.sh".
 #
 # Wraps cleanup-session.sh + removes {session}-hypothesis.json (belt-and-suspenders fallback
-# when consumer p1.6 / p2.7 fails).
+# when consumer step 15 fails).
 #
 # Invocation modes:
 #   1. SessionEnd (no positional arg):
 #      - Read session_id from hook stdin event JSON
-#      - Match against active manifests' cc_session_id / p2_cc_session_id
+#      - Match against active manifests' cc_session_id
 #      - Derive apex {session} token, then run cleanup with --post-success
 #        (own-session ending; cleanup is safe).
 #   2. Manual mode (positional arg = apex {session} token):
-#      - Default: trusted own-session caller (mid-/apex abort at step 6.a /
-#        6.b / p1.0 / p2.0 / verify exit-1 / teammate-failure / p2.0c
-#        rejection). Pass --post-success internally.
-#      - With --foreign flag: foreign caller (cleanup-stale-and-proceed at /apex
-#        SKILL.md step 2 per-stale-manifest invocation). Do NOT pass
-#        --post-success; cleanup-session.sh's live-PID guard fires as defense
-#        against sibling classifier bugs (manifest pid alive AND comm=claude
-#        means the live session would be wrongly wiped).
+#      - Default: trusted own-session caller (mid-/apex abort: step 1 / 2 / 6
+#        cascade-empty / 8 conflict-check / 10 verify cap-3 / unexpected error).
+#        Pass --post-success internally.
+#      - With --foreign flag: foreign caller (cleanup-stale-and-proceed at step 2
+#        per-stale-manifest invocation). Do NOT pass --post-success;
+#        cleanup-session.sh's live-PID guard fires as defense against sibling
+#        classifier bugs (manifest pid alive AND comm=claude means the live
+#        session would be wrongly wiped).
 #      - Skips manifest matching, targets the supplied token directly.
 #
 # Runs on success completion AND on abort / crash. Idempotent.
@@ -33,18 +33,8 @@ APEX_ACTIVE=".claude-tmp/apex-active"
 
 derive_session_from_stdin() {
   # Read hook event JSON from stdin, extract session_id, match against active
-  # manifests' cc_session_id / p2_cc_session_id, echo apex {session} token.
-  #
-  # Match priority + Path-2-transition guard:
-  #   - p2_cc_session_id == session_id  -> post-context-clear CC session ending; cleanup OK.
-  #   - cc_session_id == session_id     -> entry-flow CC session ending. SKIP cleanup if
-  #     (a) p2_cc_session_id is also set (p2 session owns lifecycle), OR
-  #     (b) {session}-plan-candidate.json exists on disk - the canonical "Path 2
-  #         mid-transition" marker (written at p2.0b before context clear, removed
-  #         by cleanup-session.sh). The post-clear p2.md session inherits the
-  #         manifest + scopes; SessionEnd for the post-clear CC session (matched
-  #         via p2_cc_session_id) cleans up after p2.6 / p2.7.
-  #   - neither field matches           -> non-/apex CC session; nothing to clean.
+  # manifests' cc_session_id, echo apex {session} token. Non-/apex CC session
+  # (no manifest matches) -> nothing to clean, return non-zero so caller skips.
   local stdin_json session_id
   stdin_json=$(cat 2>/dev/null || true)
   [[ -z "$stdin_json" ]] && return 1
@@ -60,28 +50,19 @@ except Exception:
   [[ -d "$APEX_ACTIVE" ]] || return 1
   shopt -s nullglob
   for manifest in "$APEX_ACTIVE"/*.json; do
-    # Same positive 8-hex regex create-session.sh + apex-state-context-hook.sh use;
-    # excludes -hypothesis.json, -baseline.json, -*-scope.json, etc. by shape.
+    # 8-hex.json filename guard: excludes -hypothesis.json, -baseline.json,
+    # -*-scope.json, etc. by shape.
     [[ "$(basename "$manifest")" =~ ^[0-9a-f]{8}\.json$ ]] || continue
     local matched
     matched=$(python3 -c "
-import json, os, sys
+import json, sys
 try:
     d = json.load(open(sys.argv[1], encoding='utf-8'))
 except Exception:
     sys.exit(0)
 sid = sys.argv[2]
-sess = d.get('session', '')
-cc = d.get('cc_session_id')
-p2cc = d.get('p2_cc_session_id')
-if p2cc == sid:
-    print(sess)
-elif cc == sid:
-    if not p2cc and sess:
-        active_dir = os.path.dirname(sys.argv[1])
-        plan_candidate = os.path.join(active_dir, sess + '-plan-candidate.json')
-        if not os.path.exists(plan_candidate):
-            print(sess)
+if d.get('cc_session_id') == sid:
+    print(d.get('session', ''))
 " "$manifest" "$session_id" 2>/dev/null || true)
     if [[ -n "$matched" ]]; then
       printf '%s' "$matched"
@@ -98,9 +79,9 @@ run_cleanup() {
   local foreign="${2:-0}"
   [[ -z "$session" ]] && return 0
   # Wrap cleanup-session.sh (idempotent; fail-silent). Trusted callers
-  # (own-session: SessionEnd hook + manual-mid-abort) pass --post-success to
-  # bypass the live-PID guard. Foreign caller (cleanup-stale-and-proceed)
-  # omits the flag so the guard fires defensively if classifier got it wrong.
+  # (own-session: SessionEnd hook + manual-mid-abort) pass --post-success.
+  # Foreign caller (cleanup-stale-and-proceed) omits the flag so the guard
+  # fires defensively if the classifier got it wrong.
   if [[ -x "$SCRIPT_DIR/cleanup-session.sh" ]]; then
     if (( foreign == 1 )); then
       "$SCRIPT_DIR/cleanup-session.sh" --session "$session" 2>/dev/null || true
@@ -108,9 +89,9 @@ run_cleanup() {
       "$SCRIPT_DIR/cleanup-session.sh" --session "$session" --post-success 2>/dev/null || true
     fi
   fi
-  # Belt-and-suspenders: remove hypothesis.json if consumer failed to clean up.
-  # Skip on foreign cleanups when the guard refused (manifest still present)
-  # so a misclassified live session keeps its hypothesis intact.
+  # Belt-and-suspenders: remove hypothesis.json if consumer step 15 failed to clean up.
+  # Skip on foreign cleanups when the guard refused (manifest still present) so a
+  # misclassified live session keeps its hypothesis intact.
   if (( foreign == 1 )) && [[ -f "$APEX_ACTIVE/$session.json" ]]; then
     return 0
   fi
@@ -143,12 +124,10 @@ if [[ -n "$SESSION_ARG" ]]; then
   run_cleanup "$SESSION_ARG" "$FOREIGN"
 else
   # SessionEnd hook mode: derive token from stdin manifest match.
-  # Always own-session (cc_session_id / p2_cc_session_id matches the ending
-  # CC session); pass FOREIGN=0 so cleanup proceeds via --post-success.
   if SESSION=$(derive_session_from_stdin); then
     run_cleanup "$SESSION" 0
   fi
-  # No matching manifest -> non-/apex Claude Code session, nothing to clean.
+  # No matching manifest -> non-/apex CC session; nothing to clean.
 fi
 
 exit 0

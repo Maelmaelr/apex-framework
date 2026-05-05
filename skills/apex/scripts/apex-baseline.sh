@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # apex-baseline.sh -- capture working-tree baseline for an apex session.
-# Spec: apex-core.md p1.0 (main mode Step 2a) + p2.0 (Step 1).
+# Spec: apex-core.md step 8.0 (init).
 #
-# Single producer per session. Used by p1.0 main-mode and p2.0 (teammates skip
-# this -- they consume the shared baseline written by p2.0). Producer-validates
-# the artifact against schemas/baseline.schema.json before write.
+# Single producer per session at step 8.0. Writes head_sha + pre_dirty for use
+# by step 9 (polish), step 11 (tail diff), step 12 (git stage filter), and
+# step 13 (reflector diff context).
 #
 # Args (positional):
 #   $1  -- {session} 8-hex token (required)

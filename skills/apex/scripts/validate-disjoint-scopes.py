@@ -1,44 +1,40 @@
 #!/usr/bin/env python3
-# p2.0b disjoint-scope validator.
-# Spec: apex-core.md p2.0b "Disjoint-scope rule" | apex-core-overview.md p2.0b.
+# Step 8.2 disjoint-scope validator.
+# Spec: apex-core.md step 8.2 (task split + disjoint scopes).
 #
-# Enforces three invariants on the planner's candidate plan:
-#   (1) per-teammate `allowed_files` lists pairwise disjoint (excluding standard
+# Enforces two invariants when the orchestrator spawns 2+ parallel executor tasks:
+#   (1) per-task `allowed_files` lists pairwise disjoint (excluding standard
 #       safety paths, which are shared by design).
 #   (2) [if --main-scope is supplied] union of allowed_files MUST be a subset of
-#       main-scope `allowed_files`. The planner extends main scope first if any
-#       teammate needs files outside it (single source of truth).
-#   (3) [if `shared_files` is present in plan] every entry in `shared_files` is
-#       disjoint from every teammate's `allowed_files`. A file is in shared XOR
-#       in exactly one teammate's allowed_files, never both.
+#       main-scope `allowed_files`. Cross-task touch points are routed to a
+#       serialised follow-up task, never to a parallel write.
 #
 # On overlap of any kind, prints offending pairs to stdout and exits 1 -- the
-# planner then reassigns or routes to `shared_files` and re-runs.
+# orchestrator then reassigns and re-runs.
 #
-# Standard safety paths (from shared-guardrails.md):
+# Standard safety paths (from apex-core.md Conventions):
 #   .claude-tmp/        ~/.claude/tmp/        /tmp/{session}-*
 #   docs/**             README* (any depth)
 #
 # Input:
-#   --plan <path>          JSON file conforming to plan-candidate.schema.json:
-#                          {"teammates": [{"teammate_id": "ab12",
-#                                          "allowed_files": ["..."]}, ...],
-#                           "shared_files"?: ["..."]}
-#   --main-scope <path>    optional; main-scope.schema.json file (enables check 2)
-#   --session <token>      optional; bounds the /tmp/{session}-* safety glob
+#   --plan <path>        JSON file shape:
+#                        {"tasks": [{"task_id": "1",
+#                                    "allowed_files": ["..."]}, ...]}
+#   --main-scope <path>  optional; main-scope.schema.json file (enables check 2)
+#   --session <token>    optional; bounds the /tmp/{session}-* safety glob
 #
 # Stdout (on overlap, one per line):
-#   OVERLAP             <file>\t<teammate-a>\t<teammate-b>     (check 1)
-#   NOT_IN_MAIN_SCOPE   <file>\t<teammate-a>                   (check 2)
-#   SHARED_OVERLAP      <file>\t<teammate-a>                   (check 3)
+#   OVERLAP             <file>\t<task-a>\t<task-b>     (check 1)
+#   NOT_IN_MAIN_SCOPE   <file>\t<task-a>               (check 2)
 #
 # Exit codes:
 #   0  all enabled invariants hold
-#   1  at least one violation; planner must reassign / extend main / route shared
-#   2  input malformed (parse error, schema fail, missing fields)
+#   1  at least one violation; orchestrator must reassign or extend main scope
+#   2  input malformed (parse error, missing fields)
 
 import argparse
 import itertools
+import json
 import os
 import re
 import sys
@@ -66,25 +62,42 @@ def _is_safety(path: str, session: str | None) -> bool:
     return False
 
 
+def _load_plan(path: str) -> dict | None:
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except Exception:
+        return None
+    if not isinstance(data, dict) or not isinstance(data.get("tasks"), list):
+        return None
+    for t in data["tasks"]:
+        if not isinstance(t, dict):
+            return None
+        if not isinstance(t.get("task_id"), str):
+            return None
+        if not isinstance(t.get("allowed_files"), list):
+            return None
+    return data
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate teammate scopes are pairwise disjoint and bounded by main scope.")
-    parser.add_argument("--plan", required=True, help="path to plan-candidate JSON")
+    parser = argparse.ArgumentParser(description="Validate per-task scopes are pairwise disjoint and bounded by main scope.")
+    parser.add_argument("--plan", required=True, help="path to task-plan JSON")
     parser.add_argument("--main-scope", default=None, help="path to main-scope JSON; enables subset check")
     parser.add_argument("--session", default=None, help="apex {session} token (8-hex)")
     args = parser.parse_args()
 
-    plan = consumer_load(args.plan, "plan-candidate.schema.json")
+    plan = _load_plan(args.plan)
     if plan is None:
         print(f"validate-disjoint-scopes: invalid or missing plan {args.plan}", file=sys.stderr)
         return 2
 
-    teammates = plan["teammates"]
-    shared = [p for p in plan.get("shared_files", []) if isinstance(p, str)]
+    tasks = plan["tasks"]
 
-    # Build per-teammate non-safety sets.
+    # Build per-task non-safety sets.
     sets: list[tuple[str, set[str]]] = []
-    for t in teammates:
-        tid = t["teammate_id"]
+    for t in tasks:
+        tid = t["task_id"]
         non_safety = {p for p in t["allowed_files"] if isinstance(p, str) and not _is_safety(p, args.session)}
         sets.append((tid, non_safety))
 
@@ -106,14 +119,6 @@ def main() -> int:
         for tid, t_set in sets:
             for f in sorted(t_set - main_set):
                 print(f"NOT_IN_MAIN_SCOPE\t{f}\t{tid}")
-                violations += 1
-
-    # Check 3: shared_files disjoint from every teammate.
-    if shared:
-        shared_non_safety = {p for p in shared if not _is_safety(p, args.session)}
-        for tid, t_set in sets:
-            for f in sorted(shared_non_safety & t_set):
-                print(f"SHARED_OVERLAP\t{f}\t{tid}")
                 violations += 1
 
     return 1 if violations else 0
