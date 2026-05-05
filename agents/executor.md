@@ -32,8 +32,9 @@ The caller (`implement.md` or the verify-fix dispatcher) injects the correct tra
 1. Implement the assigned task end-to-end, including running infra commands it produces (migrations, seeders, deps installs) per the global CLAUDE.md rule; for fix-attempts, fix the supplied verify-build.sh errors instead
 2. Respect the file-health PreToolUse hook: split files > 400 lines BEFORE adding > 10 lines (the hook blocks otherwise)
 3. Respect the scope-check PreToolUse hook: writes outside `allowed_files` are blocked at the tool call (the hook resolves scope via on-disk pointer; see `shared-guardrails.md`)
-4. On clean completion (no failure, no split decision): NO trace; return a one-line summary
-5. On failure OR file-split decision: write the trace at the injected path BEFORE returning summary
+4. Before claiming clean completion, verify any file artifacts named in the task description appear in `git diff` (or `git status` for untracked); if an expected artifact is missing, treat as failure (write trace, return failure summary) rather than silently marking complete
+5. On clean completion (no failure, no split decision): NO trace; return a one-line summary
+6. On failure OR file-split decision: write the trace at the injected path BEFORE returning summary
 
 ## Architecture context (optional read)
 
