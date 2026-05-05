@@ -84,6 +84,7 @@ When SKILL task 1 selects `audit-only`, this skill still runs (task 3) but the g
 - Does NOT decide what to apply - the gate (SKILL task 4) does.
 - Does NOT consume the reflector log (`apex-workflow-improvements.md`); that is the future `/apex-improve` workflow.
 - Does NOT cross into project app code; apex-internal only.
+- Does NOT run the post-implementation check; `scripts/polish-check.sh` is the post-apply mirror of this skill (orphan-refs / missing-refs / schema-mismatch / dead-hook). audit.md fires PRE-apply at SKILL task 3; polish-check.sh fires POST-apply at sync-docs.md step 6 (admin-apex) and apex-improve/finalize.md step 5a, diffing against this skill's `{run}-drift-report.json` so only NEW drift surfaces.
 
 ## Lean rule
 

@@ -81,7 +81,7 @@ PID=$(bash "$HOME/.claude/skills/apex/scripts/find-claude-pid.sh" 2>/dev/null ||
 
 Read and follow `~/.claude/skills/apex-improve/analyze.md`. Produces `{run}-findings.json`.
 
-If empty (zero findings across all three sources), skip Steps 3-4 but still run Step 5 (archive + truncate consumed signal files + CC version stamp) so `apex-workflow-improvements.md` and `tech-updates.md` reset for the next session - leaving stale signal blocks in place re-feeds them as deja-vu noise on the next run, even though no ops were emitted. Print a minimal Step 6 line `apex-improve: no signals to consume` (no findings/ops table). Skip Steps 7-8 (no diff to commit). Manifest swept by SessionEnd hook.
+If empty (zero findings across all three sources), skip Steps 3-4 but still run Step 5 (archive + truncate consumed signal files + CC version stamp) so `apex-workflow-improvements.md` and `tech-updates.md` reset for the next session - leaving stale signal blocks in place re-feeds them as deja-vu noise on the next run, even though no ops were emitted. Print a minimal Step 6 line `apex-improve: no signals to consume` (no findings/ops table). Skip Steps 7-8 (no framework op to commit; the housekeeping diff under `tmp/` piggybacks on the next framework-evolution commit). Manifest swept by SessionEnd hook.
 
 ## Step 3: Plan ops
 
@@ -91,11 +91,11 @@ Read and follow `~/.claude/skills/apex-improve/plan.md`. Produces `{run}-evolve-
 
 Read and follow `~/.claude/skills/apex-improve/apply.md`. Produces `{run}-applied-ops.json` + `{run}-dirty-paths.txt`.
 
-If 0 ops applied (every Edit failed and every structural op hit drift), still run Steps 5-6 (archive + truncate + stamp + minimal report). The signals were *seen* by analyze.md / plan.md - the failure is in apply, not in the signal track - so the consumed inputs reset normally; deferred findings remain in `{run}-deferred-findings.json` (preserved across SessionEnd by `cleanup-run.sh`) for the next run. Skip Steps 7-8 (no diff to commit).
+If 0 ops applied (every Edit failed and every structural op hit drift), still run Steps 5-6 (archive + truncate + stamp + minimal report). The signals were *seen* by analyze.md / plan.md - the failure is in apply, not in the signal track - so the consumed inputs reset normally; deferred findings remain in `{run}-deferred-findings.json` (preserved across SessionEnd by `cleanup-run.sh`) for the next run. Skip Steps 7-8 (no framework op to commit; the housekeeping diff under `tmp/` piggybacks on the next framework-evolution commit).
 
-## Steps 5-6: Cleanup + stamp + Report
+## Steps 5-6: Polish + Cleanup + stamp + Report
 
-Read and follow `~/.claude/skills/apex-improve/finalize.md`. Returns when the structured Step 6 summary has been printed; resume at Steps 7-8 below (standalone mode only).
+Read and follow `~/.claude/skills/apex-improve/finalize.md`. Step 5a is the post-implementation polish phase (`scripts/polish-check.sh` - shared with admin-apex/sync-docs.md): staleness / inconsistency / unused check on the post-apply state, escalates new drift to `~/.claude/tmp/apex-workflow-improvements.md` without blocking. Step 5b is the original cleanup + version stamp; Step 6 is the structured report (now includes the polish line). Returns when the report has been printed; resume at Steps 7-8 below (standalone mode only).
 
 ## Steps 7-8: VERSION + commit + mirror + push
 

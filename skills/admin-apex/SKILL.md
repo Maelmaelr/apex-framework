@@ -77,9 +77,9 @@ Read and follow `skills/admin-apex/evolve.md`. Task 5 composes `{run}-evolve-pla
 
 Mid-flight drift: see `evolve.md` lines 53-57 for the `restart | commit-partial | rollback` contract (rollback is the only admin-apex codepath that runs `git restore`).
 
-## Task 7: Sync docs
+## Task 7: Sync docs (+ polish)
 
-Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.txt`.
+Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.txt`. Closing phase invokes `scripts/polish-check.sh` (post-implementation staleness / inconsistency / unused check; see sync-docs.md step 6). Polish drift, when present, is escalated to `~/.claude/tmp/apex-workflow-improvements.md` for the next `/apex-improve` run; it does NOT gate the current admin-apex run.
 
 ## Task 8: Test apex scripts
 

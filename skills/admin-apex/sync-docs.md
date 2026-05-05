@@ -51,6 +51,11 @@ Spec: `skills/admin-apex/SKILL.md` task 7.
 
 5. **Write `docs-changed.txt`** even if empty - SKILL task 9 expects the file to exist.
 
+6. **Polish (post-implementation check)**: `bash scripts/polish-check.sh --run {run}`. Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch / dead-hook detectors (mirrors `audit.md`), diffs against `{run}-drift-report.json` so only NEW drift introduced by evolve apply + sync-docs surfaces. Skipped automatically when 0 ops applied.
+   - Exit `0` -> clean; continue.
+   - Exit `1` -> new drift in `{run}-polish-report.json`. Treat exactly like the out-of-scope stale-refs escalation below: append a finding-shaped block to `~/.claude/tmp/apex-workflow-improvements.md` (one per cluster) so the next `/apex-improve` run picks it up; do NOT block the current admin-apex run.
+   - Exit `2` -> bad args / state corruption; abort with explicit error.
+
 ## Out-of-scope stale-refs: escalation
 
 While processing rewrite hits in step 3, sync-docs may encounter stale-refs in spec docs that are NOT in this run's `applied-ops.json` (e.g., a previously removed CLAUDE.md section that an old comment still cites). The rewrite map cannot fix them - they are out-of-scope for the current run. Instead of leaving them as silent rot in reflector logs as manual follow-ups, append a finding-shaped block to `~/.claude/tmp/apex-workflow-improvements.md` so the next `/apex-improve` invocation picks it up:
