@@ -1,10 +1,10 @@
 ---
 name: learn
-description: Step 11 tail subagent. Project-specific lesson distiller. Reads baseline-pinned git diff, appends novel patterns to .claude-tmp/lessons-tmp.md. Sonnet. Skipped under economy tier.
+description: Project-specific lesson distiller. Reads baseline-pinned git diff, appends novel patterns to .claude-tmp/lessons-tmp.md.
 model: sonnet
 ---
 
-# learn (step 11)
+# learn
 
 Spec: `apex-core.md` step 11.
 

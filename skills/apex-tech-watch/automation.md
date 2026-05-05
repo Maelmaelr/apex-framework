@@ -12,7 +12,7 @@ Useful for ad-hoc refreshes (e.g., right after a major Anthropic announcement). 
 
 ## Automated weekly schedule (user-owned)
 
-The output file lives at `~/.claude/tmp/tech-updates.md` -- a path on the user's local machine. Anthropic's `/schedule` remote triggers run in cloud sandboxes and **cannot** write to local paths, so the remote-trigger route does not fit this skill's contract. Two viable options for automation, both user-owned:
+The output file lives at `~/.claude/tmp/tech-updates.md` - a path on the user's local machine. Anthropic's `/schedule` remote triggers run in cloud sandboxes and **cannot** write to local paths, so the remote-trigger route does not fit this skill's contract. Two viable options for automation, both user-owned:
 
 ### Option A: macOS launchd (recommended for local-only setup)
 
@@ -58,4 +58,4 @@ Load: `launchctl load ~/Library/LaunchAgents/com.user.apex-tech-watch.plist`. Ad
 
 ### Why not /schedule?
 
-Anthropic's `/schedule` remote triggers spawn in cloud sandboxes that have no path back into the user's local `~/.claude/tmp/`. Workarounds (commit-and-pull a tech-updates artifact through a git repo) add complexity and noise to the public repo. The cron is intentionally separate from `/apex-improve` -- fetch failures should not block improve runs, and improve runs should not depend on fetching being fresh-of-this-second.
+Anthropic's `/schedule` remote triggers spawn in cloud sandboxes that have no path back into the user's local `~/.claude/tmp/`. Workarounds (commit-and-pull a tech-updates artifact through a git repo) add complexity and noise to the public repo. The cron is intentionally separate from `/apex-improve` - fetch failures should not block improve runs, and improve runs should not depend on fetching being fresh-of-this-second.

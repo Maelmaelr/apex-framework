@@ -91,12 +91,12 @@ After all sources processed, check `tech-updates.md` size:
 LIMIT=$(( 256 * 1024 ))  # 256 KB hard cap
 size=$(wc -c < "$TARGET" 2>/dev/null || echo 0)
 if (( size > LIMIT )); then
-  # Force a rotation -- treat all blocks older than 7 days as expired
+  # Force a rotation - treat all blocks older than 7 days as expired
   python3 -c "<rotation script with --aggressive flag>"
 fi
 ```
 
-The 256 KB cap is a backstop; the 30-day rotation should keep the file well under this in practice. If we hit the cap, the source list is too aggressive for weekly cadence -- surface a one-line warning ("apex-tech-watch: tech-updates.md hit 256 KB cap; aggressive rotation applied") so it's visible at the next /apex-improve run.
+The 256 KB cap is a backstop; the 30-day rotation should keep the file well under this in practice. If we hit the cap, the source list is too aggressive for weekly cadence - surface a one-line warning ("apex-tech-watch: tech-updates.md hit 256 KB cap; aggressive rotation applied") so it's visible at the next /apex-improve run.
 
 ## Step 4: Report
 
@@ -114,11 +114,11 @@ See `~/.claude/skills/apex-tech-watch/automation.md` for the manual `/apex-tech-
 
 ## What this skill does NOT do
 
-- Does NOT process or interpret the fetched content beyond summarization -- consumption is `/apex-improve`'s job.
-- Does NOT modify any apex framework file -- only `~/.claude/tmp/tech-updates.md` and the archive directory.
-- Does NOT cache fetch results -- every run re-fetches. The 7-day cron cadence + WebFetch's own caching is the cost-bound.
-- Does NOT push or commit -- output lives under `~/.claude/tmp/` which is `.gitignored`.
-- Does NOT validate URLs against a denylist -- the source list is closed and editable; trust the operator.
-- Does NOT extract scope or run any apex-active session machinery -- this is a standalone fetcher.
+- Does NOT process or interpret the fetched content beyond summarization - consumption is `/apex-improve`'s job.
+- Does NOT modify any apex framework file - only `~/.claude/tmp/tech-updates.md` and the archive directory.
+- Does NOT cache fetch results - every run re-fetches. The 7-day cron cadence + WebFetch's own caching is the cost-bound.
+- Does NOT push or commit - output lives under `~/.claude/tmp/` which is `.gitignored`.
+- Does NOT validate URLs against a denylist - the source list is closed and editable; trust the operator.
+- Does NOT extract scope or run any apex-active session machinery - this is a standalone fetcher.
 
 See `sources.json` for the editable source list; `~/.claude/skills/apex-improve/SKILL.md` for the consumer.
