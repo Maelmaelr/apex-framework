@@ -1,6 +1,6 @@
 ---
 name: learn
-description: Step 11 tail subagent. Project-specific lesson distiller. Reads baseline-pinned git diff for context, appends novel patterns / lessons to .claude-tmp/lessons-tmp.md for later curation into project lessons-index. Sonnet. Skipped under economy tier.
+description: Step 11 tail subagent. Project-specific lesson distiller. Reads baseline-pinned git diff, appends novel patterns to .claude-tmp/lessons-tmp.md. Sonnet. Skipped under economy tier.
 model: sonnet
 ---
 
@@ -8,42 +8,30 @@ model: sonnet
 
 Spec: `apex-core.md` step 11.
 
-## Inputs
+## Input
 
-- `git diff {baseline.head_sha}` for context. `head_sha` from `.claude-tmp/apex-active/{session}-baseline.json`. Baseline-pinned diff is INDEPENDENT of step 12's parallel staging+commit, avoiding the race where a default `git diff` would empty out once step 12 commits.
+`git diff {baseline.head_sha}` (head_sha from `.claude-tmp/apex-active/{session}-baseline.json`; pinned so the diff stays valid through step 12's commit).
 
 ## Output
 
-Appends novel patterns / lessons to `.claude-tmp/lessons-tmp.md` under `flock` via:
+Append novel patterns under `flock`:
 
 ```
 bash skills/apex/scripts/append-with-lock.sh .claude-tmp/lessons-tmp.md
 ```
 
-Curation into the project lessons-index (`.claude/lessons-index.md` + `.claude/lessons.md` + `.claude/lessons-archive.md`) is OUT OF SCOPE for /apex (handled by `/apex-lessons`).
+Curation into the project lessons-index is owned by `/apex-lessons`.
 
-## Out of scope (do NOT record)
+## What counts as a pattern
 
-Project-state facts belong in project `CLAUDE.md` / `docs/`, NOT in `lessons-tmp.md`:
-- env-var defaults / values (e.g., "`NEXT_PUBLIC_FOO` defaults to `true`")
-- DB table or column descriptions (e.g., "`system_config` is a key-value store for runtime admin state")
-- route / endpoint catalog facts (which path serves which payload)
-- one-off bug fixes with no transferable pattern
+Pattern = non-derivable from `CLAUDE.md` / framework docs: anti-patterns with rationale, non-obvious API discoveries, multi-touch-point cascading rules, race-condition guards, project coordination conventions.
 
-Record only **patterns** that would not be derivable from `CLAUDE.md` or framework docs alone: anti-patterns with concrete rationale, non-obvious API discoveries, multi-touch-point cascading rules, established test seams, race-condition guards, project-established coordination conventions.
+NOT patterns (state facts -> project `CLAUDE.md` / `docs/`): env-var defaults, table/column descriptions, route catalog, one-off bug fixes. If unsure, drop it.
 
-If unsure whether a finding is a pattern or a state fact, prefer dropping it - curation cannot reliably reclassify a state fact as a pattern.
+`reflector` (step 13) is the apex-workflow counterpart; this agent stays project-scoped.
 
-## Distinction from reflector
+## Tiers
 
-`learn.md` = project-specific (codebase patterns / lessons that help future coding sessions in THIS project).
-`reflector.md` = apex-specific (workflow / pipeline improvements that help future apex SESSIONS).
-
-Different files, different consumers.
-
-## Skipped contexts
-
-- Tier `economy`: SKIPPED. Bounded scope rarely produces novel project-specific patterns worth distilling.
-- Tier `standard`: runs in parallel with `documentation.md` at step 11.
+`economy`: SKIPPED. `standard`: parallel with `documentation.md`.
 
 See `apex-core.md` Conventions for safety paths.
