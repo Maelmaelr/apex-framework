@@ -6,108 +6,130 @@ Legend: `inline` = main-orchestrator inline prompt | `skill` = `~/.claude/skills
 
 ---
 
+## Tiers
+
+| Tier     | Decided at | Effect                                                                       |
+|----------|------------|------------------------------------------------------------------------------|
+| trivial  | step 3     | step 3.1 inline edit -> jump to 14. Skips 4-13.                              |
+| economy  | step 7     | step 8 executors = sonnet; step 11 learn skipped. All other steps run.       |
+| standard | step 7     | step 8 executors = main session model; full tail.                            |
+
+---
+
 ## Entry flow
 
-Step 0 TaskCreates 1-5.
+Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "skipped").
 
 ```
-1. Analyze prompt: inline
+1. Analyze prompt + read project-context.md: inline
+   - if ambiguous: AskUserQuestion (abort | clarification options)
+
 2. Create session: create-session.sh
-3. Hypothesis: inline -> {session}-hypothesis.json (incl. discovered_paths from bounded inline Glob/Grep/Read on conceptual prompts)
-4. Load lessons: grep-lessons.sh + update-hit.sh
-5. Trivial detection: inline
-  - if trivial:
-    - trivial.md -> p1.md
-    - skip 6-9
-  - if non-trivial:
-    - TaskCreate 6-9
-```
+   - exit 10 (overlap):
+     - stale-only: auto-cleanup-and-proceed (session-end-hook.sh <stale> --foreign per stale; re-run create-session.sh)
+     - active: AskUserQuestion (abort | proceed-alongside | cleanup-stale-and-proceed)
 
-```
-6. Scout phase 1: scout1.md
-  6.a Enumerate: enumerate scripts -> findings-{session}.json (also seeds layers from hypothesis.discovered_paths)
-    - if zero-layer (deterministic layers all empty; ripgrep retired in 1.x):
-      - if hypothesis.discovered_paths non-empty: zero-layer-extract.sh autonomously (no AskUserQuestion; produced_by=zero-layer-discovered)
-      - else: AskUserQuestion (abort | proceed-with-prompt-paths -> zero-layer-extract.sh; produced_by=zero-layer-inline)
-      - either: -> p1.md, skip tasks 6.b/c, 7-9
-  6.b Rank: rank-findings.sh -> screen-plan-{session}.json (deterministic top-K cap)
-    - if dropped_below_cap >= top_k (overshoot signal):
-      - AskUserQuestion (all options surfaced verbatim):
-        - refine | proceed-with-prompt-paths | continue
-      - refine = hard abort (session-end-hook.sh inline; NOT a license for inline edits)
-      - if proceed-with-prompt-paths:
-        - p1.md
-        - skip tasks 6.c, 7-9
-      - if continue: proceed to 6.c with the already-capped top-K
-  6.c Screen: single screener.md call -> screened-{session}.json (no shards, no aggregator)
-7. Scout phase 2: scout2.md -> preflight-{session}.json
-  7.x Targeted rescout: rescout.md (only if missed_regions != [])
-8. Verify claims: verify-claims.sh
-    - exit 0 -> proceed
-    - exit 1 -> abort (preflight_bad | screened_unconverged)
-    - exit 2 -> re-run 6.c+7 (cap 1)
-    - exit 3 -> inline review -> verify-claims.sh --apply-resolved
-9. Decide path: decide-path.sh
-    - medium  -> p1.md
-    - complex -> TaskCreate 10, p2.0a, p2.0b, p2.0c
-10. Self-reflect (P2): reflect-traces.sh + reflector.md (background, param=entryflow)
+3. Trivial pre-flight: inline
+   - trivial = single-file edit, no new public symbol, named target file, ANY ambiguity = non-trivial
+   - if trivial:
+     - 3.1 inline single Edit/Write; orchestrator writes minimal hypothesis stub (original_prompt + one-line hypothesis) so step 15 contract stays uniform
+     - jump to 14 (skip 4-13). Trade-off: no verify, no commit, no reflect; user owns lint/build + git add+commit.
+   - if non-trivial: proceed to 4
+
+4. Hypothesis: inline -> {session}-hypothesis.json
+   - original_prompt, hypothesis, complexity_hint, alternatives, discovered_paths
+   - validate-json.sh hypothesis.schema.json
+
+5. Load lessons + project docs: grep-lessons.sh + update-hit.sh
+   - project-context.md cached from step 1
+   - tolerate empty output (no lessons-index.md = silent skip)
+
+6. Discovery: discover.md
+   seeds: prompt regex + hypothesis.discovered_paths + lessons paths + project-context paths
+   cascade (stop at lowest non-empty bounded set):
+     a. LSP find-references / definition (when seeds name a symbol; TS-only today)
+     b. Glob sibling-pattern expansion (routing/registry/index splits)
+     c. Grep keyword search (capped ~150 lines)
+     d. Screener LLM gate: screener.md (single Sonnet call; always fires when cascade reaches this layer)
+   output: {session}-main-scope.json
+   write scope-check pointer: .claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt
+
+7. Economy pre-flight: inline
+   - AI judgement; inputs: {session}-hypothesis.json, {session}-main-scope.json (file count + paths), step 5 lessons hits
+   - output: {session}-tier.json (validated against tier.schema.json) -> {tier: economy | standard, reason: <one line>}
+   - downstream: step 8 executor model (sonnet vs main); step 11 learn skip flag
+
+8. Execute: execute.md -> executor.md (per task)
+   - 8.0 init: apex-baseline.sh (captures head_sha + pre_dirty for step 12 exclusion); apex-conflict-check.sh (cross-session scope overlap)
+   - pre-flight wc -l on scope; >400 LOC -> queue split task ahead of edits
+   - main orchestrator decides task count + per-task scope (default 1; splits into 2+ only for clearly independent areas); validate-disjoint-scopes.py enforces disjoint when 2+
+   - spawn-prompt carries executor stack (hypothesis, per-task scope, lessons hits, project-context, task description) - subagents do NOT inherit working memory
+   - file-health hook = safety net during edits
+   - executor model: sonnet if economy, main session model if standard
+   - dispatch-only: orchestrator MUST NOT inline Edit/Write/MultiEdit/NotebookEdit slice files at step 8
+
+9. Polish: inline (touched INTERSECT scope)
+   - staleness / inconsistency / unused check
+   - lessons context advisory
+
+10. Verify: verify-build.sh
+    - if errors: executor.md (always Sonnet for fix-loop, regardless of step 8's tier; cap 3)
+    - on cap exhaustion: AskUserQuestion (abort | proceed-with-errors)
+
+11. Tail (foreground):
+    - standard: parallel(documentation.md, learn.md)
+    - economy: documentation.md only (learn skipped)
+
+12. VERSION bump + git sync: bump-version.sh -> single chained git command
+    - read <project-root>/VERSION (vX.Y.Z); missing = silent skip
+    - inline classify diff -> minor | patch (never major; major is user-set)
+    - increment + reset patch=0 on minor
+    - git-stage-files.sh (change-set + pre-dirty/dotenv/check-ignore/cross-session filters + per-file add) && git commit -m "<freeform>" && git push (one chain)
+
+13. Self-reflect: reflect-traces.sh + reflector.md (foreground)
+    - reads traces in-place from .claude-tmp/apex-active/{session}-traces/
+    - appends to ~/.claude/tmp/apex-workflow-improvements.md
+
+14. Cleanup session: cleanup-session.sh
+    - wipes session dir except {session}-hypothesis.json (do not clean concurrent session files)
+
+15. Inline summary: inline
+    - reads {session}-hypothesis.json
+    - emits summary
+    - removes hypothesis on success
 ```
 
 ---
 
-## Path 1
+## Mid-flow abort cleanup
 
-p1.0 TaskCreates p1.1 -> p1.6 (main mode) | p1.1, p1.1b, p1.3, p1.6 (teammate trim).
-
-```
-p1.0 Init: p1.md (main: baseline + concurrent-apex conflict-check)
-p1.1 Implement: implement.md -> executor.md (per task, parallel where possible; orchestrator MUST NOT inline-Edit slice files - dispatch-only)
-p1.1b Polish: polish.md (inline; touched-by-apex INTERSECT scope)
-p1.2 Verify+fix: verify-fix.md -> verify-build.sh
-  - if errors:
-    - executor.md (cap 3) [main only]
-p1.3 Tail: detect-tail-mode.sh -> agents (two-phase: parallel A, then git)
-  - if economy:
-    - phase B: git.md
-  - if full:
-    - phase A (parallel): learn.md + documentation.md
-    - phase B: git.md
-  - if teammate:
-    - documentation.md (no git)
-p1.4 Self-reflect: reflect-traces.sh + reflector.md (fg, param=entryflow+p1) [main only]
-p1.5 Cleanup session: cleanup-session.sh [main only]
-p1.6 Inline summary: inline (reads hypothesis | {teammate-id}-task.md; removes hypothesis on success)
-```
-
-Teammate trim (under Path 2): `p1.0 -> p1.1 -> p1.1b -> p1.3 (docs only) -> p1.6`.
+Any orchestrator exit bypassing step 14 runs `session-end-hook.sh {session}` inline. Triggers:
+- AskUserQuestion-abort at step 1 (no manifest yet -> skip session-end-hook)
+- AskUserQuestion-abort at step 2 active-detected (no manifest written for this session -> skip)
+- Step 6 cascade-empty (abort, or proceed-with-discovered-or-prompt-paths but zero validated)
+- Step 8 conflict-check-abort
+- Step 10 verify cap-3 exhaustion (if user opts to abort)
+- Any unexpected error path
 
 ---
 
-## Path 2
+## Skip matrix
 
-```
-p2.0a Enter plan mode: plan-mode.md -> EnterPlanMode
-p2.0b Embed plan: planner.md
-p2.0c Exit plan mode: ExitPlanMode (plan-mode.md)
-  - if rejected:
-    - abort (session-end-hook.sh inline)
-```
-
-After context clear, p2.md starts with p2.0 TaskCreates p2.1 -> p2.7.
-
-```
-p2.0 Init (post-clear): p2.md
-p2.1 Setup teammates: teammates.md
-  - Each teammate calls p1.md --teammate
-    - if failure -> teammates-failure.md (a self-fix | b replace | c AskUserQuestion)
-p2.2 Shutdown: p2-shutdown.md (inline; per-teammate)
-p2.3 Verify+fix: verify-fix.md -> verify-build.sh
-  - if errors:
-    - executor.md (cap 3)
-p2.4 Tail+shared docs: detect-tail-mode.sh -> agents (two-phase: parallel A, then git)
-  - phase A (parallel): learn.md + documentation.md (documentation owns first-write on planner's shared_files)
-  - phase B: git.md
-p2.5 Self-reflect: reflect-traces.sh + reflector.md (Haiku, fg, param=p2)
-p2.6 Cleanup session: cleanup-session.sh
-p2.7 Inline summary: inline (reads hypothesis; removes on success)
-```
+| Step | trivial | economy | standard |
+|------|---------|---------|----------|
+| 1    | run     | run     | run      |
+| 2    | run     | run     | run      |
+| 3    | run     | run     | run      |
+| 3.1  | run     | -       | -        |
+| 4    | skip    | run     | run      |
+| 5    | skip    | run     | run      |
+| 6    | skip    | run     | run      |
+| 7    | skip    | run     | run      |
+| 8    | skip    | run (sonnet) | run (main) |
+| 9    | skip    | run     | run      |
+| 10   | skip    | run     | run      |
+| 11   | skip    | run (no learn) | run (full) |
+| 12   | skip    | run     | run      |
+| 13   | skip    | run     | run      |
+| 14   | run     | run     | run      |
+| 15   | run     | run     | run      |
