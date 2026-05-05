@@ -34,7 +34,7 @@ The caller (`implement.md` or the verify-fix dispatcher) injects the correct tra
 3. Respect the scope-check PreToolUse hook: writes outside `allowed_files` are blocked at the tool call (the hook resolves scope via on-disk pointer; see `shared-guardrails.md`)
 4. Before claiming clean completion, verify any file artifacts named in the task description appear in `git diff` (or `git status` for untracked); if an expected artifact is missing, treat as failure (write trace, return failure summary) rather than silently marking complete
 5. On clean completion (no failure, no split decision): NO trace; return a one-line summary
-6. On failure OR file-split decision: write the trace at the injected path BEFORE returning summary
+6. On failure OR file-split decision: write the trace at the injected path BEFORE returning summary; the trace MUST reflect end state (after all retries / write attempts), not intermediate gate-block state - determine outcome AFTER the final attempt, not after the first gate
 
 ## Architecture context (optional read)
 
@@ -68,7 +68,7 @@ The trace is decision provenance, NOT a transcript. Keep it scannable for the re
 - <one-line: alternatives considered, dropped with reason>
 
 ## Dropped candidates
-- <file or approach>: <one-line reason>
+- <file or approach>: <one-line reason - strictly one line, no elaboration, no examples>
 
 ## Error context (if failure)
 - <error class>: <one-line summary>
