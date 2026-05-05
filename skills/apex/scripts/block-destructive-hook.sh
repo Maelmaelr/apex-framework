@@ -58,6 +58,12 @@ if [[ "$CHECKOUT_BYPASS" == "yes" ]]; then
   exit 0
 fi
 
+# git stash pop (applies stash and drops it; can overwrite working-tree changes; loses safety net)
+if [[ "$COMMAND" =~ git[[:space:]]+stash[[:space:]]+pop ]]; then
+  deny "GUARDRAIL: git stash pop applies the stash and drops it -- can overwrite working-tree changes and loses the stash safety net. Use 'git stash apply' (keeps stash) instead, or ask user via AskUserQuestion before proceeding."
+  exit 0
+fi
+
 # git restore (without --staged discards working tree changes)
 if [[ "$COMMAND" =~ git[[:space:]]+restore[[:space:]] ]] && ! [[ "$COMMAND" =~ --staged ]]; then
   deny "GUARDRAIL: git restore discards working tree changes. Ask user via AskUserQuestion before proceeding."
