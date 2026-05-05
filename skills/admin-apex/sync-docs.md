@@ -77,7 +77,7 @@ For every Edit call:
 
 ## Doc surfaces NOT in scope
 
-- Project app docs under `docs/` - those are scout / documentation.md territory, not admin-apex.
+- Project app docs under `docs/` - those are documentation.md territory (apex step 11), not admin-apex.
 - Lesson files (`.claude/lessons*.md`) - owned by the future `/apex-improve` workflow.
 - Reflector log (`~/.claude/tmp/apex-workflow-improvements.md`) - same.
 

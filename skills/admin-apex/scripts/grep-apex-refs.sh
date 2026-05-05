@@ -15,8 +15,8 @@
 #   <repo-relative-path>:<line>:<matched-line>
 #
 # Args:
-#   <path-or-name>   required, e.g. "skills/apex/scripts/enumerate-scout.sh"
-#                    or "enumerate-scout.sh" (basename also works).
+#   <path-or-name>   required, e.g. "skills/apex/scripts/scope-check-hook.sh"
+#                    or "scope-check-hook.sh" (basename also works).
 #
 # Exit codes:
 #   0 - search ran (matches OR no matches)

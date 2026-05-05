@@ -137,7 +137,7 @@ The "do NOT commit or push" line is the explicit signal that suppresses Steps 7+
 
 ## What this skill does NOT do
 
-- Does NOT scout, plan teammates, or run /apex's verify-fix loop - this is an out-of-band meta-task on the apex framework itself, not on user code.
+- Does NOT discover, dispatch executors, or run /apex's verify-fix loop - this is an out-of-band meta-task on the apex framework itself, not on user code.
 - Does NOT touch project app code, run project lint/build, or modify `.env*`.
 - Does NOT commit or push under apex-eod (Steps 7-8 skipped via subagent-prompt directive); standalone runs DO commit + mirror + push at session end (mirrors admin-apex tasks 9+10).
 - Does NOT bypass the file-health hook - if a Step 4 semantic edit would push a file past 400 lines, the hook fires and apex-improve must AskUserQuestion (`split-now | reduce-edit | abort`). Same gate any apex skill respects.
