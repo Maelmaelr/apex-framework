@@ -143,9 +143,17 @@ while IFS= read -r path; do
   fi
 
   # Cross-session guard. Drop paths claimed by another active session's
-  # main-scope allowed_files (sibling /apex run owns this file).
+  # main-scope allowed_files (sibling /apex run owns this file). Also
+  # actively unstage if the sibling pre-staged the path - 'continue' alone
+  # leaves prior `git add` in the index, which would commit the contaminant
+  # under our session.
   if [[ -n "$OTHER_SCOPE_FILES" ]] && printf '%s\n' "$OTHER_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-    echo "git-stage-files.sh: skipping cross-session (claimed by sibling main-scope): $path" >&2
+    if git diff --cached --name-only 2>/dev/null | grep -Fx -- "$path" >/dev/null 2>&1; then
+      git restore --staged -- "$path" 2>/dev/null || git reset HEAD -- "$path" >/dev/null 2>&1 || true
+      echo "git-stage-files.sh: unstaged cross-session contaminant (sibling main-scope): $path" >&2
+    else
+      echo "git-stage-files.sh: skipping cross-session (claimed by sibling main-scope): $path" >&2
+    fi
     continue
   fi
 
