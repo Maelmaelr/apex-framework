@@ -115,6 +115,16 @@ if command -v jq >/dev/null 2>&1 && [[ -d "$APEX_ACTIVE" ]]; then
 fi
 OTHER_SCOPE_FILES=$(printf '%s' "$OTHER_SCOPE_FILES" | grep -v '^$' | sort -u || true)
 
+# Pre-dirty filter. Read `pre_dirty` from {session}-baseline.json (captured at
+# step 8.0). User-pre-existing WIP is never bundled into the apex commit, even
+# when apex deliberately edited a pre-dirty file (the merged change stays dirty
+# for the user to review and commit). Spec: apex-core.md step 12.
+PRE_DIRTY_FILES=""
+BASELINE_PATH="$APEX_ACTIVE/$SESSION-baseline.json"
+if command -v jq >/dev/null 2>&1 && [[ -f "$BASELINE_PATH" ]]; then
+  PRE_DIRTY_FILES=$(jq -r '.pre_dirty[]?' "$BASELINE_PATH" 2>/dev/null | sort -u || true)
+fi
+
 if [[ -z "$CHANGE_SET" ]]; then
   # Nothing changed since baseline. Not an error.
   exit 0
@@ -124,6 +134,13 @@ rc=0
 while IFS= read -r path; do
   [[ -z "$path" ]] && continue
   base=$(basename -- "$path")
+
+  # Pre-dirty guard. Drop paths user already had dirty at step 8.0 baseline -
+  # any apex edit on top of the user's WIP stays dirty for them to review.
+  if [[ -n "$PRE_DIRTY_FILES" ]] && printf '%s\n' "$PRE_DIRTY_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
+    echo "git-stage-files.sh: skipping pre-dirty (user WIP at baseline): $path" >&2
+    continue
+  fi
 
   # Dotenv guard. Glob match `.env*` (literal dot + `env` prefix); template
   # allowlist is the only escape hatch.

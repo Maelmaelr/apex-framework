@@ -63,6 +63,10 @@ IDEMPOTENT=0
 SED_INPLACE=(-i "")
 
 for LINE_NUM in "$@"; do
+  if [[ "$LINE_NUM" =~ ^[0-9]+-[0-9]+$ ]]; then
+    echo "ERROR: line-range arg rejected: '$LINE_NUM' (single line numbers only; expand the range and pass each absolute line from grep-lessons.sh '--- LINES start-end ---' markers)" >&2
+    continue
+  fi
   if ! [[ "$LINE_NUM" =~ ^[0-9]+$ ]] || [[ "$LINE_NUM" -eq 0 ]]; then
     echo "WARNING: skipping invalid line number: $LINE_NUM" >&2
     continue
