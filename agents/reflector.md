@@ -79,14 +79,12 @@ If only ONE of the two inputs is missing, still emit the structured block - hypo
 
 ## Non-convergence detection (apex phase only)
 
-Runs once per apex invocation, before composing the structured block.
+Canonical contract (when, collision condition, output line format, history-log path): `apex-core.md` step 13. Implementation specifics:
 
-1. Compute `prompt_hash` = sha1 of the normalized `original_prompt` from `{session}-hypothesis.json` (lowercase, collapse whitespace, trim - same recipe as `skills/apex/scripts/discovery-cache.sh:normalize_prompt`).
-2. Compute `scope_count` from `{session}-main-scope.json` `allowed_files.length` (0 if missing); `touched_count` from `git diff --name-only {baseline.head_sha}` line count; `files_touched` from the same `git diff --name-only` output (sorted, comma-joined, truncated at 240 chars).
-3. Read prior entries in `~/.claude/tmp/apex-prompt-history.log` (one JSON object per line). Find any entry with `hash == prompt_hash` AND `session != {session}`.
-4. **Collision found** -> emit a `non-convergence:` line as one of the `improvements:` entries: `non-convergence: prior session <X> touched {A,B}; this session touched {A,C}`. (Set difference is informational; surfacing both sets is enough for `/apex-improve`.)
-5. **No collision OR first run** -> no extra line.
-6. Append this run's record to the log regardless:
+1. `prompt_hash` = sha1 of normalized `original_prompt` from `{session}-hypothesis.json` (recipe: `skills/apex/scripts/discovery-cache.sh:normalize_prompt`).
+2. `scope_count` from `{session}-main-scope.json` `allowed_files.length` (0 if missing); `touched_count` from `git diff --name-only {baseline.head_sha}` line count; `files_touched` from the same output (sorted, comma-joined, truncated at 240 chars).
+3. Collision filter: prior entry in `~/.claude/tmp/apex-prompt-history.log` with `hash == prompt_hash` AND `session != {session}` -> emit the `non-convergence:` `improvements:` line. No prior match -> no extra line.
+4. Append this run's record to the log regardless:
    ```
    ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
    printf '{"ts":"%s","session":"%s","hash":"%s","scope_count":%d,"touched_count":%d,"files_touched":"%s"}\n' \
