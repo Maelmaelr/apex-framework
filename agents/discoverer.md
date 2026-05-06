@@ -42,7 +42,7 @@ Routing / registry / index splits: when a seed is `routes.ts`, Glob `routes_*.ts
 
 ### c. Grep keyword search
 
-Capped at ~150 lines. Keywords derived from hypothesis nouns + symbol names; narrow if the cap is hit (drop common words, add scope qualifiers). Output is a ranked file list (file path + match count) for the screener.
+Capped at ~150 lines. Keywords derived from hypothesis nouns + symbol names; narrow if the cap is hit (drop common words, add scope qualifiers). For multi-layer hypotheses (e.g., DB + API + web + tests in one task), prefer per-layer narrower passes over a single broad sweep - the screener's discrimination degrades when fed >30 mixed-layer candidates (observed 27 kept / 17 dropped from a 44-input cross-cutting batch). Output is a ranked file list (file path + match count) for the screener.
 
 ### d. Screener inner subagent
 

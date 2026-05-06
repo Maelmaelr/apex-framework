@@ -84,6 +84,7 @@ esac
 DIRTY="$ADMIN_ACTIVE/${RUN}-dirty-paths.txt"
 DOCS="$ADMIN_ACTIVE/${RUN}-docs-changed.txt"
 APPLIED="$ADMIN_ACTIVE/${RUN}-applied-ops.json"
+SUMMARY="$ADMIN_ACTIVE/${RUN}-summary.md"
 
 # Defensive validation: --bump must match the tier required by the applied-ops
 # kinds. Catches caller-side mistake where bump rule was misapplied.
@@ -190,6 +191,7 @@ git add -- plugins/ statusline/ tmp/
 # Step 3: Decide commit vs no-commit-cleanup.
 if git diff --cached --quiet; then
   # Nothing staged - clean up artifacts and signal caller to skip task 10.
+  echo "task-9: nothing staged, no commit" >> "$SUMMARY"
   if [[ -x "$SCRIPT_DIR/cleanup-run.sh" ]]; then
     "$SCRIPT_DIR/cleanup-run.sh" --run "$RUN" 2>/dev/null || true
   fi
@@ -210,5 +212,11 @@ if ! git commit -m "$MESSAGE" -m "$BODY" >/dev/null; then
   echo "admin-apex-finalize.sh: git commit failed (artifacts left for inspection)" >&2
   exit 2
 fi
+
+# Audit trail: surface bump tier + body summary + commit SHA in summary.md
+# (previously only in {run}-applied-ops.json; reflector reads summary.md for
+# friction signals).
+SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+echo "task-9: bump=$BUMP $BODY, commit $SHA" >> "$SUMMARY"
 
 exit 0
