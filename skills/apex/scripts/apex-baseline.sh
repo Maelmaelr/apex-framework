@@ -11,7 +11,7 @@
 #
 # Side effects:
 #   - mkdir -p .claude-tmp/apex-active
-#   - write .claude-tmp/apex-active/{session}-baseline.json containing head_sha
+#   - write .claude-tmp/apex-active/{session}-baseline.json containing head_sha + pre_dirty
 #
 # Exit codes:
 #   0  -- baseline written
@@ -37,17 +37,19 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 GIT_HEAD=$(git rev-parse HEAD)
+PRE_DIRTY=$( (git diff --name-only HEAD; git ls-files --others --exclude-standard) | sort -u )
 
 APEX_ACTIVE=".claude-tmp/apex-active"
 mkdir -p "$APEX_ACTIVE"
 BASELINE="$APEX_ACTIVE/$SESSION-baseline.json"
 
-PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$BASELINE" "$GIT_HEAD" <<'PY'
-import sys, json
+PRE_DIRTY="$PRE_DIRTY" PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$BASELINE" "$GIT_HEAD" <<'PY'
+import sys, os, json
 from _validate import producer_validate, ValidationError
 
 baseline_path, git_head = sys.argv[1:3]
-data = {"head_sha": git_head}
+pre_dirty = [p for p in os.environ.get("PRE_DIRTY", "").splitlines() if p]
+data = {"head_sha": git_head, "pre_dirty": pre_dirty}
 try:
     producer_validate(data, "baseline")
 except ValidationError as e:

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "baseline.schema.json",
+  "title": "{session}-baseline.json (working-tree baseline at step 8.0)",
+  "description": "Captured by apex-baseline.sh. head_sha is the git rev-parse HEAD value at step 8.0 init. Consumed by step 9 (polish), step 11 (tail diff), step 12 (git stage filter), and step 13 (reflector diff context).",
+  "type": "object",
+  "required": ["head_sha", "pre_dirty"],
+  "properties": {
+    "head_sha": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{7,40}$",
+      "description": "Lowercase hex git commit sha (7-40 chars) recorded at step 8.0."
+    },
+    "pre_dirty": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Repo-relative paths dirty in the working tree at step 8.0 (tracked-modified UNION untracked-non-ignored). Computed via `(git diff --name-only HEAD; git ls-files --others --exclude-standard) | sort -u`. Step 12 excludes these from staging so user-pre-existing WIP is never bundled into the apex commit; step 13 reflector reads it for diff context."
+    }
+  },
+  "additionalProperties": true
+}
