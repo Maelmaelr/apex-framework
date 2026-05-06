@@ -14,6 +14,8 @@ The reflector outputs one analysis block every run, even when the heuristic sign
 
 Two cross-cutting checks fire in every phase: (1) **workflow-respect audit** - walk the phase spec against the actual trace + summary + git diff and flag steps that were skipped, reordered, ran without their declared inputs, or left their declared output artifact missing; (2) **token-reduction sweep** - over the same evidence, spot redundancy or oversize that does not change the step's outcome. Both surface as dedicated lines in the structured output and feed `/apex-improve` as ordinary candidate findings.
 
+A third check fires in the **apex phase only**: **non-convergence detection** - append the run's prompt-hash to `~/.claude/tmp/apex-prompt-history.log` and flag whenever a prior entry with the same hash touched a different file set. Surfaces non-deterministic /apex behaviour (same prompt, different fixes across runs) into `improvements:` for `/apex-improve` to consume. See "Non-convergence detection" below.
+
 ## Invocation table
 
 | Phase                    | parameter         | trace inputs                                                                                                | manifest                                                              |
@@ -74,6 +76,25 @@ printf '## %s - %s - SKIPPED-no-inputs - %s\n' "${TOKEN}" "${PHASE}" "$ts" \
 No `gaps:` / `fixes-observed:` / `improvements:` / `workflow-respected:` / `token-reductions:` lines. `/apex-improve.analyze.md` recognises this sentinel and drops it pre-cluster.
 
 If only ONE of the two inputs is missing, still emit the structured block - hypothesis-vs-reality and cross-session pattern surfacing remain valuable on partial inputs.
+
+## Non-convergence detection (apex phase only)
+
+Runs once per apex invocation, before composing the structured block.
+
+1. Compute `prompt_hash` = sha1 of the normalized `original_prompt` from `{session}-hypothesis.json` (lowercase, collapse whitespace, trim - same recipe as `skills/apex/scripts/discovery-cache.sh:normalize_prompt`).
+2. Compute `scope_count` from `{session}-main-scope.json` `allowed_files.length` (0 if missing); `touched_count` from `git diff --name-only {baseline.head_sha}` line count; `files_touched` from the same `git diff --name-only` output (sorted, comma-joined, truncated at 240 chars).
+3. Read prior entries in `~/.claude/tmp/apex-prompt-history.log` (one JSON object per line). Find any entry with `hash == prompt_hash` AND `session != {session}`.
+4. **Collision found** -> emit a `non-convergence:` line as one of the `improvements:` entries: `non-convergence: prior session <X> touched {A,B}; this session touched {A,C}`. (Set difference is informational; surfacing both sets is enough for `/apex-improve`.)
+5. **No collision OR first run** -> no extra line.
+6. Append this run's record to the log regardless:
+   ```
+   ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+   printf '{"ts":"%s","session":"%s","hash":"%s","scope_count":%d,"touched_count":%d,"files_touched":"%s"}\n' \
+     "$ts" "$SESSION" "$prompt_hash" "$scope_count" "$touched_count" "$files_touched" \
+     | bash $HOME/.claude/skills/apex/scripts/append-with-lock.sh ~/.claude/tmp/apex-prompt-history.log
+   ```
+
+Skipped under SKIPPED-no-inputs (no hypothesis -> no prompt to hash). Other phases (admin-apex, lessons-analyze, lessons-extract) skip this check entirely - their inputs are not user prompts.
 
 ## Failure mode
 

@@ -36,6 +36,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
      - analyzes prompt
      - AskUserQuestion if ambiguous; abort = clean exit (no manifest yet)
      - reads `<project-root>/docs/project-context.md` if present (best-effort; absent = silent skip; cap read at ~200 lines)
+     - **goals decomposition expectation**: when forming the working interpretation, expect step 4 to emit a `goals[]` array (1..N items). Single-task prompts ("fix the typo in login.tsx") -> one goal verbatim. Multi-task / audit prompts ("make sure all kie image-gen models have settings + costs wired") -> N enumerated goals, each a discrete actionable check. `goals.length` drives downstream behaviour at step 6 (top-K), step 7 (deterministic tier rule), step 8.2 (per-goal task split), step 13 (non-convergence detection), step 15 (per-goal summary). Internal bias only at step 1; no user-visible change.
 
 2. Create session manifest | Blocked by #1
    - script `scripts/create-session.sh --cc-session-id "$(bash scripts/get-cc-session-id.sh)"`
@@ -58,6 +59,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
      - emits `hypothesis` (1 - 2 sentence working interpretation; not a plan, not a task list)
      - emits `complexity_hint: low|medium|high` (advisory; consumed by step 7 economy classifier as one signal)
      - emits `alternatives: [{interpretation, status: kept|rejected, reason}]` - 1 - 3 narrower / broader scope readings, each a structured anti-bias check. minItems: 1 schema-required.
+     - emits `goals: [string]` - 1..N items, each a discrete actionable check or task. Free-text 1-3 sentences each. Single-task prompts: one goal (the prompt verbatim, lightly normalized). Multi-task / audit prompts: enumerate one goal per discrete check ("verify each model has cost wired", "verify backend node wiring", ...). Same prompt -> same goals[] (deterministic from prompt + step 1's bias hint), which is what makes the per-goal split at step 8.2 idempotent across re-runs. Schema: `goals` is an additive optional array (old hypothesis JSONs without it still validate); the new flow always populates it with at least one item.
      - emits `discovered_paths: [<paths>]` (optional) - when `original_prompt` has no path tokens AND `complexity_hint != "low"`, spawn a small Explore subagent (`Agent(subagent_type: "Explore")`) to gather candidate repo-relative paths; the subagent returns ONLY paths that exist on disk. Empty / absent when the prompt itself names paths, when complexity is low, or when the prompt is too abstract for the Explore subagent to anchor.
      - writes `.claude-tmp/apex-active/{session}-hypothesis.json`; producer-validates via `bash scripts/validate-json.sh hypothesis.schema.json <path>`. On validation failure: abort with explicit error.
 
@@ -70,7 +72,12 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
    - working memory: kept lessons (from screener `kept[]`) + matched paths + project context propagate to step 6 (discovery seeds) and steps 8 / 9 / 10 / 11 (advisory context for executor / polish / verify-fix / documentation / learn). The raw grep blob never enters working memory - that is the bloat-reduction rationale for the screener gate.
 
 6. Discovery | Blocked by #5
-   - agent `~/.claude/agents/discoverer.md` (Sonnet; subagents do NOT inherit working memory - orchestrator propagates seeds + hypothesis + session token + cc_session_id explicitly at the spawn site)
+   - agent `~/.claude/agents/discoverer.md` (Sonnet; subagents do NOT inherit working memory - orchestrator propagates seeds + hypothesis + session token + cc_session_id + project_root explicitly at the spawn site)
+   - **discovery cache check (fires first)**:
+     - `bash scripts/discovery-cache.sh check <original_prompt> <project_root>` - returns absolute path to a cached `main-scope.json` on hit; exit 1 on miss/expired.
+     - **hit** -> copy cached body to `.claude-tmp/apex-active/{session}-main-scope.json`, write the scope-check pointer, skip seeds + cascade + screener. Discoverer returns `{main_scope, cache_hit: true}` and step 6 status is `cache-hit`.
+     - **miss** -> proceed to seeds + cascade. After a non-empty cascade result, `bash scripts/discovery-cache.sh write <original_prompt> <project_root> <main-scope.json>` populates the cache for the next equivalent run.
+     - cache key = sha1(normalized `original_prompt` + `project_root`); normalize = lowercase + collapse whitespace + trim. TTL: 7 days from write OR HEAD diverged > 10 commits since cache write. Layout: `.claude-tmp/apex-discovery-cache/<sha1>.json` + `.head` sidecar (HEAD sha at write).
    - **seeds** (cheap, pre-paid in main-orchestrator working memory; passed via spawn prompt):
      a. regex path-tokens from `original_prompt` (project-tree-shaped + quoted/backticked tokens)
      b. `hypothesis.discovered_paths`
@@ -79,23 +86,25 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
    - **layered cascade** (stop at lowest non-empty bounded set; each layer optional):
      a. **LSP** find-references / definition (when seeds name an identifier-shape symbol; TS-only via typescript-language-server; silent no-op on non-TS repos)
      b. **Glob** sibling-pattern expansion (routing / registry / index splits: when a seed is `routes.ts`, Glob `routes_*.ts` etc.)
-     c. **Grep** keyword search (capped ~150 lines; narrower keywords if cap hit)
-     d. **Screener inner subagent**: `discoverer.md` spawns `~/.claude/agents/screener.md` (Sonnet, single call) directly as a child subagent. **Always fires** when the cascade reaches this layer (any non-empty layer output flows through screening; cheap Sonnet pass over a ranked top-K cap is the right default - prevents an unscreened LSP / Glob overshoot from becoming scope unilaterally). The screener does NOT inherit `discoverer.md`'s working memory; ranked list + hypothesis are passed explicitly in its spawn prompt. Reads ranked list + hypothesis; returns keep / drop + relevance per file. Writes `.claude-tmp/apex-active/{session}-screened.json` (`{kept: [{file, screener_reason}], dropped: [{file, screener_reason}]}`; producer-validated against `screened.schema.json`); trace at `.claude-tmp/apex-active/{session}-traces/entry/screener.md`. Consumed by step 13 reflector for accuracy / efficiency evaluation.
+     c. **Grep** keyword search (capped ~150 lines). **Keywords are extracted deterministically from `hypothesis.goals[]`** (lowercase + tokenize on whitespace+punctuation, drop stopwords `the|a|an|and|or|of|to|in|for|on|with|is|are|was|were|be|by|that|this|these|those|it|as|at|from|verify|ensure|make|sure|check|each|all|any|every`, drop tokens shorter than 4 chars, dedupe across goals). Same `goals[]` -> same keyword set, run-to-run. Replaces the prior "AI-derived ~8 keywords" heuristic.
+     d. **Screener inner subagent**: `discoverer.md` spawns `~/.claude/agents/screener.md` (Sonnet, single call) directly as a child subagent. **Always fires** when the cascade reaches this layer. Top-K **scales by `hypothesis.goals.length`**: 1 -> K=15 (single-task, narrow); 2-5 -> K=30 (today's default); >5 -> K=50 (audit / sweep). Default K=30 when `goals` is absent (legacy hypothesis). The screener does NOT inherit `discoverer.md`'s working memory; ranked top-K + hypothesis are passed explicitly in its spawn prompt. Reads ranked list + hypothesis; returns keep / drop + relevance per file. Writes `.claude-tmp/apex-active/{session}-screened.json` (`{kept: [{file, screener_reason}], dropped: [{file, screener_reason}]}`; producer-validated against `screened.schema.json`); trace at `.claude-tmp/apex-active/{session}-traces/entry/screener.md`. Consumed by step 13 reflector for accuracy / efficiency evaluation.
    - **output**: `.claude-tmp/apex-active/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json`.
    - writes scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt`.
-   - **cascade-empty abort**: if all layers exhaust with zero validated paths, `discoverer.md` returns `{cascade_empty: true}` with no scope JSON written. The orchestrator then runs AskUserQuestion (`abort` | `proceed-with-discovered-or-prompt-paths` -> first re-use `hypothesis.discovered_paths` (validated at step 4); fall back to regex-extract from `original_prompt` only if `discovered_paths` is empty/absent; validate on disk, write scope with those + safety paths). Both empty -> abort runs `session-end-hook.sh {session}` inline.
+   - **cascade-empty abort**: if all layers exhaust with zero validated paths, `discoverer.md` returns `{cascade_empty: true}` with no scope JSON written and no cache write. The orchestrator then runs AskUserQuestion (`abort` | `proceed-with-discovered-or-prompt-paths` -> first re-use `hypothesis.discovered_paths` (validated at step 4); fall back to regex-extract from `original_prompt` only if `discovered_paths` is empty/absent; validate on disk, write scope with those + safety paths). Both empty -> abort runs `session-end-hook.sh {session}` inline.
 
 7. Economy pre-flight | Blocked by #6
-   - inline task prompt (AI judgement; single inline emit, no subagent)
-   - inputs: `{session}-hypothesis.json`, `{session}-main-scope.json` (file count + paths), step 5 lessons hits.
-   - prompt template:
+   - inline **deterministic rule** (no AI emit, no subagent, no helper script - the rule is ~10 lines and inlining it avoids over-engineering)
+   - inputs: `{session}-hypothesis.json` (`goals`), `{session}-main-scope.json` (`allowed_files`).
+   - rule:
      ```
-     Classify tier: "economy" | "standard".
-     Economy when: bounded scope, no new public abstractions, reversible risk, no cross-cutting concerns.
-     Standard when: unclear scope, new public surface, irreversible risk, or "rewrite/migrate/redesign" intent.
-     Output JSON: {"tier": "economy"|"standard", "reason": "<one line>"}
+     tier = "economy" if (
+       len(hypothesis.goals) == 1
+       AND len(allowed_files) <= 5
+       AND no /\b(rewrite|migrate|redesign|new endpoint|new component)\b/i match in any goals[] text
+     ) else "standard"
      ```
-   - writes `.claude-tmp/apex-active/{session}-tier.json`; producer-validates against `tier.schema.json`.
+   - reason string: mechanical reproduction of inputs - `"len(goals)=N, allowed_files=M, rewrite_match=<true|false>"` - so the same prompt + scope yields the same tier.json content run-to-run.
+   - writes `.claude-tmp/apex-active/{session}-tier.json`; producer-validates against `tier.schema.json` (schema unchanged - same `{tier, reason}` shape).
    - downstream effect: step 8 executor model (Sonnet vs main); step 11 learn skip flag.
 
 8. Execute | Blocked by #7
@@ -106,12 +115,16 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
    - **8.1 pre-flight wc-l split queue**:
      - `wc -l` on `{session}-main-scope.json` `allowed_files`. For each file > 400 LOC: queue an executor task with `--mode split` AHEAD of normal edit tasks. Files > 500 LOC always split. Continuous-prose docs exempt (`*.md` heuristic + skill author judgement).
      - `file-health-hook.sh` (PreToolUse) is the safety net for files that grow during execution.
-   - **8.2 task split + disjoint scopes (orchestrator-decided)**:
-     - the **main orchestrator** decides task count and per-task allowed-files subsets. Default = 1 executor task spanning the full scope. The orchestrator splits into 2+ parallel tasks only when it identifies clearly independent areas (e.g., disjoint subsystems, unrelated file clusters).
-     - when 2+ tasks are spawned, the orchestrator validates per-task allowed-files via `scripts/validate-disjoint-scopes.py`: (i) per-task `allowed_files` pairwise disjoint (excluding safety paths), (ii) union is a subset of `{session}-main-scope.json` `allowed_files`. Cross-task touch points are routed to a serialised follow-up task (no parallel write conflict).
+   - **8.2 task split + disjoint scopes (goals-driven)**:
+     - **`hypothesis.goals.length == 1`**: 1 executor task spanning the full scope; spawn prompt carries the single goal verbatim. Behaviour identical to the prior default - the goal text is now structured rather than implicit in `hypothesis` prose.
+     - **`hypothesis.goals.length > 1`**: N executor tasks, **one goal per spawn prompt**. Per-task `allowed_files` is the subset of `{session}-main-scope.json` `allowed_files` whose paths match the goal's deterministic noun set (same recipe as step 6 grep-keyword extraction; cheap `grep -li <token>` intersection over main-scope paths). A goal whose noun-set yields no scope intersection inherits the full main-scope (degenerate fallback; logged in trace). Goals with overlapping `allowed_files` are serialized into a single follow-up task per the cross-task-touch-points rule, so the parallel set stays pairwise-disjoint.
+     - validation (regardless of goals.length, when 2+ tasks are spawned): `scripts/validate-disjoint-scopes.py`: (i) per-task `allowed_files` pairwise disjoint (excluding safety paths), (ii) union is a subset of `{session}-main-scope.json` `allowed_files`. Cross-task touch points routed to a serialised follow-up task (no parallel write conflict).
+     - **idempotency**: re-running the same prompt produces the same `goals[]` (deterministic from prompt + the step-1/4 prompt-template hint), therefore the same N tasks. If the prior run achieved the goals, each executor returns `already-satisfied` (see step 8.3); nothing is staged at step 12 -> empty-diff path skips the commit.
    - **8.3 dispatch**:
      - per-task: agent `~/.claude/agents/executor.md` (Sonnet if `tier=economy`, main session model if `tier=standard`)
-     - **spawn-prompt context (executor stack)**: each spawn carries the executor's input stack from main-orchestrator working memory - hypothesis (verbatim), per-task scope (allowed_files subset), step 5 lessons hits relevant to the task, project-context paths, and the task description. Subagents do NOT inherit working memory, so this propagation is explicit-by-spawn.
+     - **spawn-prompt context (executor stack)**: each spawn carries the executor's input stack from main-orchestrator working memory - hypothesis (verbatim), `goal` (the single goal string from `hypothesis.goals[]` for this task), per-task scope (`allowed_files` subset), step 5 lessons hits relevant to the task, project-context paths, and the task description. Subagents do NOT inherit working memory, so this propagation is explicit-by-spawn.
+     - executor returns `{goal, status, notes}` where `status` is `implemented` (changes written) | `already-satisfied` (intent already in code; no edits) | `failed` (trace written). Orchestrator collects per-goal results in a session-local map for step 15.
+     - **no self-validation**: each executor does exactly one thing for one goal; same-context second-pass over its own work is biased and yields little signal. Errors are caught by step 10 verify-build. A separate context-isolated semantic-validator subagent (out of scope today; deferred until reflector logs flag semantic-miss patterns) is the right place for cross-goal correctness checks.
      - executor respects file-health PreToolUse hook (safety net)
      - on failure or split decision: executor writes trace to `.claude-tmp/apex-active/{session}-traces/execute/executor-{task-id}.md` before returning summary
    - **dispatch-only step**: orchestrator MUST NOT inline `Edit` / `Write` / `MultiEdit` / `NotebookEdit` slice files at step 8.
@@ -193,6 +206,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
         - token-reductions: <step-X: <reduction>, max 3>
         - screener-eval: <skipped (no screened.json) | dropped-but-touched: N | kept-but-untouched: N>, max 1>
 
+      - **non-convergence detection (apex phase only)**: before composing the structured block, the reflector appends `{ts, session, hash=sha1(normalized original_prompt), scope_count, touched_count, files_touched}` to `~/.claude/tmp/apex-prompt-history.log` (one JSON object per line; same `flock` helper as `apex-workflow-improvements.md`). If a prior entry shares the same `hash` but a different `files_touched` set, the reflector surfaces a `non-convergence: prior session <X> touched {A,B}; this session touched {A,C}` line as one of its `improvements:` entries. Invisible during the run; surfaces only in `apex-workflow-improvements.md` for the next `/apex-improve` to consume.
       - empty-input gate: when traces dir is empty AND manifest read fails, emits SKIPPED-no-inputs sentinel (`## {session} - reflect - SKIPPED-no-inputs - {ts}`) instead of the structured block; consumed by `/apex-improve` analyze phase pre-cluster drop.
       - errors logged to `~/.claude/tmp/reflector-errors.log` (silent failure otherwise).
       - shuts down silently (no main-session output).
@@ -213,10 +227,11 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
     - **Live-session guard + --post-success bypass**: by default, `cleanup-session.sh` reads the manifest's `pid` and refuses cleanup if the PID is alive AND `ps -o comm=` matches `claude` (defends against sibling classifier bugs). `--post-success` bypasses the guard for trusted own-session callers (step 14 success path, mid-flow abort, SessionEnd of own session). Without that flag the guard would block legit own-cleanup since manifest.pid is the still-alive caller's claude pid.
 
 15. Inline summary | Blocked by #14
-    - inline task prompt reads `{session}-hypothesis.json` (preserved by step 14)
+    - inline task prompt reads `{session}-hypothesis.json` (preserved by step 14) and the per-goal status map collected at step 8.3
     - emits:
       - Original prompt summary (from `original_prompt` field)
       - Short hypothesis vs reality (gaps spotted) summary
+      - **Per-goal status**: `N/M goals passed` line where N = count of goals with status `implemented` + `already-satisfied`, M = `len(hypothesis.goals)`. Below the headline, list each goal with its status (`implemented` | `already-satisfied` | `failed`) and one-line note from the executor return. This is the first and only place the user sees the goal decomposition - as a record of what was done, never as a question.
       - Short executive summary
     - on success: removes `.claude-tmp/apex-active/{session}-hypothesis.json` (consumer cleans up its own input; SessionEnd-hook fallback otherwise).
 

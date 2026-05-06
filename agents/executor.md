@@ -20,7 +20,8 @@ The caller (step 8 / step 10) injects the trace path into the spawn prompt. Writ
 ## Inputs (passed by caller, not inherited)
 
 - `original_prompt` + `hypothesis` (verbatim from `{session}-hypothesis.json`)
-- per-task scope (`allowed_files` subset for this invocation)
+- `goal` - single goal string from `hypothesis.goals[]` for this invocation (step 8 only; absent under step 10 fix). When `goals.length == 1` the orchestrator passes that one goal; when `goals.length > 1` step 8.2 spawns N executors with one goal each.
+- per-task scope (`allowed_files` subset for this invocation; for goals-driven splits the orchestrator narrows to the file subset implicated by the goal's nouns)
 - step 5 lessons hits relevant to the task (best-effort)
 - project-context paths (architecture entry-point excerpts)
 - one-line task description (step 8) OR errors-file path (step 10 fix)
@@ -30,12 +31,15 @@ Subagents do NOT inherit working memory. Every input above is explicit in the sp
 
 ## Behavior
 
-1. Implement the assigned task end-to-end, including running infra commands the task produces (migrations, seeders, deps installs). For fix-attempts, fix the supplied `verify-build.sh` errors instead.
-2. Respect the file-health PreToolUse hook: split files > 400 LOC BEFORE adding > 10 lines (the hook blocks `Edit` / `Write` on > 500 LOC).
-3. Respect the scope-check PreToolUse hook: writes outside `allowed_files` are blocked. The hook resolves scope via on-disk pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt`.
-4. Before claiming clean completion, verify any file artifacts named in the task description appear in `git diff` (or `git status` for untracked). Missing artifact = failure (write trace, return failure summary) - do NOT silently mark complete.
-5. On clean completion (no failure, no split decision): NO trace; return a one-line summary.
-6. On failure OR file-split decision: write the trace at the injected path BEFORE returning summary. The trace MUST reflect end state (after all retries / write attempts), not intermediate gate-block state.
+1. Implement the assigned `goal` end-to-end (step 8 dispatch), including running infra commands the work produces (migrations, seeders, deps installs). Under `goals.length > 1` you receive ONE goal in your spawn prompt and do exactly that one thing - no scope-creep, no sibling goals. For fix-attempts (step 10), fix the supplied `verify-build.sh` errors instead (no goal field).
+2. **already-satisfied path**: read `allowed_files`, judge whether the goal's intent is already present in the code. If yes, return `{goal, status: "already-satisfied", notes: "<one-line reason>"}` with no edits, no trace. Re-runs of the same `goals[]` against unchanged scope therefore short-circuit to no-op.
+3. Respect the file-health PreToolUse hook: split files > 400 LOC BEFORE adding > 10 lines (the hook blocks `Edit` / `Write` on > 500 LOC).
+4. Respect the scope-check PreToolUse hook: writes outside `allowed_files` are blocked. The hook resolves scope via on-disk pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt`.
+5. Before claiming clean completion, verify any file artifacts named in the goal / task description appear in `git diff` (or `git status` for untracked). Missing artifact = failure (write trace, return failure summary) - do NOT silently mark complete.
+6. On clean completion: return `{goal, status: "implemented", notes: "<one-line summary>"}` (step 8) or the legacy one-line summary (step 10 fix). NO trace on success.
+7. On failure OR file-split decision: write the trace at the injected path BEFORE returning `{goal, status: "failed", notes: "<one-line>"}`. The trace MUST reflect end state (after all retries / write attempts), not intermediate gate-block state.
+
+No self-validation, no second pass over your own work - errors are caught by step 10 verify-build, and a separate context-isolated semantic-validator subagent (out of scope for this contract) is the right place for cross-goal correctness checks if reflector logs ever flag semantic-miss patterns.
 
 ## Architecture context (optional read)
 
@@ -83,9 +87,12 @@ Hard rules:
 
 ## Output
 
-One-line summary returned to caller. Examples:
-- `step-8 task-1.2: implemented login validation in auth/login.tsx (3 files touched)`
-- `step-10 fix-attempt-1: resolved TS2345 errors in 2 files (build clean)`
-- `step-8 task-2: split user-service.ts (612L) before adding webhook handler`
+Step 8: structured JSON `{goal, status, notes}` where `status` is one of `implemented` | `already-satisfied` | `failed`. Step 10 fix: legacy one-line summary (no goal field). Examples:
+
+- step 8 implemented: `{"goal": "wire kie image-gen settings", "status": "implemented", "notes": "added settings + cost cols to 3 nodes in providers/kie.ts"}`
+- step 8 already-satisfied: `{"goal": "fix typo in login.tsx", "status": "already-satisfied", "notes": "no typo present at auth/login.tsx:42; intent already in code"}`
+- step 8 failed: `{"goal": "verify each model has cost wired", "status": "failed", "notes": "3 of 7 models missing pricing rows in pricing/kie.ts; trace written"}`
+- step 10 fix-attempt-1: `step-10 fix-attempt-1: resolved TS2345 errors in 2 files (build clean)`
+- step 8 split: `{"goal": "...", "status": "failed", "notes": "split user-service.ts (612L) before adding webhook handler"}` (split decisions surface as failed + trace; orchestrator re-spawns)
 
 See `apex-core.md` Conventions for safety paths, scope-check / file-health hooks, trace path schema, JSON-Schema validation.

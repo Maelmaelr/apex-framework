@@ -23,6 +23,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 ```
 1. Analyze prompt + read project-context.md: inline
    - if ambiguous: AskUserQuestion (abort | clarification options)
+   - bias for step 4: expect goals[] decomposition (single goal for fix-bug-in-file-Y prompts; N enumerated goals for audit / multi-task prompts)
 
 2. Create session: create-session.sh
    - exit 10 (overlap):
@@ -37,7 +38,8 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - if non-trivial: proceed to 4
 
 4. Hypothesis: inline -> {session}-hypothesis.json
-   - original_prompt, hypothesis, complexity_hint, alternatives, discovered_paths
+   - original_prompt, hypothesis, complexity_hint, alternatives, discovered_paths, goals (1..N free-text actionable items)
+   - goals.length drives steps 6 (top-K), 7 (deterministic tier), 8.2 (per-goal split), 13 (non-convergence), 15 (per-goal summary)
    - validate-json.sh hypothesis.schema.json
 
 5. Load lessons + project docs: grep-lessons.sh -> agents/lesson-screener.md (Sonnet, single call; raw grep output + hypothesis explicit in spawn prompt; subagents do NOT inherit working memory) -> {session}-lesson-screened.json -> update-hit.sh on kept line ranges
@@ -45,26 +47,30 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - project-context.md cached from step 1
    - tolerate empty output (no lessons-index.md = silent skip; screener also skipped)
 
-6. Discovery: agents/discoverer.md (Sonnet; spawn-prompt carries seeds + hypothesis + session/cc_session_id; subagents do NOT inherit working memory)
+6. Discovery: agents/discoverer.md (Sonnet; spawn-prompt carries seeds + hypothesis + session/cc_session_id + project_root; subagents do NOT inherit working memory)
+   cache check first: discovery-cache.sh check <prompt> <project_root> -> hit -> reuse cached main-scope, skip cascade. Miss -> run cascade, then discovery-cache.sh write. TTL 7 days OR HEAD diverged > 10 commits.
    seeds: prompt regex + hypothesis.discovered_paths + lessons paths + project-context paths
    cascade (stop at lowest non-empty bounded set):
      a. LSP find-references / definition (when seeds name a symbol; TS-only today)
      b. Glob sibling-pattern expansion (routing/registry/index splits)
-     c. Grep keyword search (capped ~150 lines)
-     d. Screener inner subagent: agents/screener.md (single Sonnet call; spawned by discoverer.md; always fires when cascade reaches this layer)
+     c. Grep keyword search (capped ~150 lines; keywords extracted deterministically from hypothesis.goals[] via lowercase + stopword drop + dedupe)
+     d. Screener inner subagent: agents/screener.md (single Sonnet call; spawned by discoverer.md; always fires when cascade reaches this layer; top-K scales by goals.length: 1->15, 2-5->30, >5->50)
    output: {session}-main-scope.json
    write scope-check pointer: .claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt
 
-7. Economy pre-flight: inline
-   - AI judgement; inputs: {session}-hypothesis.json, {session}-main-scope.json (file count + paths), step 5 lessons hits
-   - output: {session}-tier.json (validated against tier.schema.json) -> {tier: economy | standard, reason: <one line>}
-   - downstream: step 8 executor model (sonnet vs main); step 11 learn skip flag
+7. Economy pre-flight: inline deterministic rule (no AI emit, no subagent)
+   - inputs: hypothesis.goals (length + text), main-scope.allowed_files (count)
+   - rule: economy if len(goals)==1 AND len(allowed_files)<=5 AND no /\b(rewrite|migrate|redesign|new endpoint|new component)\b/i in any goal text; else standard
+   - output: {session}-tier.json (validated against tier.schema.json; same shape) -> reason "len(goals)=N, allowed_files=M, rewrite_match=<true|false>"
+   - same prompt + scope -> same tier, every run
 
 8. Execute: execute.md -> executor.md (per task)
    - 8.0 init: apex-baseline.sh (captures head_sha + pre_dirty for step 12 exclusion); apex-conflict-check.sh (cross-session scope overlap)
    - pre-flight wc -l on scope; >400 LOC -> queue split task ahead of edits
-   - main orchestrator decides task count + per-task scope (default 1; splits into 2+ only for clearly independent areas); validate-disjoint-scopes.py enforces disjoint when 2+
-   - spawn-prompt carries executor stack (hypothesis, per-task scope, lessons hits, project-context, task description) - subagents do NOT inherit working memory
+   - 8.2 goals-driven split: len(goals)==1 -> 1 task (full scope); len(goals)>1 -> N tasks, one goal per spawn prompt; per-task allowed_files narrowed to main-scope subset matching goal nouns; validate-disjoint-scopes.py enforces disjoint when 2+
+   - spawn-prompt carries executor stack (hypothesis, single goal, per-task scope, lessons hits, project-context, task description) - subagents do NOT inherit working memory
+   - executor returns {goal, status, notes} where status is implemented | already-satisfied | failed; orchestrator collects per-goal map for step 15
+   - idempotency: same prompt -> same goals -> same N tasks; if goals were achieved last run, executors return already-satisfied -> empty diff -> step 12 skips commit
    - file-health hook = safety net during edits
    - executor model: sonnet if economy, main session model if standard
    - dispatch-only: orchestrator MUST NOT inline Edit/Write/MultiEdit/NotebookEdit slice files at step 8
@@ -91,13 +97,14 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 13. Self-reflect: reflect-traces.sh + reflector.md (foreground)
     - reads traces in-place from .claude-tmp/apex-active/{session}-traces/
     - appends to ~/.claude/tmp/apex-workflow-improvements.md
+    - non-convergence detection: appends {ts, session, hash=sha1(prompt), scope_count, touched_count, files_touched} to ~/.claude/tmp/apex-prompt-history.log; on hash collision with different files_touched, surfaces non-convergence: line in improvements:
 
 14. Cleanup session: cleanup-session.sh
     - wipes session dir except {session}-hypothesis.json (do not clean concurrent session files)
 
 15. Inline summary: inline
-    - reads {session}-hypothesis.json
-    - emits summary
+    - reads {session}-hypothesis.json + per-goal status map from step 8.3
+    - emits summary including per-goal status (N/M goals passed; per-goal status + note)
     - removes hypothesis on success
 ```
 

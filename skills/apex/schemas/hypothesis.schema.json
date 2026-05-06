@@ -28,6 +28,12 @@
       "type": "array",
       "items": { "type": "string" },
       "description": "Optional. Repo-relative file paths the orchestrator validated during step-4 inline exploration (Glob / Grep / Read on conceptual prompts where the user named no file paths). Consumed by step 6 discovery as additional seeds and by the cascade-empty proceed-with-discovered-or-prompt-paths fallback. Empty / absent when the prompt itself names paths or when step-4 did no exploration."
+    },
+    "goals": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "description": "Optional. 1..N discrete actionable goals derived from original_prompt. Free-text 1-3 sentences each. Single-task prompts emit one goal; multi-task / audit prompts enumerate. goals.length drives step 6 top-K (1->15, 2-5->30, >5->50), step 7 deterministic tier rule, step 8.2 per-goal task split (N goals -> N executor tasks), step 13 non-convergence detection, step 15 per-goal summary. Backward-compatible: old hypothesis JSONs without goals[] still validate; new flow always populates."
     }
   }
 }
