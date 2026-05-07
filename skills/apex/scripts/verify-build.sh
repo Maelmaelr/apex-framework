@@ -30,7 +30,11 @@
 
 set -uo pipefail
 
-APEX_ACTIVE=".claude-tmp/apex-active"
+# Anchor APEX_ACTIVE to git-root so verify-build.sh writes the errors file at
+# the canonical project-root location regardless of cwd. Falls back to pwd when
+# not inside a git repo (rare; manifest detection below would also fail).
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+APEX_ACTIVE="$PROJECT_ROOT/.claude-tmp/apex-active"
 SESSION=""
 WITH_TESTS=0
 

@@ -22,7 +22,12 @@
 
 set -uo pipefail
 
-APEX_ACTIVE=".claude-tmp/apex-active"
+# Mirror verify-build.sh: anchor APEX_ACTIVE to git-root so we read/write at the
+# canonical project-root location regardless of cwd. Required because the
+# parent (verify-build.sh) anchors here too; a divergent base would leave the
+# errors file orphaned.
+PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+APEX_ACTIVE="$PROJECT_ROOT/.claude-tmp/apex-active"
 SESSION=""
 PROJECT_TYPE=""
 PM=""

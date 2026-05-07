@@ -24,7 +24,7 @@ Per section in the raw input, decide keep / drop with a free-text reason. Bias r
 - Sections whose header / body align with `original_prompt` tokens or `hypothesis.discovered_paths` -> tilt keep.
 - Generic / off-topic sections (e.g., a section about CI flakiness when the prompt is about a UI bug) -> tilt drop.
 - Anti-pattern sections relevant to the prompt domain -> always keep (high signal).
-- When in doubt, drop (the orchestrator can re-run grep-lessons.sh with narrower terms; bloat is the failure mode this gate prevents).
+- When in doubt, drop. The grep keyword recipe is deterministic (same `goals[]` -> same terms), so there is no orchestrator re-run path - your drop bias is the only filter, and bloat is the failure mode this gate prevents.
 
 ## Outputs
 
@@ -32,6 +32,7 @@ Per section in the raw input, decide keep / drop with a free-text reason. Bias r
    - `kept[]`: `{line_range, section_title, screener_reason, content}` (content = verbatim section body so downstream subagents inherit lessons via spawn prompts without re-reading lessons.md).
    - `dropped[]`: `{line_range, section_title, screener_reason}`.
    - `line_range` matches the `--- LINES s-e ---` marker exactly so `update-hit.sh` consumes kept ranges directly.
+   - **artifact role**: audit + step 13 reflector input only. The orchestrator passes `kept[]` content into step-6/8 spawn prompts directly from working memory; this JSON is never re-read by the executor / dispatch phase.
 2. `.claude-tmp/apex-active/{session}-traces/entry/lesson-screener.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop).
 
 ## Return to caller
