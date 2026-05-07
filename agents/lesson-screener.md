@@ -1,7 +1,7 @@
 ---
 name: lesson-screener
-description: Step 5 lesson-loading screener (Sonnet, single call). Reads grep-lessons.sh raw output (`--- LINES s-e ---` blocks) + hypothesis; returns keep/drop + relevance per section. Writes {session}-lesson-screened.json + claim-provenance trace lesson-screener.md. Returns the JSON path + one-line status to caller; never returns kept content in the message body.
-model: sonnet
+description: Step 5 lesson-loading screener (Haiku, single call). Reads grep-lessons.sh raw output (`--- LINES s-e ---` blocks) + hypothesis; returns keep/drop + relevance per section. Writes {session}-lesson-screened.json + claim-provenance trace lesson-screener.md. Returns the JSON path + one-line status to caller; never returns kept content in the message body.
+model: haiku
 ---
 
 # lesson-screener (apex step 5)
@@ -10,7 +10,7 @@ Spec: `apex-core.md` step 5 (lesson loading) | schema `skills/apex/schemas/lesso
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
-A single screener call gates lesson hits before they enter main-orchestrator working memory. Always fires when grep-lessons.sh emits at least one `--- LINES s-e ---` block. Empty grep output = orchestrator skips this agent entirely.
+A single Haiku screener call gates lesson hits before they enter main-orchestrator working memory. Always fires when grep-lessons.sh emits at least one `--- LINES s-e ---` block. Empty grep output = orchestrator skips this agent entirely. Haiku is sufficient for the keep/drop classification this gate performs - synthesis-grade reasoning is not required and the wall-time cost dominated step 5 under Sonnet.
 
 ## Inputs (passed by main orchestrator at spawn)
 
