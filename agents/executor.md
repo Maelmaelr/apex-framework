@@ -33,13 +33,19 @@ Subagents do NOT inherit working memory. Every input above is explicit in the sp
 
 ## Behavior
 
-1. Implement the assigned `goal` end-to-end (step 8 dispatch), including running infra commands the work produces (migrations, seeders, deps installs). Under `goals.length > 1` you receive ONE goal in your spawn prompt and do exactly that one thing - no scope-creep, no sibling goals. For fix-attempts (step 10), fix the supplied `verify-build.sh` errors instead (no goal field).
+1. Implement the assigned `goal` end-to-end as **the smallest atomic change that satisfies it** (C2 decomposition framing). If the goal contains multiple independent sub-changes, do the FIRST one only and return `{status: split-needed, residual_goal, residual_files, what_i_did}` instead of attempting all of them - the orchestrator owns redispatch (capped at 1 per goal at step 8.3). Step 8 dispatch path: includes running infra commands the work produces (migrations, seeders, deps installs). Under `goals.length > 1` you receive ONE goal in your spawn prompt and do exactly that one thing - no scope-creep, no sibling goals. For fix-attempts (step 10), fix the supplied `verify-build.sh` errors instead (no goal field, no split-needed path).
 2. **already-satisfied path**: read `allowed_files`, judge whether the goal's intent is already present in the code. If yes, return `{goal, status: "already-satisfied", notes: "<one-line reason>"}` with no edits, no trace. Re-runs of the same `goals[]` against unchanged scope therefore short-circuit to no-op.
 3. Respect the file-health PreToolUse hook: split files > 400 LOC BEFORE adding > 10 lines (the hook blocks `Edit` / `Write` on > 500 LOC).
 4. Respect the scope-check PreToolUse hook: writes outside `allowed_files` are blocked. The hook resolves scope via on-disk pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt`.
 5. Before claiming clean completion, verify any file artifacts named in the goal / task description appear in `git diff` (or `git status` for untracked). Missing artifact = failure (write trace, return failure summary) - do NOT silently mark complete.
-6. On clean completion: return `{goal, status: "implemented", notes: "<one-line summary>"}` (step 8) or the legacy one-line summary (step 10 fix). NO trace on success.
-7. On failure OR file-split decision: write the trace at the injected path BEFORE returning `{goal, status: "failed", notes: "<one-line>"}`. The trace MUST reflect end state (after all retries / write attempts), not intermediate gate-block state.
+6. On clean completion: return `{goal, status: "implemented", notes: "<one-line summary>", tool_calls_made: N, files_touched: M}` (step 8) or the legacy one-line summary (step 10 fix). NO trace on success. `tool_calls_made` = approximate count of tool invocations during this run (Read / Edit / Write / Bash / Grep / Glob / etc.); `files_touched` = count of distinct files actually edited / written / created (Reads do not count).
+7. On failure OR file-split decision: write the trace at the injected path BEFORE returning `{goal, status: "failed", notes: "<one-line>", tool_calls_made, files_touched}`. The trace MUST reflect end state (after all retries / write attempts), not intermediate gate-block state.
+8. **Mid-flight self-assessment (C1)**: after each completed sub-step (each file fully edited / each artifact written), pause and ask:
+   - Has the residual work grown beyond what the goal framed?
+   - Am I about to touch files outside my original `allowed_files`?
+   - Have I discovered 2+ new sub-concerns the goal didn't anticipate?
+   
+   If YES to any: stop, do NOT continue to the next sub-step, return `{status: "split-needed", residual_goal: "<one-line>", residual_files: ["<repo-relative paths>"], what_i_did: "<one-line>", tool_calls_made, files_touched}`. No counter, no threshold - judgment call. The orchestrator may re-spawn ONE follow-up with the residual (cap 1 redispatch per goal); a second `split-needed` lands as `failed` for step 15.
 
 No self-validation, no second pass over your own work - errors are caught by step 10 verify-build, and a separate context-isolated semantic-validator subagent (out of scope for this contract) is the right place for cross-goal correctness checks if reflector logs ever flag semantic-miss patterns.
 
@@ -89,12 +95,13 @@ Hard rules:
 
 ## Output
 
-Step 8: structured JSON `{goal, status, notes}` where `status` is one of `implemented` | `already-satisfied` | `failed`. Step 10 fix: legacy one-line summary (no goal field). Examples:
+Step 8: structured JSON `{goal, status, notes, tool_calls_made, files_touched}` where `status` is one of `implemented` | `already-satisfied` | `failed` | `split-needed`. The `split-needed` shape additionally carries `residual_goal` + `residual_files` + `what_i_did` (per-step 8.3 C1 redispatch contract). Step 10 fix: legacy one-line summary (no goal field, no counts, no split-needed). Examples:
 
-- step 8 implemented: `{"goal": "wire kie image-gen settings", "status": "implemented", "notes": "added settings + cost cols to 3 nodes in providers/kie.ts"}`
-- step 8 already-satisfied: `{"goal": "fix typo in login.tsx", "status": "already-satisfied", "notes": "no typo present at auth/login.tsx:42; intent already in code"}`
-- step 8 failed: `{"goal": "verify each model has cost wired", "status": "failed", "notes": "3 of 7 models missing pricing rows in pricing/kie.ts; trace written"}`
+- step 8 implemented: `{"goal": "wire kie image-gen settings", "status": "implemented", "notes": "added settings + cost cols to 3 nodes in providers/kie.ts", "tool_calls_made": 14, "files_touched": 3}`
+- step 8 already-satisfied: `{"goal": "fix typo in login.tsx", "status": "already-satisfied", "notes": "no typo present at auth/login.tsx:42; intent already in code", "tool_calls_made": 2, "files_touched": 0}`
+- step 8 failed: `{"goal": "verify each model has cost wired", "status": "failed", "notes": "3 of 7 models missing pricing rows in pricing/kie.ts; trace written", "tool_calls_made": 22, "files_touched": 1}`
+- step 8 split-needed (C1): `{"goal": "audit and close audio parity gaps", "status": "split-needed", "residual_goal": "wire mute toggle + level-meter for inputs B/C/D", "residual_files": ["audio/inputs/b.ts","audio/inputs/c.ts","audio/inputs/d.ts"], "what_i_did": "wired input A only (level + mute)", "tool_calls_made": 18, "files_touched": 1}`
 - step 10 fix-attempt-1: `step-10 fix-attempt-1: resolved TS2345 errors in 2 files (build clean)`
-- step 8 split: `{"goal": "...", "status": "failed", "notes": "split user-service.ts (612L) before adding webhook handler"}` (split decisions surface as failed + trace; orchestrator re-spawns)
+- step 8 file-split (orthogonal to C1; surfaces as failed + trace; orchestrator re-spawns): `{"goal": "...", "status": "failed", "notes": "split user-service.ts (612L) before adding webhook handler", "tool_calls_made": 4, "files_touched": 0}`
 
 See `apex-core.md` Conventions for safety paths, scope-check / file-health hooks, trace path schema, JSON-Schema validation.

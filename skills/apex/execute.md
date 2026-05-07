@@ -38,6 +38,7 @@ Spec: `apex-core.md` step 8.
   - union is a subset of `{session}-main-scope.json` `allowed_files`
 - Cross-task touch points are routed to a serialised follow-up task (no parallel write conflict).
 - **Idempotency**: re-running the same prompt produces the same `goals[]` (deterministic from the user-prompt + the step-1/4 prompt-template hint), therefore the same N tasks. If the prior run achieved the goals, each executor returns `already-satisfied` (see `agents/executor.md`); nothing is staged at step 12 -> empty-diff path skips the commit.
+- **Scope-size hard split (B1)**: after the goals-driven split, for any executor task whose per-task `allowed_files` count exceeds 8, hard-split via `python3 skills/apex/scripts/chunk-scope.py -n 2` (one path per stdin line). The original task is replaced by 2 sub-tasks; goal text duplicates across both. The chunker keeps directory-siblings together; the resulting `allowed_files` sets are pairwise disjoint by construction so the disjoint-scopes validation continues to hold. First executor to implement wins; the second sees `already-satisfied`.
 
 ## 8.3 Dispatch
 
@@ -48,12 +49,15 @@ Per task:
   - hypothesis (verbatim)
   - `goal` - the single goal string from `hypothesis.goals[]` for this task (one task per goal under `goals.length > 1`; the single goal under `goals.length == 1`)
   - per-task scope (`allowed_files` subset)
+  - **scope budget hint (E2)**: one-line `"Expected scope: <N> files, ~<K> LOC. If you exceed 2x (>2N files OR >2K LOC), stop and return split-needed."` Compute K via `wc -l` on the per-task `allowed_files`.
   - step 5 lessons hits relevant to the task
   - project-context paths
   - one-line task description
   - trace path: `.claude-tmp/apex-active/{session}-traces/execute/executor-{task-id}.md`
 - The executor respects file-health + scope-check PreToolUse hooks.
-- The executor returns `{goal, status, notes}` where status is `implemented` | `already-satisfied` | `failed`. Collect per-goal returns in a session-local map for step 15's per-goal summary.
+- The executor returns `{goal, status, notes, tool_calls_made, files_touched}` where status is `implemented` | `already-satisfied` | `failed` | `split-needed`. Collect per-goal returns in a session-local map for step 15's per-goal summary.
+- **Dispatch self-report log (E1)**: append each return verbatim to `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (JSON array; append-and-rewrite). Reflector at step 13 reads this to flag oversized dispatches (`tool_calls_made > 50`).
+- **Split-needed redispatch (C1 follow-up)**: on `status: split-needed`, the orchestrator re-spawns ONE follow-up executor with `goal = residual_goal` and `allowed_files = residual_files` (cap 1 redispatch per goal). If the follow-up also returns `split-needed`, mark the goal `failed` for step 15 with notes `"split-needed twice; residual: <residual_goal>"`. Per-redispatch return is also appended to dispatch-summary.json.
 - On failure or split decision, the executor writes a structured trace before returning (see `agents/executor.md`).
 
 ## Dispatch-only constraint

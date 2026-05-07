@@ -42,7 +42,8 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - goals.length drives steps 6 (top-K), 7 (deterministic tier), 8.2 (per-goal split), 13 (non-convergence), 15 (per-goal summary)
    - validate-json.sh hypothesis.schema.json
 
-5. Load lessons + project docs: grep-lessons.sh -> agents/lesson-screener.md (Sonnet, single call; raw grep output + hypothesis explicit in spawn prompt; subagents do NOT inherit working memory) -> {session}-lesson-screened.json -> update-hit.sh on kept line ranges
+5. Load lessons + project docs: grep-lessons.sh -> agents/lesson-screener.md (Haiku, single call; raw grep output + hypothesis explicit in spawn prompt; subagents do NOT inherit working memory) -> {session}-lesson-screened.json -> update-hit.sh on kept line ranges
+   - keywords for grep-lessons.sh extracted deterministically from hypothesis.goals[] (same recipe as step 6: lowercase + tokenize + stopword drop + dedupe; cap at top 8 by document-order)
    - orchestrator reads kept[] only; raw grep blob never enters working memory
    - project-context.md cached from step 1
    - tolerate empty output (no lessons-index.md = silent skip; screener also skipped)
@@ -68,8 +69,11 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - 8.0 init: apex-baseline.sh (captures head_sha + pre_dirty for step 12 exclusion); apex-conflict-check.sh (cross-session scope overlap)
    - pre-flight wc -l on scope; >400 LOC -> queue split task ahead of edits
    - 8.2 goals-driven split: len(goals)==1 -> 1 task (full scope); len(goals)>1 -> N tasks, one goal per spawn prompt; per-task allowed_files narrowed to main-scope subset matching goal nouns; validate-disjoint-scopes.py enforces disjoint when 2+
-   - spawn-prompt carries executor stack (hypothesis, single goal, per-task scope, lessons hits, project-context, task description) - subagents do NOT inherit working memory
-   - executor returns {goal, status, notes} where status is implemented | already-satisfied | failed; orchestrator collects per-goal map for step 15
+   - 8.2 scope-size hard split (B1): per-task allowed_files > 8 -> chunk-scope.py -n 2 partition (directory-sibling-preserving, pairwise-disjoint); goal text duplicates; first executor wins, second sees already-satisfied
+   - spawn-prompt carries executor stack (hypothesis, single goal, per-task scope, scope budget hint E2 ["Expected: N files, ~K LOC; >2x -> split-needed"], lessons hits, project-context, task description) - subagents do NOT inherit working memory
+   - executor returns {goal, status, notes, tool_calls_made, files_touched} where status is implemented | already-satisfied | failed | split-needed (C1 self-assessment carries residual_goal + residual_files + what_i_did); orchestrator collects per-goal map for step 15
+   - dispatch self-report log (E1): each return appended to {session}-traces/execute/dispatch-summary.json; reflector flags tool_calls_made > 50
+   - split-needed redispatch (C1 follow-up): orchestrator re-spawns ONE follow-up with residual_goal + residual_files (cap 1 per goal); second split-needed -> failed
    - idempotency: same prompt -> same goals -> same N tasks; if goals were achieved last run, executors return already-satisfied -> empty diff -> step 12 skips commit
    - file-health hook = safety net during edits
    - executor model: sonnet if economy, main session model if standard
@@ -100,6 +104,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - reads traces in-place from .claude-tmp/apex-active/{session}-traces/
     - appends to ~/.claude/tmp/apex-workflow-improvements.md
     - non-convergence detection: appends {ts, session, hash=sha1(prompt), scope_count, touched_count, files_touched} to ~/.claude/tmp/apex-prompt-history.log; on hash collision with different files_touched, surfaces non-convergence: line in improvements:
+    - oversized-dispatch flag (E1): read {session}-traces/execute/dispatch-summary.json; for each return with tool_calls_made > 50, surface oversized-dispatch: line under improvements: (cap 3, top-3 by tool_calls_made)
 
 14. Cleanup session: cleanup-session.sh
     - wipes session dir except {session}-hypothesis.json (do not clean concurrent session files)
