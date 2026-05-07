@@ -72,12 +72,39 @@ rm -f "$ERRORS_FILE"
 # Run a single verify command. On non-zero exit, write the full transcript
 # (label + command + combined output) to ERRORS_FILE and exit with that status.
 # On zero, return silently so the caller continues to the next command.
+#
+# Optional 3rd arg `warn_as_error` (0|1, default 0): when 1 and the command
+# exited 0, scan combined output for lint-warning lines and treat any match
+# as a failure. Used by lint phases so warnings flow through the same fix-loop
+# as errors (clippy already has -D warnings; this closes the gap for node lint
+# scripts that don't pass --max-warnings=0, biome's default warning severity,
+# etc).
+#
+# Warning detector: matches eslint stylekit `<file>:<line>:<col>  warning  ...`,
+# biome `warning[...]:`, golangci `warning:`, generic ` warn:` / ` warning:`
+# prefixes. Build/typecheck phases pass warn_as_error=0 (build warnings are
+# noisy and not the linter's domain).
 run_or_fail() {
   local label="$1"
   local cmd="$2"
+  local warn_as_error="${3:-0}"
   : > "$TMP_OUT"
   local rc=0
   bash -c "$cmd" >"$TMP_OUT" 2>&1 || rc=$?
+  if (( rc == 0 && warn_as_error == 1 )); then
+    if grep -qE '(^|[[:space:]])(warning|warn)(s)?([[:space:]]|:|\[)' "$TMP_OUT"; then
+      rc=1
+      {
+        printf '## verify-build.sh: %s FAILED (lint warnings; warn-as-error)\n' "$label"
+        printf '## command: %s\n' "$cmd"
+        printf '## cwd: %s\n' "$(pwd)"
+        printf '## ----- output -----\n'
+        cat "$TMP_OUT"
+      } > "$ERRORS_FILE"
+      echo "verify-build.sh: $label FAILED (lint warnings; warn-as-error); errors -> $ERRORS_FILE" >&2
+      exit 1
+    fi
+  fi
   if (( rc != 0 )); then
     {
       printf '## verify-build.sh: %s FAILED (exit %d)\n' "$label" "$rc"
@@ -162,10 +189,15 @@ case "$PROJECT_TYPE" in
     # Order matters: lint -> typecheck -> build.
     # A typecheck failure usually cascades into build, so first-fail-stop keeps
     # the fix executor focused on the upstream cause.
+    # Lint phase passes warn_as_error=1 so eslint/biome warnings feed the
+    # same fix-loop as errors (closes the gap for projects whose `lint` script
+    # doesn't already pass --max-warnings=0 or equivalent).
     for script in lint typecheck build; do
       if has_npm_script "$script"; then
         ran_anything=1
-        run_or_fail "$script ($PM)" "$RUN_PREFIX $script"
+        warn_flag=0
+        [[ "$script" == "lint" ]] && warn_flag=1
+        run_or_fail "$script ($PM)" "$RUN_PREFIX $script" "$warn_flag"
       fi
     done
     if (( ran_anything == 0 )); then
@@ -190,7 +222,7 @@ case "$PROJECT_TYPE" in
     ran_anything=0
     if has_bin ruff; then
       ran_anything=1
-      run_or_fail "ruff check" "ruff check ."
+      run_or_fail "ruff check" "ruff check ." 1
     fi
     if has_bin mypy; then
       ran_anything=1
@@ -206,7 +238,7 @@ case "$PROJECT_TYPE" in
       echo "verify-build.sh: go not on PATH; cannot verify Go project" >&2
       exit 0
     fi
-    run_or_fail "go vet"   "go vet ./..."
+    run_or_fail "go vet"   "go vet ./..." 1
     run_or_fail "go build" "go build ./..."
     ;;
 esac
