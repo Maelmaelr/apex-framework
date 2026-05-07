@@ -143,9 +143,11 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
    - returns one-line summary; no-op exit if nothing actionable.
 
 10. Verify | Blocked by #9
-    - script `scripts/verify-build.sh` runs lint + build (project-aware: detects `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`; runs only the available lint / typecheck / build commands; first-fail-stop)
+    - script `scripts/verify-build.sh` runs lint + build + (opt-in) related-tests (project-aware: detects `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`; runs only the available lint / typecheck / build commands; first-fail-stop)
+      - `/apex` step 10 invokes with `--with-tests`: after the build phase passes, delegates to `scripts/verify-tests.sh`, which derives the modified-files set from `{session}-baseline.json` head_sha (union of `git diff --name-only` and `git ls-files --others --exclude-standard`) and runs the project's test runner scoped to that set (vitest `--related` / jest `--findRelatedTests` / heuristic `*.test.*` / `*.spec.*` glob fallback; `cargo test -p <pkg>` per workspace member containing modified `.rs`; `pytest` on test files matching modified `.py` via `tests/test_<base>.py` heuristic; `go test ./<dir>/...` per dir containing modified `.go`). Auto-skips with stderr note when no baseline, no test runner declared, or zero derived test files - never falls back to running the full suite (no full-suite fallback is by design; pure-doc / pure-config edits should not pay test-suite cost).
+      - `/apex-fix` invokes WITHOUT `--with-tests` (its contract is lint/build fix only; tests are out of scope for the standalone fix loop).
       - exit 0 = clean, proceed to 11
-      - exit non-zero = errors written to `.claude-tmp/apex-active/{session}-verify-errors.txt`
+      - exit non-zero = errors written to `.claude-tmp/apex-active/{session}-verify-errors.txt` (same path for build OR test failures; the fix-loop treats them identically)
     - if non-zero exit:
       - dispatch agent `~/.claude/agents/executor.md` (**always Sonnet** - fix-loop is bounded and Sonnet is sufficient; orthogonal to step 8's tier-conditional model selection so a standard-tier session doesn't pay Opus rates per fix attempt) with errors file as input; trace path: `.claude-tmp/apex-active/{session}-traces/verify/fix-{attempt-N}.md`
       - attempt counter in `.claude-tmp/apex-active/{session}-fix-attempts.json`; producer-validated against `fix-attempts.schema.json` before each write

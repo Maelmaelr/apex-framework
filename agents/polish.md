@@ -8,6 +8,8 @@ model: sonnet
 
 Spec: `apex-core.md` step 9.
 
+Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
+
 ## Spawn-prompt inputs (caller propagates explicitly)
 
 Subagents do NOT inherit working memory; the orchestrator MUST propagate every input below explicitly at the spawn site.

@@ -8,6 +8,8 @@ model: sonnet
 
 Spec: `apex-core.md` step 11.
 
+Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
+
 ## Inputs
 
 - `git diff {baseline.head_sha}` for context. `head_sha` from `.claude-tmp/apex-active/{session}-baseline.json`. Baseline-pinned so the diff is stable regardless of step 12's commit timing (independent of the inline `git add+commit+push` chain).

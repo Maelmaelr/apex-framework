@@ -8,6 +8,8 @@ model: sonnet
 
 Spec: `apex-core.md` step 5 (lesson loading) | schema `skills/apex/schemas/lesson-screened.schema.json`.
 
+Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
+
 A single screener call gates lesson hits before they enter main-orchestrator working memory. Always fires when grep-lessons.sh emits at least one `--- LINES s-e ---` block. Empty grep output = orchestrator skips this agent entirely.
 
 ## Inputs (passed by main orchestrator at spawn)

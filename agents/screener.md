@@ -8,6 +8,8 @@ model: sonnet
 
 Spec: `apex-core.md` step 6 (discovery cascade, screener gate).
 
+Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
+
 A single screener call is the only LLM gate in the cascade. Always fires when the cascade reaches this layer, regardless of upstream layer (LSP / Glob / Grep) so an unscreened overshoot never becomes scope unilaterally.
 
 ## Inputs (passed by agents/discoverer.md as inner subagent)

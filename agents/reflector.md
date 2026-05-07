@@ -8,6 +8,8 @@ model: haiku
 
 Spec: `apex-core.md` step 13 | `skills/admin-apex/SKILL.md` task 11 | `skills/apex-lessons/analyze.md` Step 10 | `skills/apex-lessons/extract.md` Step 7.
 
+Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
+
 Always fires at the four reflection points. Apex step 13 is foreground (step 14 cleanup is the only follow-up and explicitly blocks on step 13 - no need for background spawn or trace snapshot). Admin-apex / lessons-analyze / lessons-extract are also foreground.
 
 The reflector outputs one analysis block every run, even when the heuristic signal flags zero novel traces. In that case the block captures hypothesis-vs-reality (TaskList compared against `{session}-hypothesis.json`) and any cross-session pattern worth surfacing.
