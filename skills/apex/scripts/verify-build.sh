@@ -16,6 +16,18 @@
 # skipped (cascading errors from a broken typecheck/build typically confuse
 # the fix-attempt executor; first-fail keeps the executor's input focused).
 #
+# Lint phases auto-apply machine-fixable suggestions before reporting:
+#   node:   best-effort `--fix` pre-pass against the project's `lint` script
+#           (eslint/biome wrappers; harmless no-op when the underlying tool
+#            doesn't accept --fix, e.g. tsc-as-lint).
+#   ruff:   `ruff check --fix .` (single pass; ruff fixes in-place and reports
+#            remaining issues).
+#   clippy: `cargo clippy --fix --allow-dirty --allow-staged ... -- -D warnings`
+#            (--allow-dirty needed because the executor has just edited files).
+# Auto-fix files are mutated in place; this is intentional and out of scope
+# for the apex scope-check hook (verify-build.sh is invoked outside the
+# executor's tool-call gate).
+#
 # Args:
 #   --session <token>  required, 8-char lowercase hex
 #   --with-tests       optional, opt-in test phase after build (delegates to
@@ -188,20 +200,30 @@ case "$PROJECT_TYPE" in
       bun)  RUN_PREFIX="bun run" ;;
     esac
 
+    # npm needs `--` to forward args; pnpm/yarn/bun pass them directly.
+    [[ "$PM" == "npm" ]] && LINT_FIX_ARGS="-- --fix" || LINT_FIX_ARGS="--fix"
+
     load_npm_scripts
     ran_anything=0
     # Order matters: lint -> typecheck -> build.
     # A typecheck failure usually cascades into build, so first-fail-stop keeps
     # the fix executor focused on the upstream cause.
-    # Lint phase passes warn_as_error=1 so eslint/biome warnings feed the
-    # same fix-loop as errors (closes the gap for projects whose `lint` script
-    # doesn't already pass --max-warnings=0 or equivalent).
+    # Lint phase: best-effort `--fix` pre-pass auto-resolves machine-fixable
+    # issues (eslint/biome wrappers) before the canonical lint runs - cuts
+    # fix-loop tokens for trivial issues. Failure is harmless (e.g., a tsc-as-
+    # lint script that doesn't accept --fix); output suppressed so only the
+    # canonical pass surfaces to the executor. Then warn_as_error=1 so
+    # eslint/biome warnings feed the same fix-loop as errors (closes the gap
+    # for projects whose `lint` script doesn't pass --max-warnings=0).
     for script in lint typecheck build; do
       if has_npm_script "$script"; then
         ran_anything=1
-        warn_flag=0
-        [[ "$script" == "lint" ]] && warn_flag=1
-        run_or_fail "$script ($PM)" "$RUN_PREFIX $script" "$warn_flag"
+        if [[ "$script" == "lint" ]]; then
+          bash -c "$RUN_PREFIX lint $LINT_FIX_ARGS" >/dev/null 2>&1 || true
+          run_or_fail "lint ($PM)" "$RUN_PREFIX lint" 1
+        else
+          run_or_fail "$script ($PM)" "$RUN_PREFIX $script" 0
+        fi
       fi
     done
     if (( ran_anything == 0 )); then
@@ -216,17 +238,22 @@ case "$PROJECT_TYPE" in
     fi
     # `cargo check` is the fast type/borrow verifier (skips codegen). Clippy is the
     # canonical lint; only run it when actually installed (rustup component add clippy).
+    # `--fix --allow-dirty --allow-staged` auto-applies machine-fixable suggestions
+    # before -D warnings gates the rest (cuts fix-loop tokens; --allow-dirty needed
+    # because the executor has just edited files in this session).
     if cargo clippy --version >/dev/null 2>&1; then
-      run_or_fail "cargo clippy" "cargo clippy --quiet --all-targets -- -D warnings"
+      run_or_fail "cargo clippy" "cargo clippy --fix --allow-dirty --allow-staged --quiet --all-targets -- -D warnings"
     fi
     run_or_fail "cargo check" "cargo check --quiet --all-targets"
     ;;
 
   python)
     ran_anything=0
+    # ruff `--fix` auto-applies machine-fixable lints in-place; remaining
+    # (unsafe-fix / non-fixable) issues still surface to the fix-loop.
     if has_bin ruff; then
       ran_anything=1
-      run_or_fail "ruff check" "ruff check ." 1
+      run_or_fail "ruff check" "ruff check --fix ." 1
     fi
     if has_bin mypy; then
       ran_anything=1
