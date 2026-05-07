@@ -359,6 +359,24 @@ run_fixture "reflect-traces.sh missing-args" 0 \
 run_fixture "reflect-traces.sh invalid-token" 0 \
   bash "$REPO_ROOT/skills/apex/scripts/reflect-traces.sh" --session BADTOKEN
 
+# 8. verify-tests.sh: missing required args -> exit 2 (invocation error).
+run_fixture "verify-tests.sh missing-args" 2 \
+  bash "$REPO_ROOT/skills/apex/scripts/verify-tests.sh"
+
+# 9. verify-tests.sh: valid args but no session baseline -> skip cleanly (exit 0).
+#    The script's auto-detect contract: no baseline = silent skip, never an error.
+verify_tests_no_baseline_fixture() {
+  bash "$REPO_ROOT/skills/apex/scripts/verify-tests.sh" \
+    --session deadbeef --project-type node
+}
+run_fixture "verify-tests.sh no-baseline-skip" 0 verify_tests_no_baseline_fixture
+
+# 10. verify-build.sh --with-tests end-to-end at empty cwd: no manifest detected
+#     by verify-build.sh -> exit 0 before reaching the tests phase. Confirms the
+#     flag does not break the no-manifest fast path.
+run_fixture "verify-build.sh --with-tests no-manifest" 0 \
+  bash "$REPO_ROOT/skills/apex/scripts/verify-build.sh" --session deadbeef --with-tests
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

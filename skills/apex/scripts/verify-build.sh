@@ -18,6 +18,10 @@
 #
 # Args:
 #   --session <token>  required, 8-char lowercase hex
+#   --with-tests       optional, opt-in test phase after build (delegates to
+#                      verify-tests.sh; project-aware; tests scoped to files
+#                      modified since session baseline; auto-skip when no
+#                      baseline / no test runner / no related tests)
 #
 # Exit codes:
 #   0  clean (all available commands passed) OR no recognized manifest
@@ -28,12 +32,17 @@ set -uo pipefail
 
 APEX_ACTIVE=".claude-tmp/apex-active"
 SESSION=""
+WITH_TESTS=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --session)
       SESSION="${2:-}"
       shift 2
+      ;;
+    --with-tests)
+      WITH_TESTS=1
+      shift
       ;;
     *)
       echo "verify-build.sh: unknown arg: $1" >&2
@@ -201,6 +210,12 @@ case "$PROJECT_TYPE" in
     run_or_fail "go build" "go build ./..."
     ;;
 esac
+
+if (( WITH_TESTS == 1 )); then
+  TEST_ARGS=(--session "$SESSION" --project-type "$PROJECT_TYPE")
+  [[ "$PROJECT_TYPE" == "node" && -n "${PM:-}" ]] && TEST_ARGS+=(--pm "$PM")
+  bash "$(dirname "$0")/verify-tests.sh" "${TEST_ARGS[@]}" || exit 1
+fi
 
 echo "verify-build.sh: clean" >&2
 exit 0

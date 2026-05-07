@@ -80,7 +80,9 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - staleness / inconsistency / unused check
    - lessons context advisory
 
-10. Verify: verify-build.sh
+10. Verify: verify-build.sh --with-tests (apex hot path; apex-fix omits the flag)
+    - lint + typecheck + build (project-aware, first-fail-stop)
+    - --with-tests delegates to verify-tests.sh after build: derives modified files from session baseline, runs project test runner on related-only set (auto-skip when no baseline / no test runner / zero related)
     - if errors: executor.md (always Sonnet for fix-loop, regardless of step 8's tier; cap 3)
     - on cap exhaustion: AskUserQuestion (abort | proceed-with-errors)
 
