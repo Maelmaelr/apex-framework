@@ -159,10 +159,11 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
       - on cap exhaustion: AskUserQuestion (`abort` | `proceed-with-errors`; dismiss/cancel = abort). On `abort`: clean exit via `session-end-hook.sh {session}` inline. On `proceed-with-errors`: append the verify-errors body to `~/.claude/tmp/git-agent-errors.log` and fall through to step 11 with the build still broken (the user explicitly chose to commit a known-broken state).
 
 11. Tail (foreground; Sonnet latest) | Blocked by #10
-    - **standard**: parallel(`documentation.md`, `learn.md`).
-    - **economy**: `documentation.md` only (`learn.md` skipped - small scope rarely produces novel project-specific patterns worth distilling).
+    - **standard**: `documentation.md` always; `learn.md` ONLY when the **difficulty gate** holds. Both dispatched in parallel when the gate opens; otherwise `documentation.md` runs alone.
+    - **economy**: `documentation.md` only (`learn.md` skipped unconditionally - small scope rarely produces novel project-specific patterns worth distilling).
+    - **difficulty gate (standard tier)**: `.claude-tmp/apex-active/{session}-fix-attempts.json` exists AND `attempts >= 1` (i.e., step 10's fix-loop ran at least once this session). First-try-clean sessions skip `learn.md` entirely - the lessons file is meant for retry-evidenced surprises, not routine successful diffs. The gate is the load-bearing volume control: without it, `learn.md` ran on every standard-tier session and produced ~hundreds of lines / day of low-signal entries.
     - agent `~/.claude/agents/documentation.md` reads `git diff {baseline.head_sha}`; updates project docs / architecture notes when structural changes warrant.
-    - agent `~/.claude/agents/learn.md` reads `git diff {baseline.head_sha}`; appends novel patterns / lessons to `.claude-tmp/lessons-tmp.md` under `flock`.
+    - agent `~/.claude/agents/learn.md` reads `git diff {baseline.head_sha}` AND `{session}-fix-attempts.json`; appends novel patterns / lessons to `.claude-tmp/lessons-tmp.md` under `flock`. Agent enforces a second filter (concrete cause + fix described together; non-derivable from docs); default = drop. Calibration target: zero entries on most sessions, one entry per ~5-10 retry-evidenced sessions.
     - distinction: `learn.md` is project-specific (codebase patterns); `reflector.md` (step 13) is apex-specific (workflow / pipeline improvements).
 
 12. VERSION bump + git sync | Blocked by #11
