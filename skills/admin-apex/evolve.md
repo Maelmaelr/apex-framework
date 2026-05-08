@@ -85,6 +85,10 @@ After each successful op, append the op (verbatim from the plan) to `.claude-tmp
 - All ops `doc_only: true` -> task 9 picks `patch` bump.
 - Any non-doc op succeeds -> task 9 picks `minor` bump.
 
+## Async token-accounting (concurrent /apex sessions)
+
+Task 9 (commit) and task 10 (mirror + push) are not atomic across concurrent /apex orchestrators sharing `~/.claude`. A sibling session's commit can land between this run's commit and its mirror; the post-mirror diff at `dev/apex-framework` will then include that sibling commit as well as this run's. This is **expected**, not state corruption: `mirror-to-dev.sh` rsyncs current ~/.claude state, so it tracks any commit landed by mirror time. Reflectors that surface `non-convergence: prior session X touched {...}` after the mirror window are flagging the same window. No mid-flight remediation is required - sibling commits are pushed to public dev on their next run, and the public dev branch converges to the same HEAD as ~/.claude.
+
 ## Mid-flight drift example
 
 Task 6 op 3 expects `agents/discoverer.md`. Re-snapshot at op 3 shows `discoverer.md` is gone (a sibling /apex session moved it). Surface AskUserQuestion. `restart` -> SKILL re-enters task 3; `commit-partial` -> jump to task 7 with ops 1-2 only; `rollback` -> `git restore` on `{run}-dirty-paths.txt`.

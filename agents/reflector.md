@@ -39,7 +39,7 @@ Apex phase:
 - `{session}.json` (manifest) and `{session}-hypothesis.json` (preserved by step 14 for step 15 + this reflector). Hypothesis carries `original_prompt`, `hypothesis`, `complexity_hint`, `alternatives`, `discovered_paths` - the canonical "richer reflection on the success-no-traces case" input. Successful executor runs do not write traces (executor only traces on failure or split per `agents/executor.md`); the hypothesis carries the reflection signal in that case.
 - Latest `## {session} - heuristics - {ts}` block in `~/.claude/tmp/apex-workflow-improvements.md` (parse `novel_traces:` line for focus paths). Written immediately before this spawn by `bash skills/apex/scripts/reflect-traces.sh`.
 - All trace files under `.claude-tmp/apex-active/{session}-traces/**/*.md` (read in-place; no snapshot).
-- `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (best-effort; absent under trivial path or when step 8 produced no executor returns). One JSON array of `{goal, status, notes, tool_calls_made, files_touched, ...}` entries; consumed by the oversized-dispatch flag below.
+- `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (best-effort; absent under trivial path or when step 8 produced no executor returns). One JSON array of `{goal, status, notes, tool_calls_made, files_touched: ["<paths>"], ...}` entries; `files_touched` is a list of repo-relative paths (length is the count). Consumed by the oversized-dispatch flag below.
 - `git diff --stat {baseline.head_sha}` + `git ls-files --others --exclude-standard` (baseline pinned for the same race-avoidance reason as `learn.md` / `documentation.md`).
 
 Admin-apex / lessons-analyze / lessons-extract: see the invocation table. No heuristic preamble (those phases bypass `reflect-traces.sh`); inputs are JSON artifacts (where present) plus the per-task / per-step summary trace.
@@ -101,7 +101,7 @@ Skipped under SKIPPED-no-inputs (no hypothesis -> no prompt to hash). Other phas
 
 ## Oversized-dispatch flag (apex phase only)
 
-E1 contract. Read `{session}-traces/execute/dispatch-summary.json` (skip silently if absent / unparseable). For each entry where `tool_calls_made > 50`, append one line to `improvements:`:
+E1 contract. Read `{session}-traces/execute/dispatch-summary.json` (skip silently if absent / unparseable). For each entry where `tool_calls_made > 50`, append one line to `improvements:` (with `M = len(files_touched)` since the field is a list of paths):
 
 ```
 oversized-dispatch: goal="<truncated 80 chars>" tool_calls=N files_touched=M status=<status>

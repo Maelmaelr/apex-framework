@@ -55,7 +55,7 @@ Per task:
   - one-line task description
   - trace path: `.claude-tmp/apex-active/{session}-traces/execute/executor-{task-id}.md`
 - The executor respects file-health + scope-check PreToolUse hooks.
-- The executor returns `{goal, status, notes, tool_calls_made, files_touched}` where status is `implemented` | `already-satisfied` | `failed` | `split-needed`. Collect per-goal returns in a session-local map for step 15's per-goal summary.
+- The executor returns `{goal, status, notes, tool_calls_made, files_touched: ["<paths>"]}` where status is `implemented` | `already-satisfied` | `failed` | `split-needed`. `files_touched` is the actual list of repo-relative paths the executor wrote, used by the orchestrator to audit against `allowed_files`. Collect per-goal returns in a session-local map for step 15's per-goal summary.
 - **Dispatch self-report log (E1)**: append each return verbatim to `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (JSON array; append-and-rewrite). Reflector at step 13 reads this to flag oversized dispatches (`tool_calls_made > 50`).
 - **Split-needed redispatch (C1 follow-up)**: on `status: split-needed`, the orchestrator re-spawns ONE follow-up executor with `goal = residual_goal` and `allowed_files = residual_files` (cap 1 redispatch per goal). If the follow-up also returns `split-needed`, mark the goal `failed` for step 15 with notes `"split-needed twice; residual: <residual_goal>"`. Per-redispatch return is also appended to dispatch-summary.json.
 - On failure or split decision, the executor writes a structured trace before returning (see `agents/executor.md`).

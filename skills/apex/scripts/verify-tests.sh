@@ -50,13 +50,32 @@ TMP_OUT=$(mktemp)
 trap 'rm -f "$TMP_OUT"' EXIT
 
 # Modified-files set. Empty stdout AND non-zero exit means "no baseline; skip".
+# Sibling /apex sessions write to the same working tree, so a raw `git diff
+# baseline.head_sha` pulls their WIP into our test-derivation set (false-positive
+# fix-loop on tests this session never authored). When this session has a
+# main-scope on disk, intersect the diff with `allowed_files` so only THIS
+# session's changes drive test selection. Pre-discovery (no main-scope yet) and
+# trivial path (no scope written) keep the unfiltered behavior.
 get_modified_files() {
   local baseline="$APEX_ACTIVE/${SESSION}-baseline.json"
   [[ -f "$baseline" ]] || return 1
   local head_sha
   head_sha=$(python3 -c "import json; print(json.load(open('$baseline')).get('head_sha',''))" 2>/dev/null) || return 1
   [[ -n "$head_sha" ]] || return 1
-  { git diff --name-only "$head_sha" -- . 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u
+  local raw
+  raw=$({ git diff --name-only "$head_sha" -- . 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+  local scope="$APEX_ACTIVE/${SESSION}-main-scope.json"
+  if [[ -f "$scope" ]]; then
+    printf '%s\n' "$raw" | python3 -c "
+import json, sys
+allowed = set(json.load(open(sys.argv[1])).get('allowed_files', []))
+for line in sys.stdin.read().splitlines():
+    if line and line in allowed:
+        print(line)
+" "$scope" 2>/dev/null
+  else
+    printf '%s\n' "$raw"
+  fi
 }
 
 run_or_fail() {
