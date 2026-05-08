@@ -36,6 +36,8 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
    ```
    `git-stage-files.sh` owns the change-set + filter pipeline (pre-dirty / dotenv / check-ignore / cross-session). Push fail-silent (errors -> `~/.claude/tmp/git-agent-errors.log`); never `--force`, never auto-set-upstream.
 
+6. **Files-touched sanity check** (best-effort, non-blocking): read `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (absent on trivial path -> skip); collect the union of `files_touched[]` across executor returns; for each path NOT in `git diff --staged --name-only` AND NOT in `{baseline.pre_dirty}`, append one line to `~/.claude/tmp/git-agent-errors.log`: `WARN: session={session} files_touched={path} not staged (filter: pre-dirty / dotenv / check-ignore / cross-session)`. Reflector 6dad99bf surfaced the symptom: implementation files reported by executors did not land staged while tests did. Sanity check arms the next /apex-improve to investigate; never blocks the return.
+
 ## Return to caller
 
 `{status: "ok" | "push-fail" | "skip-no-version", commit_sha: "<sha-or-empty>", bump_kind: "minor" | "patch" | "none"}`. NEVER the diff body.

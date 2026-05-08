@@ -22,10 +22,13 @@
 #
 #       --- LINES ...
 #
-#   Line numbers are absolute in lessons.md and feed update-hit.sh directly.
-#   Total output capped at MAX_OUTPUT_LINES (150) with a TRUNCATED footer
+#   Line numbers are absolute in lessons.md and feed update-hit.sh directly
+#   (range tokens like `522-573` are accepted by update-hit.sh as of reflector
+#   00bac875).
+#   Total output capped at MAX_OUTPUT_LINES (120) with a TRUNCATED footer
 #   when the cap fires; orchestrator should re-run with fewer / more specific
-#   terms.
+#   terms. Cap tightened from 150 (reflector 27f893e1: ~20% slack reduces
+#   baseline tokens without losing kept[] signal).
 #
 # Exit codes:
 #   0 - success OR no matches OR project lessons absent (no-output success)
@@ -71,7 +74,9 @@ done < <(grep -iF "${GREP_ARGS[@]}" "$INDEX_FILE" 2>/dev/null || true)
 [[ ${#MATCHED_SECTIONS[@]} -eq 0 ]] && exit 0
 
 # Output cap: defense-in-depth against exceeding Read tool / context limits.
-MAX_OUTPUT_LINES=150
+# Reduced 150 -> 120 per reflector 27f893e1 cluster (lesson-screener routinely
+# accepted full 150-line baseline; ~20% headroom recovered with no signal loss).
+MAX_OUTPUT_LINES=120
 OUTPUT_LINES=0
 TOTAL_LINES=$(wc -l < "$LESSONS_FILE")
 

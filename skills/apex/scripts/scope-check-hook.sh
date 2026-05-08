@@ -39,6 +39,8 @@
 #   - /tmp/{session}-*  (any session token; the directory is shared)
 #   - project docs/**
 #   - any README* file at any depth
+#   - any VERSION file at any depth (consumed by step 12 git-sync inline bumps
+#     post-agent; reflector 00bac875 surfaced the gate denial)
 #
 # Never includes .env* or .git/ regardless of scope contents (those are gated
 # by separate hooks / settings deny rules).
@@ -62,6 +64,7 @@ is_safety_path() {
   local base
   base=$(basename "$target")
   [[ "$base" == README* ]] && return 0
+  [[ "$base" == "VERSION" ]] && return 0
   return 1
 }
 

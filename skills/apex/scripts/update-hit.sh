@@ -5,8 +5,11 @@
 #
 # Args:
 #   <lessons-file>           required (path to .claude/lessons.md)
-#   <line1> [<line2> ...]    >=1 absolute line number returned by
-#                            grep-lessons.sh inside `--- LINES s-e ---` markers
+#   <line-or-range> [...]    >=1 token. Each token is either a single absolute
+#                            line number OR a `start-end` range (inclusive,
+#                            matching the `--- LINES s-e ---` markers emitted
+#                            by grep-lessons.sh). Ranges are expanded internally
+#                            so callers can pipe markers through verbatim.
 #
 # Transformations (idempotent; today's date is a no-op):
 #   [last-hit: YYYY-MM-DD]                              -> [last-hit: <today>]
@@ -27,11 +30,12 @@ set -euo pipefail
 
 if [[ $# -eq 0 ]] || [[ "${1:-}" == "--help" ]]; then
   cat <<'EOF'
-Usage: update-hit.sh <lessons-file> <line1> [<line2> ...]
+Usage: update-hit.sh <lessons-file> <line-or-range> [<line-or-range> ...]
 
 Bumps `[last-hit: YYYY-MM-DD]` to today on the specified lines (in place).
-Designed to consume the absolute line numbers emitted by grep-lessons.sh
-inside `--- LINES start-end ---` markers.
+Each arg is either a single line number (e.g. 522) or a start-end range
+(e.g. 522-573, matching grep-lessons.sh `--- LINES s-e ---` markers).
+Ranges are expanded internally.
 EOF
   exit 0
 fi
@@ -62,11 +66,26 @@ IDEMPOTENT=0
 # extension passed as a separate arg). Single source for both.
 SED_INPLACE=(-i "")
 
-for LINE_NUM in "$@"; do
-  if [[ "$LINE_NUM" =~ ^[0-9]+-[0-9]+$ ]]; then
-    echo "ERROR: line-range arg rejected: '$LINE_NUM' (single line numbers only; expand the range and pass each absolute line from grep-lessons.sh '--- LINES start-end ---' markers)" >&2
-    continue
+# Pre-expand range tokens (`s-e` from grep-lessons.sh `--- LINES s-e ---`
+# markers) into individual line numbers before the main loop. Removes the
+# friction of orchestrator-side range expansion (reflector 00bac875).
+EXPANDED=()
+for ARG in "$@"; do
+  if [[ "$ARG" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+    s="${BASH_REMATCH[1]}"
+    e="${BASH_REMATCH[2]}"
+    if [[ "$s" -le "$e" ]]; then
+      for ((n=s; n<=e; n++)); do EXPANDED+=("$n"); done
+    else
+      echo "WARNING: skipping inverted range: $ARG" >&2
+    fi
+  else
+    EXPANDED+=("$ARG")
   fi
+done
+set -- "${EXPANDED[@]}"
+
+for LINE_NUM in "$@"; do
   if ! [[ "$LINE_NUM" =~ ^[0-9]+$ ]] || [[ "$LINE_NUM" -eq 0 ]]; then
     echo "WARNING: skipping invalid line number: $LINE_NUM" >&2
     continue
