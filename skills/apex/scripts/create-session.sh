@@ -74,6 +74,16 @@ fi
 
 mkdir -p "$APEX_ACTIVE"
 
+# Orphan-artifact sweep (defense against {session}-* siblings without a
+# {session}.json manifest - e.g., a prior CC crash that aborted before the
+# manifest was written, or a partial cleanup that missed siblings). Best-effort;
+# never blocks session creation. Only artifacts older than 24h are touched, so
+# in-flight producers writing siblings before their manifest are not raced.
+SCRIPT_DIR_PRE_SCAN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [[ -x "$SCRIPT_DIR_PRE_SCAN/sweep-orphan-artifacts.sh" ]]; then
+  bash "$SCRIPT_DIR_PRE_SCAN/sweep-orphan-artifacts.sh" --dir "$APEX_ACTIVE" --age-hours 24 2>/dev/null || true
+fi
+
 active_tokens=()
 stale_tokens=()
 

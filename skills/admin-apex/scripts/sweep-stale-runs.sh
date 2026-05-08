@@ -77,4 +77,15 @@ for name in sorted(os.listdir(active)):
 PY
 )
 
+# Orphan-artifact sweep (manifest-stale handled above; this catches {run}-*
+# siblings whose {run}.json is GONE - e.g., apex-improve's session-spanning
+# {run}-deferred-findings.json after the manifest was already swept by an
+# earlier cleanup-run.sh exclusion-list pass). Lives in skills/apex/scripts/
+# because the sweep semantics are identical for apex-active and admin-apex-active;
+# both call sites consume the same helper. Best-effort; never blocks.
+APEX_SWEEP="$HOME/.claude/skills/apex/scripts/sweep-orphan-artifacts.sh"
+if [[ -x "$APEX_SWEEP" ]]; then
+  bash "$APEX_SWEEP" --dir "$ADMIN_ACTIVE" --age-hours 24 2>/dev/null || true
+fi
+
 exit 0
