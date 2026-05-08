@@ -10,8 +10,18 @@
 #   4. Read scope.allowed_files; deny if target path not in list and not a
 #      standard safety path.
 #
-# Pass-through (allow) when no pointer matches the calling session_id (entry-flow
-# phase before any pointer is written, or non-/apex Claude Code session).
+# Pointer miss is a tri-state, not a binary:
+#   1. Pointer hits -> orchestrator path: enforce that scope.
+#   2. Pointer misses AND no active main-scope.json anywhere -> entry-flow /
+#      non-/apex session: pass through.
+#   3. Pointer misses AND >=1 active main-scope.json exist -> ambiguous between
+#      "subagent leak from an apex orchestrator on THIS claude process" and
+#      "non-apex session running concurrently with sibling apex orchestrators
+#      in other claude processes (same project cwd, different terminals)".
+#      Resolved by walking the process tree to the calling claude pid and
+#      matching against each apex manifest's recorded pid. Match -> enforce
+#      that orchestrator's scope; no match -> pass through (sibling claude
+#      processes have no authority over this one's edits).
 #
 # Standard safety paths (closed set, always allowed):
 #   - .claude-tmp/
@@ -29,6 +39,21 @@ set -euo pipefail
 
 ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
 deny() { echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$1\"}}"; }
+
+is_safety_path() {
+  local target="$1"
+  [[ "$target" == *".claude-tmp/"* ]] && return 0
+  [[ "$target" == ".claude-tmp/"* ]] && return 0
+  [[ "$target" == "$HOME/.claude/tmp/"* ]] && return 0
+  [[ "$target" == "~/.claude/tmp/"* ]] && return 0
+  [[ "$target" == /tmp/*-* ]] && return 0
+  [[ "$target" == "docs/"* ]] && return 0
+  [[ "$target" == */docs/* ]] && return 0
+  local base
+  base=$(basename "$target")
+  [[ "$base" == README* ]] && return 0
+  return 1
+}
 
 # Fast-path: skip the python parse on every Edit/Write outside an apex session.
 # When .claude-tmp/apex-active/ does not exist, no scope pointer can match;
@@ -90,14 +115,10 @@ if [[ -d "$APEX_ACTIVE" ]]; then
   done
 fi
 
-# No pointer for this session_id. Distinguish entry-flow (no active apex scope
-# anywhere) from subagent leak (active scope exists under a DIFFERENT session_id;
-# spawned subagents arrive with their own cc_session_id and miss the pointer
-# keyed by the orchestrator's id - documented gap in reflector 9f07a2db). When
-# one or more *-main-scope.json exist, an apex session is past discovery and
-# every Edit/Write - including subagent calls - must respect the UNION of
-# active allowed_files. Zero active main-scopes preserves current pass-through
-# (entry-flow / non-/apex).
+# Pointer miss with active main-scope(s). Walk the process tree to the calling
+# claude pid; only enforce scopes whose apex manifest claims THIS claude process
+# (subagent-of-this-orchestrator). Sibling apex sessions running in other claude
+# processes have no authority over this process's edits.
 if [[ -z "$POINTER" ]]; then
   shopt -s nullglob
   ACTIVE_SCOPES=("$APEX_ACTIVE"/*-main-scope.json)
@@ -106,6 +127,45 @@ if [[ -z "$POINTER" ]]; then
     echo "$ALLOW"
     exit 0
   fi
+
+  HOOK_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+  CALLING_PID=$(bash "$HOOK_DIR/find-claude-pid.sh" 2>/dev/null || true)
+  if [[ -z "$CALLING_PID" ]]; then
+    # Process-tree walk failed to find a claude ancestor (non-standard
+    # launcher). Cannot prove subagent leak; pass through rather than
+    # blanket-deny on sibling-session scopes unrelated to this process.
+    echo "$ALLOW"
+    exit 0
+  fi
+
+  MATCHED_SCOPES=()
+  for SCOPE in "${ACTIVE_SCOPES[@]}"; do
+    SCOPE_BASE=$(basename "$SCOPE")
+    SESSION_TOKEN="${SCOPE_BASE%-main-scope.json}"
+    MANIFEST="$APEX_ACTIVE/$SESSION_TOKEN.json"
+    [[ -f "$MANIFEST" ]] || continue
+    MANIFEST_PID=$(python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get('pid', ''))
+except Exception:
+    print('')
+" "$MANIFEST" 2>/dev/null)
+    [[ -z "$MANIFEST_PID" ]] && continue
+    if [[ "$MANIFEST_PID" == "$CALLING_PID" ]]; then
+      MATCHED_SCOPES+=("$SCOPE")
+    fi
+  done
+
+  if [[ ${#MATCHED_SCOPES[@]} -eq 0 ]]; then
+    # No apex manifest claims this claude process. Caller is not running under
+    # an apex orchestrator (or under one whose manifest has not yet been
+    # written). Sibling apex sessions in other claude processes do not gate
+    # this one.
+    echo "$ALLOW"
+    exit 0
+  fi
+
   for TARGET in "${TARGETS[@]}"; do
     is_safety_path "$TARGET" && continue
     ALLOWED=$(python3 -c "
@@ -125,13 +185,13 @@ for sc in sys.argv[2:]:
             if fnmatch.fnmatch(target, allowed) or fnmatch.fnmatch(target_abs, allowed_abs):
                 print('yes'); sys.exit(0)
 print('no')
-" "$TARGET" "${ACTIVE_SCOPES[@]}" 2>/dev/null || echo "error")
+" "$TARGET" "${MATCHED_SCOPES[@]}" 2>/dev/null || echo "error")
     [[ "$ALLOWED" == "yes" ]] && continue
     if [[ "$ALLOWED" == "error" ]]; then
-      deny "Scope check (subagent fallback): could not read active main-scope files. Investigate apex session state."
+      deny "Scope check (subagent fallback): could not read matched main-scope files for orchestrator pid=$CALLING_PID. Investigate apex session state."
       exit 0
     fi
-    deny "Scope violation (subagent fallback): $TARGET not in any active apex main-scope allowed_files. Spawned subagent must respect parent session scope."
+    deny "Scope violation (subagent fallback): $TARGET not in apex main-scope allowed_files of orchestrator pid=$CALLING_PID. Spawned subagent must respect parent session scope."
     exit 0
   done
   echo "$ALLOW"
@@ -145,26 +205,6 @@ if [[ -z "$SCOPE_FILE" || ! -f "$SCOPE_FILE" ]]; then
   deny "Scope pointer at $POINTER references missing scope file ($SCOPE_FILE). Investigate apex session state."
   exit 0
 fi
-
-is_safety_path() {
-  local target="$1"
-  # .claude-tmp/ anywhere in path
-  [[ "$target" == *".claude-tmp/"* ]] && return 0
-  [[ "$target" == ".claude-tmp/"* ]] && return 0
-  # ~/.claude/tmp/ - both literal $HOME and tilde-prefixed forms
-  [[ "$target" == "$HOME/.claude/tmp/"* ]] && return 0
-  [[ "$target" == "~/.claude/tmp/"* ]] && return 0
-  # /tmp/{session}-* - any session token; /tmp is shared
-  [[ "$target" == /tmp/*-* ]] && return 0
-  # project docs/**
-  [[ "$target" == "docs/"* ]] && return 0
-  [[ "$target" == */docs/* ]] && return 0
-  # any README* at any depth
-  local base
-  base=$(basename "$target")
-  [[ "$base" == README* ]] && return 0
-  return 1
-}
 
 # Check each target path against safety paths + scope.allowed_files.
 for TARGET in "${TARGETS[@]}"; do
