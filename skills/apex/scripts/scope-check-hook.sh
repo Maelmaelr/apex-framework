@@ -23,6 +23,16 @@
 #      that orchestrator's scope; no match -> pass through (sibling claude
 #      processes have no authority over this one's edits).
 #
+# Stale-PID-reuse guard (subagent fallback only):
+#   PID match alone is unsafe when an apex orchestrator crashed without
+#   cleanup and the OS reused its PID for a fresh non-apex claude. Without
+#   the guard, the new session's subagent edits get denied by the leaked
+#   manifest. We compare the calling claude's lstart (process start time)
+#   against the manifest file's mtime: a manifest written BEFORE the
+#   calling claude started cannot belong to it (PID reuse) and is skipped.
+#   Lstart-resolution failures fall through to the prior PID-only behavior
+#   (still better than blanket-deny).
+#
 # Standard safety paths (closed set, always allowed):
 #   - .claude-tmp/
 #   - ~/.claude/tmp/
@@ -138,6 +148,22 @@ if [[ -z "$POINTER" ]]; then
     exit 0
   fi
 
+  # Calling claude's process start time (epoch). Used as the lower bound for
+  # manifest mtime: any manifest predating this start cannot belong to the
+  # current OS process at this PID (PID reuse). Empty on resolution failure;
+  # downstream falls back to PID-only matching.
+  CALLING_PID_LSTART_EPOCH=$(python3 -c "
+import datetime, subprocess, sys
+try:
+    out = subprocess.check_output(['ps', '-o', 'lstart=', '-p', sys.argv[1]], text=True).strip()
+    if not out:
+        sys.exit(0)
+    t = datetime.datetime.strptime(out, '%a %b %d %H:%M:%S %Y')
+    print(int(t.timestamp()))
+except Exception:
+    pass
+" "$CALLING_PID" 2>/dev/null)
+
   MATCHED_SCOPES=()
   for SCOPE in "${ACTIVE_SCOPES[@]}"; do
     SCOPE_BASE=$(basename "$SCOPE")
@@ -153,6 +179,16 @@ except Exception:
 " "$MANIFEST" 2>/dev/null)
     [[ -z "$MANIFEST_PID" ]] && continue
     if [[ "$MANIFEST_PID" == "$CALLING_PID" ]]; then
+      # Stale-PID-reuse guard: skip manifests that predate the calling claude.
+      # Manifest mtime is set at create-session.sh write time and never updated;
+      # if it is older than the calling claude's lstart, the manifest belongs
+      # to a previous (now-dead) process at the same PID.
+      if [[ -n "$CALLING_PID_LSTART_EPOCH" ]]; then
+        MANIFEST_MTIME=$(stat -f %m "$MANIFEST" 2>/dev/null || stat -c %Y "$MANIFEST" 2>/dev/null || echo "")
+        if [[ -n "$MANIFEST_MTIME" && "$MANIFEST_MTIME" -lt "$CALLING_PID_LSTART_EPOCH" ]]; then
+          continue
+        fi
+      fi
       MATCHED_SCOPES+=("$SCOPE")
     fi
   done
