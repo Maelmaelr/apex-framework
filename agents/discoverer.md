@@ -61,6 +61,8 @@ Fires when seeds name an identifier-shape symbol. Use the harness LSP tool (type
 
 Routing / registry / index splits: when a seed is `routes.ts`, Glob `routes_*.ts`, `routes/*.ts`. Targets symmetric naming; cap output at ~50 paths. Skip layer if seeds name no glob-friendly siblings.
 
+**Sibling spec/test inclusion**: when a seed names a source file that has a co-located spec/test (`{base}.spec.{ext}`, `{base}.test.{ext}`, `__tests__/{base}.*`, or a sibling under a parallel `*.spec.ts` / `*.test.ts` / `*_test.go` / `test_{base}.py` shape), include the spec path in the glob output. Reflector 7f9de350 surfaced the gap: a controller change had a ready spec file (`canvas_text_gen_controller_prompt_guard.spec.ts`) outside `allowed_files` so the executor could not add regression coverage in the same pass. Spec inclusion is goal-shape-aware: include only when `hypothesis.goals[]` text mentions test / spec / regression / coverage, OR when the change is a bug fix (the goal text includes `fix`, `bug`, `regression`, or quotes a failing assertion). For pure feature additions with no test-related goal language, skip - speculative spec inclusion bloats scope.
+
 ### c. Grep keyword search
 
 Capped at ~150 lines. Keywords are derived **deterministically** from `hypothesis.goals[]` text (replaces the prior "AI-derived nouns" heuristic): tokenize each goal on whitespace + punctuation, lowercase, drop stopwords (`the|a|an|and|or|of|to|in|for|on|with|is|are|was|were|be|by|that|this|these|those|it|as|at|from|verify|ensure|make|sure|check|each|all|any|every`) and tokens shorter than 4 chars, dedupe, take the union across goals. Same goals -> same keyword set, run-to-run. For multi-layer hypotheses (DB + API + web + tests in one task), prefer per-layer narrower passes over a single broad sweep - the screener's discrimination degrades when fed >30 mixed-layer candidates (observed 27 kept / 17 dropped from a 44-input cross-cutting batch). Output is a ranked file list (file path + match count) for the screener.
@@ -74,6 +76,13 @@ Spawn-prompt: ranked top-K + hypothesis (verbatim from this agent's spawn input)
 ## Output
 
 `.claude-tmp/apex-active/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json`. Then write the scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single-line absolute path to the scope JSON; arms the scope-check PreToolUse hook for downstream Edit / Write).
+
+**Token discipline (canonical naming).** Two distinct identifiers appear in the output paths and they MUST NOT be confused:
+- `{session}` is the 8-hex apex token; it appears in the parent directory name (`.claude-tmp/apex-active/{session}-*`) and in the main-scope.json filename.
+- `{cc_session_id}` is the uuid-shaped Claude Code session id; it appears ONLY as the pointer filename inside the `*-scopes/` dir (`{cc_session_id}.txt`), so the PreToolUse hook can resolve by `session_id` from its event payload.
+Writing the pointer as `{session}.txt` (e.g., `b69d28ba.txt`) is a contract violation - the scope-check hook globs `*-scopes/<event session_id>.txt` and will never match an 8-hex session token. Reflector b69d28ba surfaced this ambiguity.
+
+**Producer ownership.** The discoverer writes `main-scope.json` directly here, BEFORE returning to the orchestrator. The orchestrator MUST read `allowed_files` from `main_scope` only; reconstructing `allowed_files` from `screened.json` `kept[]` on the orchestrator side is a contract violation (reflector 9f07a2db: orchestrator was reconstructing `9f07a2db-main-scope.json` from screened output rather than reading the producer's artifact).
 
 `allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated layer output). Standard safety paths from `apex-core.md` Conventions are implicit at the hook layer; do not list them in `allowed_files`.
 

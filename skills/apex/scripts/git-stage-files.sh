@@ -2,9 +2,14 @@
 # Step 12 git-stage helper: stage the apex-driven change set with a deterministic dotenv guard.
 # Spec: apex-core.md step 12 ("per-file pre-filter" contract).
 #
-# Reads the baseline head_sha and stages, per-file, the union of:
-#   - git diff --name-only $HEAD_SHA            (tracked-modified)
+# Stages, per-file, the union of:
+#   - git diff --name-only HEAD                 (tracked-modified, WT-only)
 #   - git ls-files --others --exclude-standard  (untracked-non-ignored)
+# HEAD-relative diff (NOT vs the baseline $HEAD_SHA) is deliberate: a sibling
+# /apex session's commit can advance HEAD past our baseline, and using
+# $HEAD_SHA as the diff base would surface the sibling's already-committed
+# paths as "changed" and stage them under our session's commit. See
+# inline rationale block at the diff-computation site.
 #
 # Filter (block-by-default for dotenv shapes; the only protection for `git add`
 # of .env-shaped paths since `protect-env-hook.sh` covers Edit/Write only):
@@ -89,7 +94,19 @@ is_env_template() {
 
 # Compute change set. Both branches required: `git diff` excludes untracked, so
 # a new file apex created via Write would otherwise never get staged.
-TRACKED=$(git diff --name-only "$HEAD_SHA" 2>/dev/null || true)
+#
+# TRACKED diff base is HEAD (working-tree-only), NOT $HEAD_SHA. If a SIBLING
+# /apex session commits between this session's step 8.0 baseline capture and
+# this script's invocation, HEAD advances past $HEAD_SHA. `git diff $HEAD_SHA`
+# would then surface the sibling's already-committed paths as "changed" and
+# stage them under our session's commit (silent cross-session leak documented
+# by reflectors 3c16319f + 7f9de350: text-preview.tsx, en.json, fr.json from
+# session 084e7178 overwriting tokenCount threading). HEAD-relative diff
+# excludes already-committed work (ours or sibling) and only stages genuinely
+# uncommitted working-tree changes - which is the actual semantics of "stage
+# what is dirty". $HEAD_SHA is preserved as a required arg for shape validation
+# and downstream guards but is no longer the staging diff base.
+TRACKED=$(git diff --name-only HEAD 2>/dev/null || true)
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 CHANGE_SET=$(printf '%s\n%s\n' "$TRACKED" "$UNTRACKED" | grep -v '^$' | sort -u)
 

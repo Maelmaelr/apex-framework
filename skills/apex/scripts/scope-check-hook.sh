@@ -90,9 +90,50 @@ if [[ -d "$APEX_ACTIVE" ]]; then
   done
 fi
 
-# No pointer for this session_id: pass-through (entry-flow before scope written,
-# or non-/apex session entirely).
+# No pointer for this session_id. Distinguish entry-flow (no active apex scope
+# anywhere) from subagent leak (active scope exists under a DIFFERENT session_id;
+# spawned subagents arrive with their own cc_session_id and miss the pointer
+# keyed by the orchestrator's id - documented gap in reflector 9f07a2db). When
+# one or more *-main-scope.json exist, an apex session is past discovery and
+# every Edit/Write - including subagent calls - must respect the UNION of
+# active allowed_files. Zero active main-scopes preserves current pass-through
+# (entry-flow / non-/apex).
 if [[ -z "$POINTER" ]]; then
+  shopt -s nullglob
+  ACTIVE_SCOPES=("$APEX_ACTIVE"/*-main-scope.json)
+  shopt -u nullglob
+  if [[ ${#ACTIVE_SCOPES[@]} -eq 0 ]]; then
+    echo "$ALLOW"
+    exit 0
+  fi
+  for TARGET in "${TARGETS[@]}"; do
+    is_safety_path "$TARGET" && continue
+    ALLOWED=$(python3 -c "
+import json, os, sys, fnmatch
+target = sys.argv[1]
+target_abs = os.path.abspath(target)
+for sc in sys.argv[2:]:
+    try:
+        files = json.load(open(sc, encoding='utf-8')).get('allowed_files', [])
+    except Exception:
+        continue
+    for allowed in files:
+        allowed_abs = os.path.abspath(os.path.expanduser(allowed))
+        if target == allowed or target_abs == allowed_abs:
+            print('yes'); sys.exit(0)
+        if '*' in allowed or '?' in allowed:
+            if fnmatch.fnmatch(target, allowed) or fnmatch.fnmatch(target_abs, allowed_abs):
+                print('yes'); sys.exit(0)
+print('no')
+" "$TARGET" "${ACTIVE_SCOPES[@]}" 2>/dev/null || echo "error")
+    [[ "$ALLOWED" == "yes" ]] && continue
+    if [[ "$ALLOWED" == "error" ]]; then
+      deny "Scope check (subagent fallback): could not read active main-scope files. Investigate apex session state."
+      exit 0
+    fi
+    deny "Scope violation (subagent fallback): $TARGET not in any active apex main-scope allowed_files. Spawned subagent must respect parent session scope."
+    exit 0
+  done
   echo "$ALLOW"
   exit 0
 fi

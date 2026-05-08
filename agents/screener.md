@@ -34,6 +34,6 @@ Per file in the ranked list, decide keep / drop with a free-text reason. Bias ru
 
 ## Return to caller
 
-JSON path + one-line status (e.g., `kept: 18, dropped: 12`). NEVER the findings body - keeps orchestrator context small.
+JSON path + one-line status. The status MUST report `retained=N` and `dropped=M` as ACTUAL post-screen counts, NOT the upstream rank-top-K heuristic value. Example: `kept: 18, dropped: 12, retained_of_input=18/30`. This lets the discoverer + reflector see how aggressively the screener cut, not just how many candidates it received (reflector dc44e292: "screener trace lists 28 grep candidates but reports only rank-top-K=30 heuristic, could emit actual retained-count / dropped-count for clarity"). NEVER the findings body - keeps orchestrator context small.
 
 See `apex-core.md` Conventions for trace path schema and JSON-Schema validation.

@@ -33,7 +33,7 @@ Per section in the raw input, decide keep / drop with a free-text reason. Bias r
    - `dropped[]`: `{line_range, section_title, screener_reason}`.
    - `line_range` matches the `--- LINES s-e ---` marker exactly so `update-hit.sh` consumes kept ranges directly.
    - **artifact role**: audit + step 13 reflector input only. The orchestrator passes `kept[]` content into step-6/8 spawn prompts directly from working memory; this JSON is never re-read by the executor / dispatch phase.
-2. `.claude-tmp/apex-active/{session}-traces/entry/lesson-screener.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop).
+2. `.claude-tmp/apex-active/{session}-traces/entry/lesson-screener.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop). Reference each section by `{content_hash, line_range, section_title}` tuple ONLY - never embed verbatim section bodies in the trace. The kept body lives in the JSON `kept[]` (the spawn-prompt vector); duplicating it in the prose trace burns ~1500-1800 tokens per session for zero downstream signal.
 
 ## Return to caller
 

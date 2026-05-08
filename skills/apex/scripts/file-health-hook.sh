@@ -75,8 +75,28 @@ if added <= 10:
 
 if existing > 400:
     threshold = 500 if existing > 500 else 400
+    sibling_hint = ""
+    try:
+        import os, glob
+        target_dir = os.path.dirname(target) or "."
+        target_base = os.path.basename(target)
+        target_stem, target_ext = os.path.splitext(target_base)
+        siblings = []
+        for sib_path in sorted(glob.glob(os.path.join(target_dir, f"*{target_ext}"))):
+            sib_base = os.path.basename(sib_path)
+            if sib_base == target_base:
+                continue
+            sib_stem = os.path.splitext(sib_base)[0]
+            if "_" in target_stem and target_stem.split("_", 1)[0] == sib_stem.split("_", 1)[0]:
+                siblings.append(sib_base)
+        if siblings:
+            extra = " + others" if len(siblings) > 1 else ""
+            sibling_hint = (f" Sibling helpers in same directory suggest split target: "
+                            f"{siblings[0]}{extra}.")
+    except Exception:
+        pass
     msg = (f"file-health gate: {target} is {existing} lines (>{threshold}). "
-           f"Split first - extract a separable concern before adding {added}+ lines. "
+           f"Split first - extract a separable concern before adding {added}+ lines.{sibling_hint} "
            f"See global CLAUDE.md File health.")
     print(deny(msg)); sys.exit(0)
 

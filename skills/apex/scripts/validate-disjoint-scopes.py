@@ -94,6 +94,17 @@ def main() -> int:
 
     tasks = plan["tasks"]
 
+    # Single-task short-circuit. The disjoint-check is structurally inapplicable
+    # to one-task plans (no pairs to compare) and the subset-of-main-scope check
+    # adds noise in single-file review flows where the orchestrator already
+    # narrowed scope upstream. Surface the skip explicitly so callers do not
+    # mistake it for a silent pass. Reflector b69d28ba: "disjoint-scope
+    # validator assumes per-goal distributed writes, inapplicable to single-file
+    # review tasks".
+    if len(tasks) <= 1:
+        print("validate-disjoint-scopes: SKIPPED (single-task plan; disjoint-check inapplicable)", file=sys.stderr)
+        return 0
+
     # Build per-task non-safety sets.
     sets: list[tuple[str, set[str]]] = []
     for t in tasks:

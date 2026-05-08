@@ -10,7 +10,13 @@
 # Subcommands:
 #   check <prompt> <project_root>
 #       stdout: absolute path to cached main-scope.json on hit; nothing on miss.
-#       exit:   0 = hit (path printed); 1 = miss / expired / corrupt.
+#       stderr: explicit `CACHE_HIT <path>` / `CACHE_MISS <reason>` marker line.
+#               Callers parse stderr (or rely on exit code) to disambiguate a
+#               miss from a script error - exit-status alone treats both as 1
+#               (reflector b69d28ba: "discovery-cache.sh protocol lacks hit/miss
+#               signal for callers (silent-treated as miss)").
+#       exit:   0 = hit (path on stdout, marker on stderr);
+#               1 = miss / expired / corrupt (marker on stderr).
 #   write <prompt> <project_root> <main_scope_path>
 #       Copy <main_scope_path> into the cache keyed by sha1(prompt + root).
 #       exit:   0 = written; 1 = bad args / source missing.
@@ -50,7 +56,7 @@ cmd_check() {
   key=$(cache_key "$prompt" "$root")
   entry="$CACHE_DIR/$key.json"
   head_file="$CACHE_DIR/$key.head"
-  [[ -f "$entry" ]] || exit 1
+  [[ -f "$entry" ]] || { echo "CACHE_MISS no-entry" >&2; exit 1; }
 
   # TTL by mtime (portable: BSD vs GNU stat).
   if stat -f %m "$entry" >/dev/null 2>&1; then
@@ -59,17 +65,18 @@ cmd_check() {
     mtime=$(stat -c %Y "$entry")
   fi
   age_days=$(( ($(date +%s) - mtime) / 86400 ))
-  (( age_days < TTL_DAYS )) || { rm -f "$entry" "$head_file"; exit 1; }
+  (( age_days < TTL_DAYS )) || { rm -f "$entry" "$head_file"; echo "CACHE_MISS expired age=${age_days}d ttl=${TTL_DAYS}d" >&2; exit 1; }
 
   # HEAD divergence (only if we have both a then-HEAD and a git repo now).
   if [[ -f "$head_file" ]] && head_now=$(cd "$root" && git rev-parse HEAD 2>/dev/null); then
     head_then=$(cat "$head_file")
     if [[ -n "$head_then" && "$head_then" != "$head_now" ]]; then
       divergence=$(cd "$root" && git rev-list --count "$head_then..$head_now" 2>/dev/null || echo 0)
-      (( divergence <= HEAD_DIVERGE_LIMIT )) || { rm -f "$entry" "$head_file"; exit 1; }
+      (( divergence <= HEAD_DIVERGE_LIMIT )) || { rm -f "$entry" "$head_file"; echo "CACHE_MISS head-diverged commits=${divergence} limit=${HEAD_DIVERGE_LIMIT}" >&2; exit 1; }
     fi
   fi
 
+  echo "CACHE_HIT $entry" >&2
   printf '%s\n' "$entry"
   exit 0
 }
