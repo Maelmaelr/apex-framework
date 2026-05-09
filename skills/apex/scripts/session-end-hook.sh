@@ -29,7 +29,19 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-APEX_ACTIVE=".claude-tmp/apex-active"
+
+# Resolve APEX_ACTIVE absolutely. CC sets CLAUDE_PROJECT_DIR for hooks; manual
+# callers (mid-/apex abort) inherit project root via $PWD. Bare relative path
+# was the prior behaviour and silently failed when the hook's CWD diverged
+# from project root (orphaned artifacts in a project's .claude-tmp/apex-active
+# until the next manual /apex run swept them).
+if [[ -n "${APEX_ACTIVE_DIR:-}" ]]; then
+  APEX_ACTIVE="$APEX_ACTIVE_DIR"
+elif [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
+  APEX_ACTIVE="$CLAUDE_PROJECT_DIR/.claude-tmp/apex-active"
+else
+  APEX_ACTIVE="$PWD/.claude-tmp/apex-active"
+fi
 
 derive_session_from_stdin() {
   # Read hook event JSON from stdin, extract session_id, match against active
@@ -82,11 +94,13 @@ run_cleanup() {
   # (own-session: SessionEnd hook + manual-mid-abort) pass --post-success.
   # Foreign caller (cleanup-stale-and-proceed) omits the flag so the guard
   # fires defensively if the classifier got it wrong.
+  # Forward the resolved APEX_ACTIVE so cleanup-session.sh agrees on the
+  # target directory regardless of its own resolution chain (env / CWD).
   if [[ -x "$SCRIPT_DIR/cleanup-session.sh" ]]; then
     if (( foreign == 1 )); then
-      "$SCRIPT_DIR/cleanup-session.sh" --session "$session" 2>/dev/null || true
+      "$SCRIPT_DIR/cleanup-session.sh" --session "$session" --apex-active-dir "$APEX_ACTIVE" 2>/dev/null || true
     else
-      "$SCRIPT_DIR/cleanup-session.sh" --session "$session" --post-success 2>/dev/null || true
+      "$SCRIPT_DIR/cleanup-session.sh" --session "$session" --post-success --apex-active-dir "$APEX_ACTIVE" 2>/dev/null || true
     fi
   fi
   # Belt-and-suspenders: remove hypothesis.json if consumer step 15 failed to clean up.

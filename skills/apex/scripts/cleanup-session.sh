@@ -23,14 +23,24 @@
 # sweep because the static list omitted it.
 #
 # Args:
-#   --session <token>  (required; 8-char lowercase hex per Conventions / Session token format)
-#   --post-success     (optional; bypasses the live-PID guard. Reserved for callers
-#                       with authoritative knowledge that cleanup is safe -- step
-#                       14 success path, mid-/apex abort paths, SessionEnd of the
-#                       OWN session. Without this flag the guard fires when
-#                       manifest.pid is alive AND comm=claude, and refuses cleanup
-#                       as defense against sibling cleanup-stale-and-proceed
-#                       misclassification.)
+#   --session <token>       (required; 8-char lowercase hex per Conventions / Session token format)
+#   --post-success          (optional; bypasses the live-PID guard. Reserved for callers
+#                            with authoritative knowledge that cleanup is safe -- step
+#                            14 success path, mid-/apex abort paths, SessionEnd of the
+#                            OWN session. Without this flag the guard fires when
+#                            manifest.pid is alive AND comm=claude, and refuses cleanup
+#                            as defense against sibling cleanup-stale-and-proceed
+#                            misclassification.)
+#   --apex-active-dir <abs> (optional; absolute path to the .claude-tmp/apex-active
+#                            directory. Highest-priority APEX_ACTIVE resolution; below
+#                            it: APEX_ACTIVE_DIR env, CLAUDE_PROJECT_DIR (CC hooks set
+#                            this), $PWD fallback. Background-reflector subagents and
+#                            SessionEnd hooks may not inherit project CWD, in which case
+#                            a bare ".claude-tmp/apex-active" silently no-ops (rm -rf on
+#                            a missing path returns 0). Reflector e0f5b897: session
+#                            0cdd8999 left manifest + 4 siblings under
+#                            /Users/mael/Dev/flowctory/.claude-tmp/apex-active because the
+#                            reflector ran cleanup from a CWD without that subtree.)
 #
 # Exit code: always 0 (idempotent contract; warnings to stderr).
 
@@ -38,10 +48,9 @@
 # (permission, race, etc.) must not abort remaining cleanup steps.
 set -uo pipefail
 
-APEX_ACTIVE=".claude-tmp/apex-active"
-
 SESSION=""
 POST_SUCCESS=0
+APEX_ACTIVE_OVERRIDE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --session)
@@ -52,12 +61,34 @@ while [[ $# -gt 0 ]]; do
       POST_SUCCESS=1
       shift
       ;;
+    --apex-active-dir)
+      APEX_ACTIVE_OVERRIDE="${2:-}"
+      shift 2
+      ;;
     *)
       echo "cleanup-session.sh: unknown arg: $1" >&2
       exit 0
       ;;
   esac
 done
+
+# Resolve APEX_ACTIVE absolutely. Priority chain (first non-empty wins):
+#   1. --apex-active-dir <abs> flag
+#   2. APEX_ACTIVE_DIR env
+#   3. $CLAUDE_PROJECT_DIR/.claude-tmp/apex-active  (CC hooks always have this)
+#   4. $PWD/.claude-tmp/apex-active                  (orchestrator inline calls)
+# A bare relative path was the prior behaviour and silently failed when caller
+# CWD diverged from project root. The fallbacks preserve back-compat for
+# callers that DID run from project root.
+if [[ -n "$APEX_ACTIVE_OVERRIDE" ]]; then
+  APEX_ACTIVE="$APEX_ACTIVE_OVERRIDE"
+elif [[ -n "${APEX_ACTIVE_DIR:-}" ]]; then
+  APEX_ACTIVE="$APEX_ACTIVE_DIR"
+elif [[ -n "${CLAUDE_PROJECT_DIR:-}" ]]; then
+  APEX_ACTIVE="$CLAUDE_PROJECT_DIR/.claude-tmp/apex-active"
+else
+  APEX_ACTIVE="$PWD/.claude-tmp/apex-active"
+fi
 
 if [[ -z "$SESSION" ]]; then
   echo "cleanup-session.sh: --session is required" >&2
@@ -105,6 +136,18 @@ rm_target() {
   local target="$1"
   rm -rf -- "$target" 2>/dev/null || warn "failed to remove: $target"
 }
+
+# Pre-sweep diagnostic: silent no-op (rm -rf on a missing path returns 0) is
+# the most common failure mode when APEX_ACTIVE resolution lands on the wrong
+# directory. Warn on stderr when neither manifest nor any {session}-* sibling
+# exists at the resolved location, so reflector-errors.log / hook stderr
+# captures the symptom instead of silently leaving artifacts behind.
+shopt -s nullglob
+_siblings=("$APEX_ACTIVE/${SESSION}-"*)
+shopt -u nullglob
+if [[ ! -f "$APEX_ACTIVE/${SESSION}.json" && ${#_siblings[@]} -eq 0 ]]; then
+  warn "no artifacts under ${APEX_ACTIVE} for session ${SESSION} (cwd=${PWD}); APEX_ACTIVE may be misresolved"
+fi
 
 # Per-session cleanup. Each target removed independently so a single failure
 # does not shadow others. Sweeps the manifest plus every {session}-* sibling,

@@ -31,7 +31,7 @@ A fourth check also fires in the **apex phase only**: **oversized-dispatch flag 
 
 `{token}` = session token for apex; run token (also 8-hex) for admin-apex / lessons-analyze / lessons-extract.
 
-**CWD discipline**: subagent CWD inheritance is unreliable. Apex / lessons-analyze / lessons-extract paths above are project-CWD-relative because those phases run from the project root. Admin-apex paths are `$HOME`-anchored on purpose because admin-apex always operates on `~/.claude` (a relative path resolves to a nonexistent dir when the subagent CWD is something else; the absolute form is the safe pattern). When in doubt, prefer absolute paths for `Read`.
+**CWD discipline**: subagent CWD inheritance is unreliable. Apex / lessons-analyze / lessons-extract paths above are project-CWD-relative because those phases run from the project root - in practice, the spawn-prompt MUST also pass `PROJECT_ROOT` (the orchestrator's absolute `$PWD`) so cleanup paths and any absolute-path `Read` cannot drift. Admin-apex paths are `$HOME`-anchored on purpose because admin-apex always operates on `~/.claude` (a relative path resolves to a nonexistent dir when the subagent CWD is something else; the absolute form is the safe pattern). When in doubt, prefer absolute paths for `Read`.
 
 ## Inputs
 
@@ -114,8 +114,13 @@ Cap at 3 lines (top-3 by `tool_calls_made` descending). The threshold is fixed a
 After the structured block (or SKIPPED-no-inputs sentinel) is appended, the apex-phase reflector runs cleanup as its FINAL action:
 
 ```
-bash $HOME/.claude/skills/apex/scripts/cleanup-session.sh --session "${SESSION}" --post-success
+bash $HOME/.claude/skills/apex/scripts/cleanup-session.sh \
+  --session "${SESSION}" \
+  --post-success \
+  --apex-active-dir "${PROJECT_ROOT}/.claude-tmp/apex-active"
 ```
+
+`PROJECT_ROOT` is the absolute project root passed in this reflector's spawn-prompt (the orchestrator's `$PWD` at apex step 13). Background subagent CWD inheritance is unreliable - a bare `bash cleanup-session.sh --session ...` would resolve `.claude-tmp/apex-active` against the subagent's possibly-wrong CWD and silently no-op (rm -rf returns 0 on a missing path). Reflector e0f5b897: session 0cdd8999's manifest + 4 siblings lingered in `/Users/mael/Dev/flowctory/.claude-tmp/apex-active` because the background reflector ran cleanup from the wrong CWD. The explicit `--apex-active-dir` flag is the single source of truth; do NOT rely on `$CLAUDE_PROJECT_DIR` (not consistently set in subagent envs).
 
 `--post-success` bypasses the live-PID guard (the orchestrator's claude pid is recorded in the manifest and is still alive at this point - the guard's defensive purpose against sibling classifier bugs does not apply on the own-session post-reflect path). Idempotent; partial failures land as stderr warnings (silent per the failure-mode rule below).
 
