@@ -170,6 +170,11 @@ for f in files:
         cands.append(f"{d}/{stem}.spec{ext}")
         cands.append(f"{d}/__tests__/{stem}.test{ext}")
         cands.append(f"{d}/__tests__/{stem}{ext}")
+        # Top-level test-dir layouts (AdonisJS, Nest e2e, Mocha, etc.).
+        cands.append(f"tests/unit/{stem}.test{ext}")
+        cands.append(f"tests/unit/{stem}.spec{ext}")
+        cands.append(f"tests/{stem}.test{ext}")
+        cands.append(f"tests/{stem}.spec{ext}")
     for c in cands:
         if os.path.isfile(c): out.add(c)
 print('\n'.join(sorted(out)))
