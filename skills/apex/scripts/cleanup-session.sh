@@ -3,20 +3,24 @@
 # Spec: apex-core.md step 14 + Failure handling / "cleanup-session.sh".
 #
 # Cleans (idempotent; exit 0 on partial cleanup with warnings to stderr):
-#   - .claude-tmp/apex-active/{session}-main-scope.json
-#   - .claude-tmp/apex-active/{session}-scopes/                (all scope-pointer files)
-#   - .claude-tmp/apex-active/{session}-screened.json
-#   - .claude-tmp/apex-active/{session}-lesson-screened.json
-#   - .claude-tmp/apex-active/{session}-tier.json
-#   - .claude-tmp/apex-active/{session}-traces/
-#   - .claude-tmp/apex-active/{session}.json                   (manifest)
-#   - .claude-tmp/apex-active/{session}-fix-attempts.json
-#   - .claude-tmp/apex-active/{session}-baseline.json
-#   - .claude-tmp/apex-active/{session}-verify-errors.txt
+#   - .claude-tmp/apex-active/{session}.json     (manifest)
+#   - .claude-tmp/apex-active/{session}-*        (every sibling artifact: main-scope.json,
+#                                                 scopes/, screened.json, lesson-screened.json,
+#                                                 tier.json, traces/, fix-attempts.json,
+#                                                 baseline.json, verify-errors.txt, tasks.json
+#                                                 -- the {session}-tasks.json plan written by
+#                                                 the orchestrator at step 8.2 as input to
+#                                                 validate-disjoint-scopes.py is intentionally
+#                                                 covered by the glob -- and any future suffix)
 #
 # Intentionally NOT cleaned (consumed by step 15):
 #   - .claude-tmp/apex-active/{session}-hypothesis.json
 #     session-end-hook.sh removes it as belt-and-suspenders fallback when consumer fails.
+#
+# Glob-based sweep (vs. a static suffix list) ensures new {session}-* artifact
+# kinds added by future apex evolution are auto-covered without re-editing this
+# script. Reflector e953029f: ee81f7b0-tasks.json lingered until the 24h orphan
+# sweep because the static list omitted it.
 #
 # Args:
 #   --session <token>  (required; 8-char lowercase hex per Conventions / Session token format)
@@ -103,16 +107,16 @@ rm_target() {
 }
 
 # Per-session cleanup. Each target removed independently so a single failure
-# does not shadow others.
-rm_target "$APEX_ACTIVE/${SESSION}-main-scope.json"
-rm_target "$APEX_ACTIVE/${SESSION}-scopes"
-rm_target "$APEX_ACTIVE/${SESSION}-screened.json"
-rm_target "$APEX_ACTIVE/${SESSION}-lesson-screened.json"
-rm_target "$APEX_ACTIVE/${SESSION}-tier.json"
-rm_target "$APEX_ACTIVE/${SESSION}-traces"
+# does not shadow others. Sweeps the manifest plus every {session}-* sibling,
+# excluding {session}-hypothesis.json (consumed by step 15; session-end-hook.sh
+# removes it as belt-and-suspenders fallback). Glob, not enumeration, so future
+# {session}-* artifact kinds (e.g., {session}-tasks.json) are auto-covered.
 rm_target "$APEX_ACTIVE/${SESSION}.json"
-rm_target "$APEX_ACTIVE/${SESSION}-fix-attempts.json"
-rm_target "$APEX_ACTIVE/${SESSION}-baseline.json"
-rm_target "$APEX_ACTIVE/${SESSION}-verify-errors.txt"
+shopt -s nullglob
+for sibling in "$APEX_ACTIVE/${SESSION}-"*; do
+  [[ "$sibling" == "$APEX_ACTIVE/${SESSION}-hypothesis.json" ]] && continue
+  rm_target "$sibling"
+done
+shopt -u nullglob
 
 exit 0

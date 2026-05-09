@@ -20,6 +20,12 @@
 #   write <prompt> <project_root> <main_scope_path>
 #       Copy <main_scope_path> into the cache keyed by sha1(prompt + root).
 #       exit:   0 = written; 1 = bad args / source missing.
+#   prune
+#       Drop cache entries with mtime older than TTL_DAYS. Best-effort global
+#       eviction; without this, entries only evict on `check` of the same key,
+#       so the directory grows unbounded when prompts are not re-issued.
+#       Wired into create-session.sh startup (apex-active sweep companion).
+#       exit:   always 0; warnings to stderr.
 #
 # Cache layout: .claude-tmp/apex-discovery-cache/<sha1>.json
 #   File body = main_scope.json content + a sidecar header line is NOT used;
@@ -98,11 +104,36 @@ cmd_write() {
   exit 0
 }
 
+cmd_prune() {
+  # Drop entries older than TTL_DAYS. Best-effort; missing dir = nothing to do.
+  [[ -d "$CACHE_DIR" ]] || exit 0
+  local now mtime age_days
+  now=$(date +%s)
+  shopt -s nullglob
+  for entry in "$CACHE_DIR"/*.json; do
+    if stat -f %m "$entry" >/dev/null 2>&1; then
+      mtime=$(stat -f %m "$entry")
+    else
+      mtime=$(stat -c %Y "$entry")
+    fi
+    age_days=$(( (now - mtime) / 86400 ))
+    if (( age_days >= TTL_DAYS )); then
+      local key
+      key=$(basename "$entry" .json)
+      rm -f "$entry" "$CACHE_DIR/$key.head" 2>/dev/null || \
+        echo "discovery-cache: prune failed to remove $entry" >&2
+    fi
+  done
+  shopt -u nullglob
+  exit 0
+}
+
 case "${1:-}" in
   check) shift; cmd_check "$@" ;;
   write) shift; cmd_write "$@" ;;
+  prune) shift; cmd_prune "$@" ;;
   *)
-    echo "Usage: discovery-cache.sh {check|write} ..." >&2
+    echo "Usage: discovery-cache.sh {check|write|prune} ..." >&2
     exit 1
     ;;
 esac

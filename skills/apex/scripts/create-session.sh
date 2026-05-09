@@ -95,6 +95,13 @@ if [[ -x "$SCRIPT_DIR_PRE_SCAN/sweep-orphan-artifacts.sh" ]]; then
   bash "$SCRIPT_DIR_PRE_SCAN/sweep-orphan-artifacts.sh" --dir "$APEX_ACTIVE" --age-hours 24 2>/dev/null || true
 fi
 
+# Discovery-cache global eviction (TTL_DAYS-based). Without this, entries only
+# evict per-key on `check` reads of the same prompt; the cache dir grows
+# unbounded when prompts are not re-issued. Best-effort; never blocks.
+if [[ -x "$SCRIPT_DIR_PRE_SCAN/discovery-cache.sh" ]]; then
+  bash "$SCRIPT_DIR_PRE_SCAN/discovery-cache.sh" prune 2>/dev/null || true
+fi
+
 active_tokens=()
 stale_tokens=()
 
