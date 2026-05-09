@@ -25,6 +25,12 @@
 #
 # Args:
 #   --cc-session-id <id>  (required) - Claude Code session id passed by orchestrator.
+#   --alongside           (optional) - skip the overlap exit; mint a fresh manifest
+#                                       even when active or stale siblings are
+#                                       present. Used by SKILL Step 2's
+#                                       proceed-alongside branch (reflector a06efb91:
+#                                       orchestrator had to manually generate
+#                                       token+manifest because no flag existed).
 #
 # Exit codes:
 #   0  - manifest written, {session} on stdout
@@ -41,11 +47,16 @@ set -euo pipefail
 APEX_ACTIVE=".claude-tmp/apex-active"
 
 CC_SESSION_ID=""
+ALONGSIDE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cc-session-id)
       CC_SESSION_ID="${2:-}"
       shift 2
+      ;;
+    --alongside)
+      ALONGSIDE=1
+      shift
       ;;
     *)
       echo "create-session.sh: unknown arg: $1" >&2
@@ -130,12 +141,18 @@ PY
 )
 
 if [[ ${#active_tokens[@]} -gt 0 || ${#stale_tokens[@]} -gt 0 ]]; then
-  {
-    echo "overlap_detected"
-    [[ ${#active_tokens[@]} -gt 0 ]] && echo "active: ${active_tokens[*]}"
-    [[ ${#stale_tokens[@]} -gt 0 ]] && echo "stale: ${stale_tokens[*]}"
-  } >&2
-  exit 10
+  if [[ $ALONGSIDE -eq 1 ]]; then
+    # Caller explicitly opted in to running alongside detected siblings;
+    # skip the exit-10 prompt and fall through to mint a fresh manifest.
+    :
+  else
+    {
+      echo "overlap_detected"
+      [[ ${#active_tokens[@]} -gt 0 ]] && echo "active: ${active_tokens[*]}"
+      [[ ${#stale_tokens[@]} -gt 0 ]] && echo "stale: ${stale_tokens[*]}"
+    } >&2
+    exit 10
+  fi
 fi
 
 # No overlap: issue token, write manifest via printf (3-field record with shape-validated

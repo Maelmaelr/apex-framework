@@ -21,7 +21,7 @@ A single screener call is the only LLM gate in the cascade. Always fires when th
 
 Per file in the ranked list, decide keep / drop with a free-text reason. Bias rules:
 - Top of the list -> more likely keep (higher upstream signal).
-- Tail -> more likely drop, but verify each against the hypothesis.
+- Tail -> drop unless the file is named in `hypothesis.discovered_paths` or implicated by a goal noun beyond mere import / test usage (reflector 5f2005be: 3 kept tail files were never edited - kept context, not kept work).
 - Conceptual prompts (no specific file mentioned) -> tilt keep when the file is part of the hypothesis's named module.
 - Mechanical prompts (named file in `original_prompt`) -> tilt drop unless the file is in the dependency neighborhood of the named target.
 - Fix-site isolation: when the hypothesis points at a single resolution site (e.g., one controller handling a class of errors transparently for upstream/downstream callers), drop the upstream fetcher + sibling tests even if grep matched - they are not edited, only dragged through context. Keep them only when the hypothesis names a cross-file invariant.

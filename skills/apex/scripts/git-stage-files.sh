@@ -132,6 +132,16 @@ if command -v jq >/dev/null 2>&1 && [[ -d "$APEX_ACTIVE" ]]; then
 fi
 OTHER_SCOPE_FILES=$(printf '%s' "$OTHER_SCOPE_FILES" | grep -v '^$' | sort -u || true)
 
+# Load OUR own allowed_files. Under proceed-alongside, sibling sessions
+# intentionally share scope; paths in OUR main-scope must NOT be dropped by
+# the cross-session filter below (otherwise the filter no-ops the entire
+# stage in alongside mode - reflector a06efb91).
+OWN_SCOPE_FILES=""
+OWN_SCOPE_PATH="$APEX_ACTIVE/$SESSION-main-scope.json"
+if command -v jq >/dev/null 2>&1 && [[ -f "$OWN_SCOPE_PATH" ]]; then
+  OWN_SCOPE_FILES=$(jq -r '.allowed_files[]?' "$OWN_SCOPE_PATH" 2>/dev/null | sort -u || true)
+fi
+
 # Pre-dirty filter. Read `pre_dirty` from {session}-baseline.json (captured at
 # step 8.0). User-pre-existing WIP is never bundled into the apex commit, even
 # when apex deliberately edited a pre-dirty file (the merged change stays dirty
@@ -180,15 +190,21 @@ while IFS= read -r path; do
   # main-scope allowed_files (sibling /apex run owns this file). Also
   # actively unstage if the sibling pre-staged the path - 'continue' alone
   # leaves prior `git add` in the index, which would commit the contaminant
-  # under our session.
+  # under our session. Exception: if the path is ALSO in OUR own main-scope
+  # (intentional proceed-alongside overlap), keep it - sibling claim does
+  # not override our own scope.
   if [[ -n "$OTHER_SCOPE_FILES" ]] && printf '%s\n' "$OTHER_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-    if git diff --cached --name-only 2>/dev/null | grep -Fx -- "$path" >/dev/null 2>&1; then
-      git restore --staged -- "$path" 2>/dev/null || git reset HEAD -- "$path" >/dev/null 2>&1 || true
-      echo "git-stage-files.sh: unstaged cross-session contaminant (sibling main-scope): $path" >&2
+    if [[ -n "$OWN_SCOPE_FILES" ]] && printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
+      :  # alongside-shared scope; fall through to staging
     else
-      echo "git-stage-files.sh: skipping cross-session (claimed by sibling main-scope): $path" >&2
+      if git diff --cached --name-only 2>/dev/null | grep -Fx -- "$path" >/dev/null 2>&1; then
+        git restore --staged -- "$path" 2>/dev/null || git reset HEAD -- "$path" >/dev/null 2>&1 || true
+        echo "git-stage-files.sh: unstaged cross-session contaminant (sibling main-scope): $path" >&2
+      else
+        echo "git-stage-files.sh: skipping cross-session (claimed by sibling main-scope): $path" >&2
+      fi
+      continue
     fi
-    continue
   fi
 
   if (( DRY_RUN )); then
