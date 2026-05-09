@@ -7,8 +7,10 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
 ## Tiers (cross-cutting)
 
 - **trivial** decided at step 3 (conservative pre-flight; ANY ambiguity = non-trivial). Step 3.1 inline single Edit/Write -> jump to step 14. Skips 4-13.
-- **economy** decided at step 7 by inline AI judgement. Step 8 executors run on Sonnet; step 11 skips `learn`.
-- **standard** default at step 7 when AI judgement does not classify economy. Step 8 executors run on the main session model; full tail.
+- **economy** decided at step 7 by deterministic rule. Step 8 executors run on Sonnet; **step 9 polish skipped**; step 11 skips `learn`.
+- **standard** default at step 7 when the deterministic rule does not classify economy. Step 8 executors run on the main session model; full tail.
+
+**Step 13 reflector is background** in non-trivial paths (economy + standard); the reflector owns the post-reflect `cleanup-session.sh --post-success` call as its final action. Step 14 only runs on the trivial path (where step 13 was skipped). Step 15's commit-creep audit runs inline (no LLM hop).
 
 ## Conventions
 
@@ -48,6 +50,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
 3. Trivial pre-flight | Blocked by #2
    - inline task prompt
      - **Trivial = ALL of**: single file edit (or single new file), file path explicitly named in `original_prompt`, no new public symbol / endpoint / component, no cross-file dependency. **ANY ambiguity = non-trivial.**
+     - **Verb-pattern relaxation**: when `original_prompt` matches `/^\s*(rename|format|fix typos?|reword|add (a )?comment|remove (a )?comment|update copy|update string)\b/i`, the path-naming requirement is relaxed: if no path is named, a single inline `Glob` for the most specific noun in the prompt qualifies the prompt iff exactly one match returns (zero or 2+ matches = non-trivial). All other trivial constraints (no new public symbol, no cross-file dep, ANY ambiguity disqualifies) still apply. Pure edit-only prompts ("rename `foo` to `bar`", "fix typo in landing copy") thus reach step 3.1 and skip 4-13.
    - if trivial:
      - **3.1** orchestrator performs the inline `Edit` / `Write` directly. Before the edit, orchestrator writes `{session}-main-scope.json` inline (`allowed_files = [<the single file>] + safety paths`) and writes the scope-check pointer. Orchestrator also writes a **minimal hypothesis stub** at `.claude-tmp/apex-active/{session}-hypothesis.json` (`original_prompt` verbatim; `hypothesis` = one-line restatement; `complexity_hint = "low"`; `alternatives = [{interpretation: original_prompt, status: "kept", reason: "trivial path"}]`; producer-validates against `hypothesis.schema.json`) so step 15's summary contract stays uniform across trivial / non-trivial. After the edit, jumps to task 14.
      - **trivial trade-off**: skips verify (10), commit (12), reflect (13). The conservative gate (single named file, no new public symbol, no cross-file dep, ANY ambiguity disqualifies) keeps the edit reversible and small; the user owns lint/build verification and the `git add+commit` afterwards. Misclassification is on the gate, not the trivial path.
@@ -65,8 +68,8 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
 
 5. Load lessons + project docs | Blocked by #4
    - script `scripts/grep-lessons.sh <project-root> <term1> [<term2> ...]` reads `<project-root>/.claude/lessons-index.md` + `lessons.md` for keywords **extracted deterministically from `hypothesis.goals[]`** (same recipe as step 6: lowercase + tokenize on whitespace+punctuation, drop stopwords `the|a|an|and|or|of|to|in|for|on|with|is|are|was|were|be|by|that|this|these|those|it|as|at|from|verify|ensure|make|sure|check|each|all|any|every`, drop tokens shorter than 4 chars, dedupe across goals; cap at top 8 by document-order to keep `grep -e` args bounded). Same `goals[]` -> same keyword set, run-to-run. Replaces the prior "AI-derived ~8 keywords" inline emit. Emits `--- LINES s-e ---` blocks (absolute line numbers in `lessons.md`); 150-line cap with `TRUNCATED` footer.
-   - **Lesson screener subagent** (always fires when grep-lessons.sh emits at least one `--- LINES` marker; silent skip when grep output is empty): agent `~/.claude/agents/lesson-screener.md` (Haiku, single call; subagents do NOT inherit working memory - orchestrator passes raw grep output verbatim + hypothesis verbatim + `session` + `lessons_path` in the spawn prompt). Returns JSON path + one-line status (e.g., `kept: 3, dropped: 7`); kept content is never returned in the message body. Writes `.claude-tmp/apex-active/{session}-lesson-screened.json` (`{kept: [{line_range, section_title, screener_reason, content}], dropped: [{line_range, section_title, screener_reason}]}`; producer-validated against `lesson-screened.schema.json`); trace at `.claude-tmp/apex-active/{session}-traces/entry/lesson-screener.md`. Haiku is sufficient for keep/drop classification on a bounded blob; Sonnet was the prior default and dominated step 5 wall time. Consumed by step 13 reflector.
-   - script `scripts/update-hit.sh <project-root>/.claude/lessons.md <line>...` bumps hit timestamps for **kept** line ranges only (extracted from `kept[].line_range`; idempotent; skips if today's date already present). When the screener was skipped (empty grep), `update-hit.sh` is also skipped.
+   - **Screener gate (K=25)**: when grep output is `<= 25` lines (small / young projects), the orchestrator reads matches inline and derives `kept[]` itself by relevance to `hypothesis.goals[]` - no Haiku hop. When grep output is `> 25` lines, fall back to the lesson screener subagent (`~/.claude/agents/lesson-screener.md`, Haiku, single call; subagents do NOT inherit working memory - orchestrator passes raw grep output verbatim + hypothesis verbatim + `session` + `lessons_path` in the spawn prompt). Subagent returns JSON path + one-line status (e.g., `kept: 3, dropped: 7`); kept content is never returned in the message body. Either path writes `.claude-tmp/apex-active/{session}-lesson-screened.json` (`{kept: [{line_range, section_title, screener_reason, content}], dropped: [{line_range, section_title, screener_reason}]}`; producer-validated against `lesson-screened.schema.json`). Inline path uses `screener_reason = "inline-pick: <one-line>"` to make the inline gate visible in the artifact. Trace at `.claude-tmp/apex-active/{session}-traces/entry/lesson-screener.md` written only when the subagent fires. Consumed by step 13 reflector.
+   - script `scripts/update-hit.sh <project-root>/.claude/lessons.md <line>...` bumps hit timestamps for **kept** line ranges only (extracted from `kept[].line_range`; idempotent; skips if today's date already present). When grep output is empty, `update-hit.sh` is skipped.
    - tolerate empty output (no `lessons-index.md` -> silent skip).
    - project-context.md read cached from step 1.
    - working memory: kept lessons (from screener `kept[]`) + matched paths + project context propagate to step 6 (discovery seeds) and steps 8 / 9 / 10 / 11 (advisory context for executor / polish / verify-fix / documentation / learn). The raw grep blob never enters working memory - that is the bloat-reduction rationale for the screener gate.
@@ -135,6 +138,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
    - **dispatch-only step**: orchestrator MUST NOT inline `Edit` / `Write` / `MultiEdit` / `NotebookEdit` slice files at step 8.
 
 9. Polish | Blocked by #8
+   - **Skipped on economy tier** (mirrors learn-skip rule). Economy implies `len(goals)==1 AND allowed_files<=5 AND no rewrite verbs`, so the surface for orphan imports / dead code is small; step 10 verify catches functional regressions; the marginal Sonnet hop is not justified. Standard tier always runs polish.
    - agent `~/.claude/agents/polish.md` (Sonnet; subagents do NOT inherit working memory - orchestrator propagates `session`, `main_scope_path`, `baseline_head_sha`, and `lessons_hits` (advisory) explicitly at the spawn site)
    - agent computes touched-by-apex set: `(git diff --name-only {baseline.head_sha}; git ls-files --others --exclude-standard) | sort -u` from `{session}-baseline.json`
    - INTERSECTED with `allowed_files` from `{session}-main-scope.json` (pre-existing user-dirty files outside scope are NOT polished; still committed as-is at step 12).
@@ -202,7 +206,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
 
       - flags traces as "novel" when patterns don't match heuristic categories.
 
-    - agent `~/.claude/agents/reflector.md` (Haiku, **foreground**, silent) - always fires; focus driven by the `novel_traces` line. Foreground because step 14 cleanup is the only follow-up and explicitly blocks on step 13 - no need for background spawn or trace snapshot.
+    - agent `~/.claude/agents/reflector.md` (Haiku, **background**, silent) - always fires; focus driven by the `novel_traces` line. Backgrounded so the orchestrator releases the user immediately and proceeds to step 15 without waiting on the Haiku call. The reflector OWNS post-reflect cleanup: as its final action it runs `bash scripts/cleanup-session.sh --session {session} --post-success` (see step 14 below). Step 14 only runs on the trivial path.
       - inputs: `git diff --stat {baseline.head_sha}` plus `git ls-files --others --exclude-standard`, `.claude-tmp/apex-active/{session}.json` (manifest -> reads `cc_session_id` -> loads main-orchestrator TaskList from `~/.claude/todos/{cc_session_id}-agent-{cc_session_id}.json`), the latest heuristics block in `~/.claude/tmp/apex-workflow-improvements.md`, `.claude-tmp/apex-active/{session}-screened.json` (when present; for screener accuracy / efficiency evaluation against actual touched-by-apex set), all trace files under `.claude-tmp/apex-active/{session}-traces/**/*.md` (read in-place; no snapshot).
       - emits structured append (minimal prose) under shared `flock`:
 
@@ -220,7 +224,8 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
       - errors logged to `~/.claude/tmp/reflector-errors.log` (silent failure otherwise).
       - shuts down silently (no main-session output).
 
-14. Cleanup session | Blocked by #13
+14. Cleanup session (trivial-only) | Blocked by #13
+    - **Runs only when step 13 was skipped** (trivial path). Non-trivial paths (economy + standard) get cleanup from the backgrounded reflector at step 13 instead - the reflector owns the `cleanup-session.sh --post-success` call as its final action.
     - script `scripts/cleanup-session.sh` (idempotent; exit 0 on partial cleanup with warnings to stderr).
     - cleans (only this session's files; concurrent sessions untouched):
       - `.claude-tmp/apex-active/{session}-main-scope.json`
@@ -233,14 +238,16 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
       - `.claude-tmp/apex-active/{session}-baseline.json`
       - `.claude-tmp/apex-active/{session}-verify-errors.txt`
     - **Intentionally NOT cleaned** (consumed by step 15): `.claude-tmp/apex-active/{session}-hypothesis.json`. Step 15 removes it after use; `session-end-hook.sh` is the idempotent fallback.
-    - **Live-session guard + --post-success bypass**: by default, `cleanup-session.sh` reads the manifest's `pid` and refuses cleanup if the PID is alive AND `ps -o comm=` matches `claude` (defends against sibling classifier bugs). `--post-success` bypasses the guard for trusted own-session callers (step 14 success path, mid-flow abort, SessionEnd of own session). Without that flag the guard would block legit own-cleanup since manifest.pid is the still-alive caller's claude pid.
+    - **Live-session guard + --post-success bypass**: by default, `cleanup-session.sh` reads the manifest's `pid` and refuses cleanup if the PID is alive AND `ps -o comm=` matches `claude` (defends against sibling classifier bugs). `--post-success` bypasses the guard for trusted own-session callers (step 14 trivial path, the reflector's post-reflect call at step 13, mid-flow abort, SessionEnd of own session). Without that flag the guard would block legit own-cleanup since manifest.pid is the still-alive caller's claude pid.
 
 15. Inline summary | Blocked by #14
-    - inline task prompt reads `{session}-hypothesis.json` (preserved by step 14) and the per-goal status map collected at step 8.3
+    - inline task prompt reads `{session}-hypothesis.json` (preserved by step 13/14 cleanup) and the per-goal status map collected at step 8.3
+    - **Inline post-apex commit-creep audit** (no LLM hop; was step 14 in the prior contract): `git log {baseline_head_sha}..HEAD --pretty=format:'%h %an %s'`. Surface as a one-line warning in the summary any commit whose subject does NOT start with `apex git-sync` (post-apex commit creep unrelated to hypothesis; reflector 88ba4171). When step 12 is skipped (trivial path) the audit still runs - it just observes user-side commits since baseline.
     - emits:
       - Original prompt summary (from `original_prompt` field)
       - Short hypothesis vs reality (gaps spotted) summary
       - **Per-goal status**: `N/M goals passed` line where N = count of goals with status `implemented` + `already-satisfied`, M = `len(hypothesis.goals)`. Below the headline, list each goal with its status (`implemented` | `already-satisfied` | `failed`) and one-line note from the executor return. This is the first and only place the user sees the goal decomposition - as a record of what was done, never as a question.
+      - Commit-creep warning (if any non-`apex git-sync` commits since baseline).
       - Short executive summary
     - on success: removes `.claude-tmp/apex-active/{session}-hypothesis.json` (consumer cleans up its own input; SessionEnd-hook fallback otherwise).
 

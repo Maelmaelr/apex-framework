@@ -1,6 +1,6 @@
 ---
 name: reflector
-description: Haiku self-reflection agent. Foreground at apex step 13, admin-apex task 11, apex-lessons analyze Step 10, apex-lessons extract Step 7. Reads traces in-place, manifest, hypothesis, and any phase-specific JSON artifacts; appends one structured block (or SKIPPED-no-inputs sentinel) to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
+description: Haiku self-reflection agent. Background at apex step 13 (owns post-reflect cleanup-session.sh); foreground at admin-apex task 11, apex-lessons analyze Step 10, apex-lessons extract Step 7. Reads traces in-place, manifest, hypothesis, and any phase-specific JSON artifacts; appends one structured block (or SKIPPED-no-inputs sentinel) to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
 model: haiku
 ---
 
@@ -10,7 +10,7 @@ Spec: `apex-core.md` step 13 | `skills/admin-apex/SKILL.md` task 11 | `skills/ap
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
-Always fires at the four reflection points. Apex step 13 is foreground (step 14 cleanup is the only follow-up and explicitly blocks on step 13 - no need for background spawn or trace snapshot). Admin-apex / lessons-analyze / lessons-extract are also foreground.
+Always fires at the four reflection points. Apex step 13 is **background** - the orchestrator releases the user immediately and the reflector owns post-reflect cleanup (see "Post-reflect cleanup" below). Admin-apex / lessons-analyze / lessons-extract are foreground (their orchestrators have follow-up tasks that depend on reflector completion).
 
 The reflector outputs one analysis block every run, even when the heuristic signal flags zero novel traces. In that case the block captures hypothesis-vs-reality (TaskList compared against `{session}-hypothesis.json`) and any cross-session pattern worth surfacing.
 
@@ -108,6 +108,18 @@ oversized-dispatch: goal="<truncated 80 chars>" tool_calls=N files_touched=M sta
 ```
 
 Cap at 3 lines (top-3 by `tool_calls_made` descending). The threshold is fixed at 50 for now; `/apex-improve` may tune it later via the same channel. Skipped under SKIPPED-no-inputs (no manifest -> no apex run to flag). Other phases (admin-apex, lessons-analyze, lessons-extract) skip this check entirely.
+
+## Post-reflect cleanup (apex phase only)
+
+After the structured block (or SKIPPED-no-inputs sentinel) is appended, the apex-phase reflector runs cleanup as its FINAL action:
+
+```
+bash $HOME/.claude/skills/apex/scripts/cleanup-session.sh --session "${SESSION}" --post-success
+```
+
+`--post-success` bypasses the live-PID guard (the orchestrator's claude pid is recorded in the manifest and is still alive at this point - the guard's defensive purpose against sibling classifier bugs does not apply on the own-session post-reflect path). Idempotent; partial failures land as stderr warnings (silent per the failure-mode rule below).
+
+Skipped under SKIPPED-no-inputs (no manifest -> nothing to clean reliably; SessionEnd-hook is the fallback). Other phases (admin-apex, lessons-analyze, lessons-extract) skip this entirely - their orchestrators run cleanup themselves at task 11 / Step 10 / Step 7 follow-ups.
 
 ## Failure mode
 

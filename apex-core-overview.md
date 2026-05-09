@@ -8,11 +8,13 @@ Legend: `inline` = main-orchestrator inline prompt | `skill` = `~/.claude/skills
 
 ## Tiers
 
-| Tier     | Decided at | Effect                                                                 |
-| -------- | ---------- | ---------------------------------------------------------------------- |
-| trivial  | step 3     | step 3.1 inline edit -> jump to 14. Skips 4-13.                        |
-| economy  | step 7     | step 8 executors = sonnet; step 11 learn skipped. All other steps run. |
-| standard | step 7     | step 8 executors = main session model; full tail.                      |
+| Tier     | Decided at | Effect                                                                                            |
+| -------- | ---------- | ------------------------------------------------------------------------------------------------- |
+| trivial  | step 3     | step 3.1 inline edit -> jump to 14. Skips 4-13.                                                   |
+| economy  | step 7     | step 8 executors = sonnet; step 9 polish skipped; step 11 learn skipped. All other steps run.     |
+| standard | step 7     | step 8 executors = main session model; full tail.                                                 |
+
+Step 13 reflector is **background** in non-trivial paths; reflector owns post-reflect `cleanup-session.sh --post-success`. Step 14 only runs on trivial path. Step 15 commit-creep audit is inline (no LLM hop).
 
 ---
 
@@ -32,6 +34,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 
 3. Trivial pre-flight: inline
    - trivial = single-file edit, no new public symbol, named target file, ANY ambiguity = non-trivial
+   - **verb-pattern relaxation**: prompt matching `/^\s*(rename|format|fix typos?|reword|add (a )?comment|remove (a )?comment|update copy|update string)\b/i` may resolve its target via single inline `Glob` (zero or 2+ matches = non-trivial); other trivial constraints unchanged
    - if trivial:
      - 3.1 inline single Edit/Write; orchestrator writes minimal hypothesis stub (original_prompt + one-line hypothesis) so step 15 contract stays uniform
      - jump to 14 (skip 4-13). Trade-off: no verify, no commit, no reflect; user owns lint/build + git add+commit.
@@ -42,11 +45,12 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - goals.length drives steps 6 (top-K), 7 (deterministic tier), 8.2 (per-goal split), 13 (non-convergence), 15 (per-goal summary)
    - validate-json.sh hypothesis.schema.json
 
-5. Load lessons + project docs: grep-lessons.sh -> agents/lesson-screener.md (Haiku, single call; raw grep output + hypothesis explicit in spawn prompt; subagents do NOT inherit working memory) -> {session}-lesson-screened.json -> update-hit.sh on kept line ranges
+5. Load lessons + project docs: grep-lessons.sh -> screener gate (K=25)
    - keywords for grep-lessons.sh extracted deterministically from hypothesis.goals[] (same recipe as step 6: lowercase + tokenize + stopword drop + dedupe; cap at top 8 by document-order)
+   - **gate**: grep output <= 25 lines -> orchestrator picks kept[] inline (no Haiku hop; screener_reason = "inline-pick: ..."); grep output > 25 lines -> spawn agents/lesson-screener.md (Haiku, single call; subagents do NOT inherit working memory; raw grep output + hypothesis explicit in spawn prompt). Either path writes {session}-lesson-screened.json. update-hit.sh runs on kept line ranges.
    - orchestrator reads kept[] only; raw grep blob never enters working memory
    - project-context.md cached from step 1
-   - tolerate empty output (no lessons-index.md = silent skip; screener also skipped)
+   - tolerate empty output (no lessons-index.md = silent skip; screener / inline pick also skipped)
 
 6. Discovery: agents/discoverer.md (Sonnet; spawn-prompt carries seeds + hypothesis + session/cc_session_id + project_root; subagents do NOT inherit working memory)
    cache check first: discovery-cache.sh check <prompt> <project_root> -> hit -> reuse cached main-scope, skip cascade. Miss -> run cascade, then discovery-cache.sh write. TTL 7 days OR HEAD diverged > 10 commits.
@@ -80,6 +84,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - dispatch-only: orchestrator MUST NOT inline Edit/Write/MultiEdit/NotebookEdit slice files at step 8
 
 9. Polish: agents/polish.md (Sonnet; spawn-prompt carries scope path + baseline.head_sha + lessons hits; subagents do NOT inherit working memory)
+   - **skipped on economy tier** (small scope = small surface; verify catches functional issues)
    - touched INTERSECT scope
    - staleness / inconsistency / unused check
    - lessons context advisory
@@ -100,18 +105,21 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - bump-version.sh increments matching segment + resets patch=0 on minor
     - git-stage-files.sh (change-set + pre-dirty/dotenv/check-ignore/cross-session filters + per-file add) && git commit -m "<freeform>" && git push (one chain)
 
-13. Self-reflect: reflect-traces.sh + reflector.md (foreground)
+13. Self-reflect: reflect-traces.sh + reflector.md (**background** in non-trivial paths)
     - reads traces in-place from .claude-tmp/apex-active/{session}-traces/
     - appends to ~/.claude/tmp/apex-workflow-improvements.md
     - non-convergence detection: appends {ts, session, hash=sha1(prompt), scope_count, touched_count, files_touched} to ~/.claude/tmp/apex-prompt-history.log; on hash collision with different files_touched, surfaces non-convergence: line in improvements:
     - oversized-dispatch flag (E1): read {session}-traces/execute/dispatch-summary.json; for each return with tool_calls_made > 50, surface oversized-dispatch: line under improvements: (cap 3, top-3 by tool_calls_made)
+    - **owns post-reflect cleanup**: as final action runs `bash scripts/cleanup-session.sh --session {session} --post-success` (idempotent; bypasses live-PID guard for trusted own-session caller)
 
-14. Cleanup session: cleanup-session.sh
+14. Cleanup session (trivial-only): cleanup-session.sh
+    - **runs only on trivial path** (where step 13 was skipped); non-trivial paths get cleanup from the backgrounded reflector at step 13
     - wipes session dir except {session}-hypothesis.json (do not clean concurrent session files)
 
 15. Inline summary: inline
     - reads {session}-hypothesis.json + per-goal status map from step 8.3
-    - emits summary including per-goal status (N/M goals passed; per-goal status + note)
+    - **inline commit-creep audit** (no LLM hop): `git log {baseline_head_sha}..HEAD`; flag commits whose subject does not start with `apex git-sync`
+    - emits summary including per-goal status (N/M goals passed; per-goal status + note) + commit-creep warning if any
     - removes hypothesis on success
 ```
 
@@ -132,21 +140,21 @@ Any orchestrator exit bypassing step 14 runs `session-end-hook.sh {session}` inl
 
 ## Skip matrix
 
-| Step | trivial | economy        | standard   |
-| ---- | ------- | -------------- | ---------- |
-| 1    | run     | run            | run        |
-| 2    | run     | run            | run        |
-| 3    | run     | run            | run        |
-| 3.1  | run     | -              | -          |
-| 4    | skip    | run            | run        |
-| 5    | skip    | run            | run        |
-| 6    | skip    | run            | run        |
-| 7    | skip    | run            | run        |
-| 8    | skip    | run (sonnet)   | run (main) |
-| 9    | skip    | run            | run        |
-| 10   | skip    | run            | run        |
-| 11   | skip    | run (no learn) | run (full) |
-| 12   | skip    | run            | run        |
-| 13   | skip    | run            | run        |
-| 14   | run     | run            | run        |
-| 15   | run     | run            | run        |
+| Step | trivial | economy        | standard         |
+| ---- | ------- | -------------- | ---------------- |
+| 1    | run     | run            | run              |
+| 2    | run     | run            | run              |
+| 3    | run     | run            | run              |
+| 3.1  | run     | -              | -                |
+| 4    | skip    | run            | run              |
+| 5    | skip    | run            | run              |
+| 6    | skip    | run            | run              |
+| 7    | skip    | run            | run              |
+| 8    | skip    | run (sonnet)   | run (main)       |
+| 9    | skip    | skip           | run              |
+| 10   | skip    | run            | run              |
+| 11   | skip    | run (no learn) | run (full)       |
+| 12   | skip    | run            | run              |
+| 13   | skip    | run (background) | run (background) |
+| 14   | run     | skip           | skip             |
+| 15   | run     | run            | run              |
