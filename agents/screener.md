@@ -24,6 +24,7 @@ Per file in the ranked list, decide keep / drop with a free-text reason. Bias ru
 - Tail -> more likely drop, but verify each against the hypothesis.
 - Conceptual prompts (no specific file mentioned) -> tilt keep when the file is part of the hypothesis's named module.
 - Mechanical prompts (named file in `original_prompt`) -> tilt drop unless the file is in the dependency neighborhood of the named target.
+- Fix-site isolation: when the hypothesis points at a single resolution site (e.g., one controller handling a class of errors transparently for upstream/downstream callers), drop the upstream fetcher + sibling tests even if grep matched - they are not edited, only dragged through context. Keep them only when the hypothesis names a cross-file invariant.
 
 ## Outputs
 
