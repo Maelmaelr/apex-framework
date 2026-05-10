@@ -30,6 +30,7 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
    - Dead code orphaned by step 8 (functions / branches no longer called).
    - Leftover commented-out blocks in touched lines.
    - Obvious naming inconsistencies in newly-touched lines.
+   - **Orphan-symbol cleanup within in-scope files** (authority boundary): when step 8 deleted a public symbol / i18n key / shared type, you may remove its remaining definitions / declarations / namespace entries from in-scope files even when the dead lines lie outside the lines the executor touched - provided you grep-verified zero remaining callers across the whole tree (not just `allowed_files`). The hard cap is still the intersected set: if a verified orphan lives in a file outside `allowed_files`, do NOT touch it - surface as a one-line note in the return summary so step 11 documentation / a follow-up session can clean it. Reflector fe233cc4: orphan i18n keys (overview.*, modalities.*, detail.tabs) under in-scope locale files were correctly cleaned with verified zero callers; same gate applies to stale shared-type references in in-scope architecture docs.
 
 4. **Lessons hits** inform staleness signals (advisory only; do not blindly apply lessons as fixes).
 

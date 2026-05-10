@@ -116,6 +116,20 @@ CHANGE_SET=$(printf '%s\n%s\n' "$TRACKED" "$UNTRACKED" | grep -v '^$' | sort -u)
 # that file belongs to a sibling /apex run, and committing it under our
 # session's commit would silently steal their work. Mirrors the granularity
 # of apex-conflict-check.sh (main-scope only).
+#
+# RACE NOTE (reflector 72418039, workflow-respected: no): this filter is only
+# as effective as the sibling's main-scope.json being on disk at the moment
+# git-stage runs. If session A starts at step 6 (discoverer not yet returned)
+# while sibling B reaches step 12, B's git-stage cannot see A's allowed_files
+# yet - any deletion / write A is racing on slips through under B's commit.
+# Repro: B deleted 6 provider-tab files belonging to A's split-anthropic
+# refactor. Mitigations to consider (out of scope for this script):
+#   1. Defer git-stage when a sibling manifest exists without main-scope.json
+#      yet (cooperative wait with timeout).
+#   2. Promote per-session staging-area locking via a flock on apex-active/.
+# For now: deletion paths still flow through the same OTHER_SCOPE_FILES check
+# below; a sibling whose main-scope IS on disk at the time of staging is
+# correctly protected.
 APEX_ACTIVE=".claude-tmp/apex-active"
 OTHER_SCOPE_FILES=""
 if command -v jq >/dev/null 2>&1 && [[ -d "$APEX_ACTIVE" ]]; then
