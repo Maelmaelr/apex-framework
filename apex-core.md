@@ -249,7 +249,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
       - **Per-goal status**: `N/M goals passed` line where N = count of goals with status `implemented` + `already-satisfied`, M = `len(hypothesis.goals)`. Below the headline, list each goal with its status (`implemented` | `already-satisfied` | `failed`) and one-line note from the executor return. This is the first and only place the user sees the goal decomposition - as a record of what was done, never as a question.
       - Commit-creep warning (if any non-`apex git-sync` commits since baseline).
       - Short executive summary
-    - on success: removes `.claude-tmp/apex-active/{session}-hypothesis.json` (consumer cleans up its own input; SessionEnd-hook fallback otherwise).
+    - **on success: explicit inline `Bash` `rm -f .claude-tmp/apex-active/{session}-hypothesis.json`** immediately after the summary is emitted. Step 15 is the consumer; cleanup is its responsibility - the deletion is an observable action, not a trailing intent. `session-end-hook.sh` remains the idempotent fallback for aborts that bypass step 15.
 
 ## Failure handling
 

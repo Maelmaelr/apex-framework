@@ -82,7 +82,8 @@ Step 13 reflector is **background** in non-trivial paths (economy + standard); t
     - Per-goal status: `N/M goals passed` (count of `implemented` + `already-satisfied` over `len(goals)`); list each goal with its status + one-line note. First and only place the user sees the goal decomposition - as a record of what was done, never as a question.
     - Commit-creep warning (if any non-`apex git-sync` commits in window).
     - Short executive summary
-    On success: remove `.claude-tmp/apex-active/{session}-hypothesis.json` (consumer cleans up its own input; SessionEnd-hook fallback otherwise).
+
+    **After emitting the summary, immediately delete the hypothesis input via inline `Bash`**: `rm -f .claude-tmp/apex-active/{session}-hypothesis.json`. Step 15 is the consumer; cleanup is its responsibility - this is an explicit, observable action, not a trailing intent. `session-end-hook.sh` remains the idempotent fallback for aborts that bypass step 15.
 
 ## Mid-flow abort cleanup
 
