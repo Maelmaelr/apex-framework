@@ -83,7 +83,7 @@ Step 13 reflector is **background** in non-trivial paths (economy + standard); t
     - Commit-creep warning (if any non-`apex git-sync` commits in window).
     - Short executive summary
 
-    **After emitting the summary, immediately delete the hypothesis input via inline `Bash`**: `rm -f .claude-tmp/apex-active/{session}-hypothesis.json`. Step 15 is the consumer; cleanup is its responsibility - this is an explicit, observable action, not a trailing intent. `session-end-hook.sh` remains the idempotent fallback for aborts that bypass step 15.
+    **After emitting the summary, perform two closing actions in this order**: (1) inline `Bash` `rm -f .claude-tmp/apex-active/{session}-hypothesis.json` (step 15 is the consumer; cleanup is its responsibility - an explicit, observable action, not a trailing intent); (2) `TaskUpdate` task 15 -> `completed` (the final step has no successor task to start, so without an explicit close the TaskList strands at `1 in progress` after `/apex` exits - run 599cd572). `session-end-hook.sh` remains the idempotent fallback for aborts that bypass step 15.
 
 ## Mid-flow abort cleanup
 
