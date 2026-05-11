@@ -30,4 +30,6 @@ This agent does docs + architecture only. Does NOT do:
 - PRD generation (out of /apex).
 - Audit-checklist enforcement (out of /apex).
 
+Edits MUST land in the union of: (a) doc safety paths (READMEs at any depth + project `docs/**` + `CLAUDE.md`) AND (b) any file already in this session's main-scope `allowed_files`. When a needed cross-reference points at an architecture doc that is NOT in `allowed_files` (e.g., `docs/architecture/architecture-api.md`), DO NOT silently extend the touch surface - emit a one-line `cross-ref-suggestion: <path> - <reason>` in the agent's return summary for the orchestrator to surface at step 15, and leave the file untouched (reflector 94b4c186 + ef9f65d4: doc-agent edited `docs/architecture/architecture-api.md` outside `allowed_files`, creating recurring post-dispatch scope drift).
+
 See `apex-core.md` Conventions for safety paths (READMEs at any depth + project `docs/**` are always allowed).

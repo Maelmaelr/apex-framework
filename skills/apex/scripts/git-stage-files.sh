@@ -109,6 +109,9 @@ is_env_template() {
 TRACKED=$(git diff --name-only HEAD 2>/dev/null || true)
 UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
 CHANGE_SET=$(printf '%s\n%s\n' "$TRACKED" "$UNTRACKED" | grep -v '^$' | sort -u)
+# Untracked membership snapshot for the own-scope stowaway guard (per-path
+# loop applies it without re-running ls-files).
+UNTRACKED_SET=$(printf '%s\n' "$UNTRACKED" | grep -v '^$' | sort -u || true)
 
 # Cross-session contamination guard. Build the union of `allowed_files` from
 # every OTHER active session's main-scope (excluding our own SESSION). Any
@@ -198,6 +201,24 @@ while IFS= read -r path; do
   if git check-ignore -q -- "$path" 2>/dev/null; then
     echo "git-stage-files.sh: skipping gitignored: $path" >&2
     continue
+  fi
+
+  # Own-scope stowaway guard for untracked paths. Untracked files outside
+  # OUR main-scope allowed_files are upstream WIP cruft, design-tool exports,
+  # or sibling-run leftovers - not legitimate /apex output. Tracked-modified
+  # paths bypass this guard (user/apex may have intentionally edited files
+  # outside scope; the cross-session guard below covers sibling ownership).
+  # Skip when OWN_SCOPE_FILES is empty (no main-scope.json) so we never harden
+  # past the producer's own discipline (reflector 87c0386e: hailuo-color.svg
+  # untracked asset staged alongside zh-CN i18n session because --others had
+  # no scope gate).
+  if [[ -n "$UNTRACKED_SET" ]] && [[ -n "$OWN_SCOPE_FILES" ]]; then
+    if printf '%s\n' "$UNTRACKED_SET" | grep -Fx -- "$path" >/dev/null 2>&1; then
+      if ! printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
+        echo "git-stage-files.sh: skipping untracked outside own scope: $path" >&2
+        continue
+      fi
+    fi
   fi
 
   # Cross-session guard. Drop paths claimed by another active session's
