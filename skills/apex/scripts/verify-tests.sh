@@ -136,103 +136,11 @@ case "$PROJECT_TYPE" in
     # place. Backward-compat: when no pnpm-workspace.yaml exists, fall
     # through to the single-package path that follows.
     if [[ "$PM" == "pnpm" && -f pnpm-workspace.yaml ]]; then
-      # Stage 1: derive test files (same heuristic as below) per workspace package.
-      # Stage 2: emit one tab-separated line per (package, runner, package_dir, files).
-      WS_GROUPS=$(python3 - "$EXISTING" <<'PY'
-import json, os, sys
-files = [ln for ln in sys.argv[1].splitlines() if ln.strip()]
-test_suffixes = ('.test.ts','.test.tsx','.test.js','.test.jsx','.spec.ts','.spec.tsx','.spec.js','.spec.jsx')
-# Discover workspace packages by walking up to depth 3. We deliberately ignore
-# the root package.json (apps/lib monorepos rarely host runtime code there).
-pkgs = []  # (rel_dir, name, runner)
-for dirpath, dirnames, filenames in os.walk('.'):
-    rel = '' if dirpath == '.' else os.path.relpath(dirpath, '.')
-    if rel:
-        parts = rel.split(os.sep)
-        if 'node_modules' in parts or any(p.startswith('.') for p in parts):
-            dirnames[:] = []; continue
-        if len(parts) > 3:
-            dirnames[:] = []; continue
-    else:
-        dirnames[:] = [d for d in dirnames if d not in ('node_modules',) and not d.startswith('.')]
-        continue
-    if 'package.json' not in filenames:
-        continue
-    try:
-        data = json.load(open(os.path.join(dirpath, 'package.json')))
-    except Exception:
-        continue
-    name = data.get('name', '')
-    if not name:
-        continue
-    deps = {**(data.get('dependencies') or {}), **(data.get('devDependencies') or {})}
-    if 'vitest' in deps:    runner = 'vitest'
-    elif 'jest' in deps:    runner = 'jest'
-    elif '@adonisjs/core' in deps: runner = 'adonis'
-    else:                   runner = ''
-    scripts = data.get('scripts') or {}
-    has_test_script = 'test' in scripts
-    pkgs.append((rel, name, runner, has_test_script))
-    dirnames[:] = []  # do not descend into nested packages
-# Group files by deepest matching package prefix.
-groups = {}
-for f in files:
-    best = None; best_len = -1
-    for rel, name, runner, has_test in pkgs:
-        prefix = rel + os.sep
-        if f.startswith(prefix) and len(rel) > best_len:
-            best = (rel, name, runner, has_test); best_len = len(rel)
-    if best is None:
-        continue
-    groups.setdefault(best, []).append(f)
-# For each (pkg, runner): expand non-test files to related test files within
-# that package. Test files passthrough. Vitest/jest get raw EXISTING (they
-# accept source files and resolve related tests internally).
-def expand(files_in_pkg, pkg_rel):
-    out = set()
-    for f in files_in_pkg:
-        if f.endswith(test_suffixes) or '/__tests__/' in f:
-            if os.path.isfile(f): out.add(f)
-            continue
-        d = os.path.dirname(f) or '.'
-        base = os.path.basename(f); stem, _, _ = base.rpartition('.')
-        if not stem:
-            continue
-        cands = []
-        for ext in ('.ts','.tsx','.js','.jsx'):
-            cands.append(f"{d}/{stem}.test{ext}")
-            cands.append(f"{d}/{stem}.spec{ext}")
-            cands.append(f"{d}/__tests__/{stem}.test{ext}")
-            cands.append(f"{d}/__tests__/{stem}{ext}")
-            cands.append(f"{pkg_rel}/tests/unit/{stem}.test{ext}")
-            cands.append(f"{pkg_rel}/tests/unit/{stem}.spec{ext}")
-            cands.append(f"{pkg_rel}/tests/{stem}.test{ext}")
-            cands.append(f"{pkg_rel}/tests/{stem}.spec{ext}")
-        for c in cands:
-            if os.path.isfile(c): out.add(c)
-    return sorted(out)
-for (rel, name, runner, has_test), fs in groups.items():
-    # vitest/jest accept source files (resolve related internally). adonis
-    # needs explicit test files via --files. Other/empty runners need the
-    # heuristic expansion since we fall back to the package's `test` script.
-    if runner in ('vitest', 'jest'):
-        out_files = fs
-    else:
-        out_files = expand(fs, rel)
-    if not out_files:
-        continue
-    # Strip the package-dir prefix from paths so the runner receives
-    # paths relative to its own cwd (pnpm --filter exec runs in that cwd).
-    pkg_prefix = rel + os.sep
-    rel_files = []
-    for f in out_files:
-        if f.startswith(pkg_prefix):
-            rel_files.append(f[len(pkg_prefix):])
-        else:
-            rel_files.append(f)
-    print(f"{name}\t{runner}\t{rel}\t{int(has_test)}\t{' '.join(rel_files)}")
-PY
-)
+      # Workspace grouping logic lives in verify-tests-pnpm-groups.py
+      # (extracted at apex-improve d58fe183 to keep verify-tests.sh <= 400L).
+      # Emits one tab-separated line per (package, runner, pkg_dir, files).
+      SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+      WS_GROUPS=$(python3 "$SCRIPT_DIR/verify-tests-pnpm-groups.py" "$EXISTING")
       if [[ -z "$WS_GROUPS" ]]; then
         skip "no workspace-package owned test files"
       fi
@@ -291,10 +199,23 @@ else: print('')
       bun)  RUN_PREFIX="bun run" ;;
       *)    RUN_PREFIX="npm run --silent" ;;
     esac
+    # pnpm direct-exec mirrors the workspace branch above: `pnpm run test --
+    # <flags>` is unreliable because pnpm's script-arg forwarding gets eaten
+    # by any non-trivial `test` script; vitest 2.x then CACErrors on the
+    # leftover flags (3 reflectors, including one post-pnpm-workspace fix).
+    # `pnpm exec <runner>` lands args verbatim.
     if [[ "$RUNNER" == "vitest" ]]; then
-      run_or_fail "vitest related" "$RUN_PREFIX test -- --run --related $(echo "$EXISTING" | tr '\n' ' ')"
+      if [[ "$PM" == "pnpm" ]]; then
+        run_or_fail "vitest related (pnpm exec)" "pnpm exec vitest run --related $(echo "$EXISTING" | tr '\n' ' ')"
+      else
+        run_or_fail "vitest related" "$RUN_PREFIX test -- --run --related $(echo "$EXISTING" | tr '\n' ' ')"
+      fi
     elif [[ "$RUNNER" == "jest" ]]; then
-      run_or_fail "jest --findRelatedTests" "$RUN_PREFIX test -- --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
+      if [[ "$PM" == "pnpm" ]]; then
+        run_or_fail "jest --findRelatedTests (pnpm exec)" "pnpm exec jest --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
+      else
+        run_or_fail "jest --findRelatedTests" "$RUN_PREFIX test -- --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
+      fi
     else
       # Heuristic: pick test files matching modified non-test files; include test files in modified set.
       DERIVED=$(python3 - "$EXISTING" <<'PY'
