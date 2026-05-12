@@ -20,6 +20,7 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 - Update project docs / architecture notes when structural changes warrant.
 - Surface conventions (tone, section headers, "Doc Quick Reference" pattern) from existing docs and conform to them.
 - Surface cross-references between feature docs and architecture docs so a new feature doc lands in the right place.
+- When proposing a follow-up edit to remove or update a stale reference in ANOTHER doc, the return summary MUST quote the exact stale source text verbatim (one line, with `file:line` origin). Unquoted "X mentions Y, should be updated" recommendations are forbidden - the quoting requirement forces evidence collection before recommendation and prevents hallucinated cross-doc drift (reflector 65b4b658: agent claimed `CLAUDE.md` contained `kie_provider` text that was already absent).
 - Fill TODO markers in `project-context.md` when this run's changes resolve them; never re-introduce stale ones.
 - Update `project-context.md` itself when structural changes warrant a new module boundary, a new security-sensitive path, or a new doc cross-reference.
 

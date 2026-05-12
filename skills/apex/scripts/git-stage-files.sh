@@ -242,6 +242,27 @@ while IFS= read -r path; do
     fi
   fi
 
+  # Tracked-modified outside-own-scope WARN (non-blocking observability).
+  # Tracked paths bypass the own-scope stowaway guard above by design (user/apex
+  # may have intentionally edited files outside scope). When a sibling already
+  # committed and its main-scope.json is no longer on disk, the cross-session
+  # guard above also misses the path - so the contamination slips through
+  # silently. Emit a stderr WARN so step 12 surfaces the drift without blocking
+  # the stage. Reflectors fad39712 + 17645693: parallel /apex sessions swept
+  # 16+ and 17+ tracked-modified files each into the wrong commit because no
+  # surfacing existed at this layer.
+  if [[ -n "$OWN_SCOPE_FILES" ]]; then
+    is_untracked=0
+    if [[ -n "$UNTRACKED_SET" ]] && printf '%s\n' "$UNTRACKED_SET" | grep -Fx -- "$path" >/dev/null 2>&1; then
+      is_untracked=1
+    fi
+    if (( ! is_untracked )); then
+      if ! printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
+        echo "git-stage-files.sh: WARN tracked-modified outside own scope (staging anyway): $path" >&2
+      fi
+    fi
+  fi
+
   if (( DRY_RUN )); then
     printf '%s\n' "$path"
     continue
