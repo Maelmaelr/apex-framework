@@ -92,6 +92,24 @@ is_env_template() {
   esac
 }
 
+# Safety-path predicate. Mirrors scope-check-hook.sh:is_safety_path for the
+# subset relevant at stage-time (docs/**, README* basename, VERSION basename).
+# The scope-outside guards below skip these regardless of main-scope.json
+# contents - without this exception, bump-version.sh's post-baseline VERSION
+# write is dropped by the tracked-outside-scope guard (reflector 5cdc8eb0:
+# VERSION bumped on disk but not committed). Closed set; .env* and .git/ are
+# excluded by their own guards earlier in the loop.
+is_safety_path() {
+  local target="$1"
+  [[ "$target" == "docs/"* ]] && return 0
+  [[ "$target" == */docs/* ]] && return 0
+  local base
+  base=$(basename -- "$target")
+  [[ "$base" == README* ]] && return 0
+  [[ "$base" == "VERSION" ]] && return 0
+  return 1
+}
+
 # Compute change set. Both branches required: `git diff` excludes untracked, so
 # a new file apex created via Write would otherwise never get staged.
 #
@@ -181,9 +199,19 @@ while IFS= read -r path; do
 
   # Pre-dirty guard. Drop paths user already had dirty at step 8.0 baseline -
   # any apex edit on top of the user's WIP stays dirty for them to review.
+  # Exception: paths in OUR own main-scope allowed_files are apex-intentional
+  # (the executor was authorized to modify them); pre-existing dirt on in-scope
+  # paths is sibling /apex leftover or a user-staged hand-off, not WIP to be
+  # protected. Reflector 8418c06e: 3 i18n files pre-dirty from a sibling
+  # session were silently dropped despite this session's executor touching
+  # them in-scope (5 of 7 files_touched landed staged).
   if [[ -n "$PRE_DIRTY_FILES" ]] && printf '%s\n' "$PRE_DIRTY_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-    echo "git-stage-files.sh: skipping pre-dirty (user WIP at baseline): $path" >&2
-    continue
+    if [[ -n "$OWN_SCOPE_FILES" ]] && printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
+      :  # in-scope pre-dirty: apex-intentional; fall through to staging
+    else
+      echo "git-stage-files.sh: skipping pre-dirty (user WIP at baseline): $path" >&2
+      continue
+    fi
   fi
 
   # Dotenv guard. Glob match `.env*` (literal dot + `env` prefix); template
@@ -215,8 +243,10 @@ while IFS= read -r path; do
   if [[ -n "$UNTRACKED_SET" ]] && [[ -n "$OWN_SCOPE_FILES" ]]; then
     if printf '%s\n' "$UNTRACKED_SET" | grep -Fx -- "$path" >/dev/null 2>&1; then
       if ! printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-        echo "git-stage-files.sh: skipping untracked outside own scope: $path" >&2
-        continue
+        if ! is_safety_path "$path"; then
+          echo "git-stage-files.sh: skipping untracked outside own scope: $path" >&2
+          continue
+        fi
       fi
     fi
   fi
@@ -259,8 +289,10 @@ while IFS= read -r path; do
     fi
     if (( ! is_untracked )); then
       if ! printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-        echo "git-stage-files.sh: skipping tracked-modified outside own scope: $path" >&2
-        continue
+        if ! is_safety_path "$path"; then
+          echo "git-stage-files.sh: skipping tracked-modified outside own scope: $path" >&2
+          continue
+        fi
       fi
     fi
   fi

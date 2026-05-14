@@ -181,7 +181,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
     - single chained git command (one Bash call): `bash scripts/git-stage-files.sh --head-sha {baseline.head_sha} --session {session} && git commit -m "<freeform>" && git push`
       - `git-stage-files.sh` is the single source of truth for the change-set + filter pipeline:
         - **change set**: `(git diff --name-only {baseline.head_sha}; git ls-files --others --exclude-standard) | sort -u` (covers apex-modified tracked files AND apex-newly-created untracked files; the latter required because `git diff` excludes untracked).
-        - **pre-dirty filter**: drop paths in `{baseline.pre_dirty}` (captured at step 8.0). User-pre-existing WIP is never bundled into the apex commit, even when apex deliberately edited a pre-dirty file (the merged change stays dirty for the user).
+        - **pre-dirty filter**: drop paths in `{baseline.pre_dirty}` (captured at step 8.0) UNLESS the path is also in our own `{session}-main-scope.json:allowed_files` (in-scope pre-dirty is apex-intentional - sibling /apex leftover or user-staged hand-off, not WIP to protect; reflector 8418c06e). Out-of-scope pre-dirty stays dirty for the user.
         - **dotenv pre-filter**: skip basenames matching `.env*` UNLESS in allowlist `{.env.example, .env.sample, .env.template}`. Aligns with `protect-env-hook.sh`; only protection for `git add` when project's `.gitignore` is incomplete.
         - **`git check-ignore` filter**: covers `.claude-tmp/` and the project's `.gitignore`.
         - **cross-session filter**: drop paths claimed by another active session's `*-main-scope.json` `allowed_files`.
