@@ -242,15 +242,16 @@ while IFS= read -r path; do
     fi
   fi
 
-  # Tracked-modified outside-own-scope WARN (non-blocking observability).
-  # Tracked paths bypass the own-scope stowaway guard above by design (user/apex
-  # may have intentionally edited files outside scope). When a sibling already
-  # committed and its main-scope.json is no longer on disk, the cross-session
-  # guard above also misses the path - so the contamination slips through
-  # silently. Emit a stderr WARN so step 12 surfaces the drift without blocking
-  # the stage. Reflectors fad39712 + 17645693: parallel /apex sessions swept
-  # 16+ and 17+ tracked-modified files each into the wrong commit because no
-  # surfacing existed at this layer.
+  # Tracked-modified outside-own-scope guard (block-by-default).
+  # Tracked paths bypass the untracked own-scope stowaway guard above. The
+  # earlier WARN-only branch (which staged anyway) recurrently leaked sibling
+  # work and pre-existing user WIP into apex commits whenever the sibling had
+  # already committed + removed its main-scope.json (5+ session cluster:
+  # 5c32d3e2 / 01f141a2 / 63c33bec / 221e71c1 / e0a4b03f; prior cluster ids
+  # 94000169 / 88250748 / 8a1bcc90 / 54b24cf0 / d2564b0f). Skip + stderr
+  # surface, mirroring the untracked-outside-own-scope branch. Reflectors
+  # fad39712 + 17645693 originally surfaced parallel-session contamination
+  # (16+ / 17+ files); the WARN-only fix turned out insufficient.
   if [[ -n "$OWN_SCOPE_FILES" ]]; then
     is_untracked=0
     if [[ -n "$UNTRACKED_SET" ]] && printf '%s\n' "$UNTRACKED_SET" | grep -Fx -- "$path" >/dev/null 2>&1; then
@@ -258,7 +259,8 @@ while IFS= read -r path; do
     fi
     if (( ! is_untracked )); then
       if ! printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-        echo "git-stage-files.sh: WARN tracked-modified outside own scope (staging anyway): $path" >&2
+        echo "git-stage-files.sh: skipping tracked-modified outside own scope: $path" >&2
+        continue
       fi
     fi
   fi

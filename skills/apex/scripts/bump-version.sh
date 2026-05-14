@@ -81,5 +81,14 @@ old="v${BASH_REMATCH[1]}.${BASH_REMATCH[2]}.${BASH_REMATCH[3]}"
 
 printf '%s\n' "$new" > VERSION
 
+# Post-write verify: re-read file and confirm the bump landed. Reflector
+# 5c32d3e2 surfaced a commit subject claiming v2.205.6 while VERSION file
+# content was unchanged - silent no-op poisons the commit message. Fail loud.
+written="$(tr -d '[:space:]' < VERSION)"
+if [[ "$written" != "$new" ]]; then
+  echo "bump-version.sh: post-write verify failed (expected '$new', file has '$written')" >&2
+  exit 1
+fi
+
 echo "$old -> $new"
 exit 0
