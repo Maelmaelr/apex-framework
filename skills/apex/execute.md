@@ -55,6 +55,7 @@ Per task:
   - project-context paths
   - one-line task description
   - trace path: `.claude-tmp/apex-active/{session}-traces/execute/executor-{task-id}.md`
+  - **shared read-only preamble (E3)**: when a path appears in >=2 per-task `allowed_files` AND no per-task goal names it as a write target, surface it ONCE per spawn prompt as `"Shared read-only context (do not write): <paths>"` rather than restating the underlying contracts (project specs, parser definitions, seeder defaults, param_exclusions, per-tier pricing rows) inside each per-task goal. Reflector cluster bfffacf9 / fc9f8427 / 95fb28c6: 4-batch executor dispatch consumed 23%+ of per-executor budget on contracts restated across N goals.
 - The executor respects file-health + scope-check PreToolUse hooks.
 - The executor returns `{goal, status, notes, tool_calls_made, files_touched: ["<paths>"]}` where status is `implemented` | `already-satisfied` | `failed` | `split-needed`. `files_touched` is the actual list of repo-relative paths the executor wrote, used by the orchestrator to audit against `allowed_files`. Collect per-goal returns in a session-local map for step 15's per-goal summary.
 - **Dispatch self-report log (E1)**: append each return verbatim to `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (JSON array; append-and-rewrite). Reflector at step 13 reads this to flag oversized dispatches (`tool_calls_made > 50`).
