@@ -4,7 +4,10 @@
 Extracted from verify-tests.sh (414L -> 321L) to satisfy the file-health 400-line
 gate (apex-improve run d58fe183). Behavior is byte-identical to the inline
 heredoc it replaced - same walk depth, same runner detection, same expand
-heuristic, same tab-separated output shape.
+heuristic, same tab-separated output shape, with one addition: vitest 2.x
+packages emit expanded test file paths (no `--related` flag, which was added
+in vitest 3) so the shell layer can run `vitest run <test-files>` without
+CACErroring on the unknown flag.
 
 Invocation:
     python3 verify-tests-pnpm-groups.py "$EXISTING"
@@ -13,9 +16,12 @@ where $EXISTING is a newline-separated list of existing source file paths
 
 Output (stdout): one line per group with TAB separators:
     {pkg_name}\t{runner}\t{pkg_rel}\t{has_test_script:0|1}\t{file1 file2 ...}
-runner is one of: vitest | jest | adonis | "" (fallback). Files in the final
-column are space-separated and stripped of the package-dir prefix so they
-resolve relative to the runner's cwd (pnpm --filter exec runs in that cwd).
+runner is one of: vitest | jest | adonis | vitest-v2 | "" (fallback).
+`vitest-v2` is a synthetic runner key for pre-v3 vitest installs; the shell
+layer treats it like "files-direct" (skip --related, just pass test paths).
+Files in the final column are space-separated and stripped of the package-dir
+prefix so they resolve relative to the runner's cwd (pnpm --filter exec runs
+in that cwd).
 """
 import json
 import os
@@ -54,7 +60,13 @@ for dirpath, dirnames, filenames in os.walk('.'):
     deps = {**(data.get('dependencies') or {}),
             **(data.get('devDependencies') or {})}
     if 'vitest' in deps:
-        runner = 'vitest'
+        # `--related` was added in vitest 3. Pre-v3 installs CACError on the
+        # flag, so route them through the heuristic-expand path and run the
+        # derived test files directly (no --related).
+        import re as _re
+        m = _re.search(r'(\d+)', deps['vitest'])
+        major = int(m.group(1)) if m else 0
+        runner = 'vitest' if major >= 3 else 'vitest-v2'
     elif 'jest' in deps:
         runner = 'jest'
     elif '@adonisjs/core' in deps:
@@ -111,9 +123,11 @@ def expand(files_in_pkg, pkg_rel):
 
 
 for (rel, name, runner, has_test), fs in groups.items():
-    # vitest/jest accept source files (resolve related internally). adonis
-    # needs explicit test files via --files. Other/empty runners need the
-    # heuristic expansion since we fall back to the package's `test` script.
+    # vitest (v3+) / jest accept source files via --related / --findRelatedTests
+    # (runner resolves related internally). vitest-v2 lacks --related, so we
+    # expand here and pass test files directly. adonis needs explicit test
+    # files via --files. Other/empty runners use heuristic expansion since we
+    # fall back to the package's `test` script.
     if runner in ('vitest', 'jest'):
         out_files = fs
     else:

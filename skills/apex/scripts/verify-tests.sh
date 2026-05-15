@@ -154,6 +154,12 @@ case "$PROJECT_TYPE" in
           vitest)
             run_or_fail "$pkg_name vitest related" "pnpm --filter $pkg_name exec -- vitest run --related $files_str"
             ;;
+          vitest-v2)
+            # vitest 2.x does not support --related (v3+ flag). Files have
+            # already been expanded to test-file paths by the python helper;
+            # pass them directly.
+            run_or_fail "$pkg_name vitest run (v2)" "pnpm --filter $pkg_name exec -- vitest run $files_str"
+            ;;
           jest)
             run_or_fail "$pkg_name jest --findRelatedTests" "pnpm --filter $pkg_name exec -- jest --findRelatedTests $files_str"
             ;;
@@ -183,12 +189,19 @@ except Exception: raise SystemExit
 print(' '.join((d.get('scripts') or {}).keys()))
 ") "
     [[ "$NPM_SCRIPTS" == *" test "* ]] || skip "no 'test' script in package.json"
+    # RUNNER values: vitest (v3+) | vitest-v2 (pre-v3, no --related support) |
+    # jest | "" (fallback). vitest-v2 gates the --related flag (v3 addition);
+    # pre-v3 installs CACError on it, so we route them through the heuristic-
+    # expand branch below and run the derived test files directly.
     RUNNER=$(python3 -c "
-import json
+import json, re
 try: d = json.load(open('package.json'))
 except Exception: raise SystemExit
 deps = {**(d.get('dependencies') or {}), **(d.get('devDependencies') or {})}
-if 'vitest' in deps: print('vitest')
+if 'vitest' in deps:
+    m = re.search(r'(\d+)', deps['vitest'])
+    major = int(m.group(1)) if m else 0
+    print('vitest' if major >= 3 else 'vitest-v2')
 elif 'jest' in deps: print('jest')
 else: print('')
 ")
@@ -204,21 +217,11 @@ else: print('')
     # by any non-trivial `test` script; vitest 2.x then CACErrors on the
     # leftover flags (3 reflectors, including one post-pnpm-workspace fix).
     # `pnpm exec <runner>` lands args verbatim.
-    if [[ "$RUNNER" == "vitest" ]]; then
-      if [[ "$PM" == "pnpm" ]]; then
-        run_or_fail "vitest related (pnpm exec)" "pnpm exec vitest run --related $(echo "$EXISTING" | tr '\n' ' ')"
-      else
-        run_or_fail "vitest related" "$RUN_PREFIX test -- --run --related $(echo "$EXISTING" | tr '\n' ' ')"
-      fi
-    elif [[ "$RUNNER" == "jest" ]]; then
-      if [[ "$PM" == "pnpm" ]]; then
-        run_or_fail "jest --findRelatedTests (pnpm exec)" "pnpm exec jest --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
-      else
-        run_or_fail "jest --findRelatedTests" "$RUN_PREFIX test -- --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
-      fi
-    else
-      # Heuristic: pick test files matching modified non-test files; include test files in modified set.
-      DERIVED=$(python3 - "$EXISTING" <<'PY'
+    # Heuristic test-file derivation used by vitest-v2 (no --related) and
+    # the empty/unknown runner fallback. Inlined here so both branches share
+    # the same derivation pass.
+    derive_test_files() {
+      python3 - "$EXISTING" <<'PY'
 import os, sys
 files = [ln for ln in sys.argv[1].splitlines() if ln.strip()]
 out = set()
@@ -245,7 +248,33 @@ for f in files:
         if os.path.isfile(c): out.add(c)
 print('\n'.join(sorted(out)))
 PY
-)
+    }
+
+    if [[ "$RUNNER" == "vitest" ]]; then
+      if [[ "$PM" == "pnpm" ]]; then
+        run_or_fail "vitest related (pnpm exec)" "pnpm exec vitest run --related $(echo "$EXISTING" | tr '\n' ' ')"
+      else
+        run_or_fail "vitest related" "$RUN_PREFIX test -- --run --related $(echo "$EXISTING" | tr '\n' ' ')"
+      fi
+    elif [[ "$RUNNER" == "vitest-v2" ]]; then
+      # vitest 2.x lacks --related (v3+ flag). Expand to test files via the
+      # shared heuristic, then run `vitest run <test-files>` directly. pnpm
+      # path uses `pnpm exec vitest` for verbatim arg passing.
+      DERIVED=$(derive_test_files)
+      [[ -n "$DERIVED" ]] || skip "no related test files (vitest-v2 heuristic)"
+      if [[ "$PM" == "pnpm" ]]; then
+        run_or_fail "vitest run (v2, pnpm exec)" "pnpm exec vitest run $(echo "$DERIVED" | tr '\n' ' ')"
+      else
+        run_or_fail "vitest run (v2)" "$RUN_PREFIX test -- --run $(echo "$DERIVED" | tr '\n' ' ')"
+      fi
+    elif [[ "$RUNNER" == "jest" ]]; then
+      if [[ "$PM" == "pnpm" ]]; then
+        run_or_fail "jest --findRelatedTests (pnpm exec)" "pnpm exec jest --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
+      else
+        run_or_fail "jest --findRelatedTests" "$RUN_PREFIX test -- --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
+      fi
+    else
+      DERIVED=$(derive_test_files)
       [[ -n "$DERIVED" ]] || skip "no related test files (heuristic)"
       run_or_fail "test (heuristic)" "$RUN_PREFIX test -- $(echo "$DERIVED" | tr '\n' ' ')"
     fi
