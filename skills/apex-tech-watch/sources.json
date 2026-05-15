@@ -33,6 +33,12 @@
       "summarize_prompt": "List the currently-recommended Claude models (Opus/Sonnet/Haiku) with their model IDs and any deprecation warnings. One short block per family."
     },
     {
+      "id": "claude-prompting-best-practices",
+      "kind": "webfetch",
+      "url": "https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices",
+      "summarize_prompt": "Summarize Anthropic's current Claude prompting best-practices guidance relevant to apex agent/orchestrator prompts: prompt structure, system prompts, tool-use, chain-of-thought, output control, and model-specific tips. Up to 6 short actionable bullets. Call out anything that changed vs prior general guidance; if the page is unchanged from a stable reference, say 'reference unchanged' on one line."
+    },
+    {
       "id": "web-best-practices",
       "kind": "websearch",
       "query": "claude code best practices",
