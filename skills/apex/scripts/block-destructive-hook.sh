@@ -64,6 +64,38 @@ if [[ "$COMMAND" =~ git[[:space:]]+stash[[:space:]]+pop ]]; then
   exit 0
 fi
 
+# git stash creation (push/save/bare/create/store) -- apex agents must NEVER stash.
+# A bare `git stash` (alias for `git stash push`) in a shared worktree silently
+# captures EVERY agent's uncommitted work into a stash ref; under parallel
+# executors this looks like catastrophic work loss for siblings. Read-only
+# (list/show) and non-destructive recovery (apply/branch) stay allowed; `pop`
+# has its own block above. Sub-command split mirrors CHECKOUT_BYPASS so a
+# commit message or echo string containing "git stash" does not false-positive.
+STASH_CREATE=$(echo "$COMMAND" | python3 -c "
+import re, sys
+cmd = sys.stdin.read().strip()
+subcmds = re.split(r'\s*(?:&&|;|\|\|)\s*', cmd)
+for s in subcmds:
+    s = s.strip()
+    m = re.match(r'git\s+stash\b\s*(\S*)', s)
+    if not m:
+        continue
+    sub = m.group(1)
+    # Deny-by-default: bare 'git stash' (== push), push/save/create/store, and
+    # every flag form (-p / -u / -k / -m / --include-untracked ...) all CREATE a
+    # stash. Allow only read-only + non-destructive recovery sub-commands.
+    # 'pop' is handled by its own block above; listed here so a reordering of
+    # blocks cannot accidentally route it through the deny path.
+    if sub not in ('list', 'show', 'apply', 'branch', 'pop', 'drop', 'clear'):
+        print('yes')
+        sys.exit(0)
+" 2>/dev/null || echo "")
+
+if [[ "$STASH_CREATE" == "yes" ]]; then
+  deny "GUARDRAIL: git stash (push/save/bare) is never allowed for apex agents -- in a shared worktree it silently captures every agent's uncommitted work into a stash ref and looks like work loss to parallel siblings. Commit your work instead, or ask the user via AskUserQuestion."
+  exit 0
+fi
+
 # git restore (without --staged discards working tree changes)
 if [[ "$COMMAND" =~ git[[:space:]]+restore[[:space:]] ]] && ! [[ "$COMMAND" =~ --staged ]]; then
   deny "GUARDRAIL: git restore discards working tree changes. Ask user via AskUserQuestion before proceeding."
