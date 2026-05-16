@@ -25,6 +25,7 @@ Per file in the ranked list, decide keep / drop with a free-text reason. Bias ru
 - Conceptual prompts (no specific file mentioned) -> tilt keep when the file is part of the hypothesis's named module.
 - Mechanical prompts (named file in `original_prompt`) -> tilt drop unless the file is in the dependency neighborhood of the named target.
 - Fix-site isolation: when the hypothesis points at a single resolution site (e.g., one controller handling a class of errors transparently for upstream/downstream callers), drop the upstream fetcher + sibling tests even if grep matched - they are not edited, only dragged through context. Keep them only when the hypothesis names a cross-file invariant.
+- Asymmetric-cost rule (keep on genuine uncertainty): a wrongly-kept file costs only context tokens; a wrongly-dropped edit target costs a mid-dispatch scope expansion + re-grep at step 8 (the more expensive error). When keep/drop stays genuinely uncertain after the rules above, keep. The bias rules cut clear non-targets - they are NOT a mandate to minimize `kept[]`. Opus 4.7 obeys "be conservative / drop" more faithfully than 4.6, so measured recall drops unless coverage is explicitly favored here; step 8 dispatch is the real filter.
 
 ## Outputs
 

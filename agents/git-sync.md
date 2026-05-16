@@ -26,13 +26,13 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
    - **minor**: new feature, new public symbol / route / component, additive, OR breaking API change (removed/renamed public symbol, contract change, schema migration).
    - **patch**: bug fix, refactor, tweak, internal-only change.
 
-3. **Bump VERSION**: `bash skills/apex/scripts/bump-version.sh --kind {minor|patch}` (increments matching segment; resets patch=0 on minor; writes back to VERSION).
+3. **Bump VERSION**: `bash "$HOME/.claude/skills/apex/scripts/bump-version.sh" --kind {minor|patch}` (increments matching segment; resets patch=0 on minor; writes back to VERSION). Absolute `$HOME/.claude` path is mandatory: this subagent's cwd is the project root, not the apex skill dir, so a relative `skills/apex/scripts/...` path fails to resolve - and the agent must NEVER recreate the script in cwd (reflector 4f6c2f9c).
 
 4. **Draft commit message**: freeform from diff context (`git diff --staged --stat` + `git diff --staged`); VERSION bump may be referenced in title.
 
 5. **Single chained git command** (one Bash call):
    ```
-   bash skills/apex/scripts/git-stage-files.sh --head-sha {baseline_head_sha} --session {session} && git commit -m "<message>" && git push
+   bash "$HOME/.claude/skills/apex/scripts/git-stage-files.sh" --head-sha {baseline_head_sha} --session {session} && git commit -m "<message>" && git push
    ```
    `git-stage-files.sh` owns the change-set + filter pipeline (pre-dirty / dotenv / check-ignore / cross-session). Push fail-silent (errors -> `~/.claude/tmp/git-agent-errors.log`); never `--force`, never auto-set-upstream.
 
