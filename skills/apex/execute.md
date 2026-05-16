@@ -48,7 +48,7 @@ Per task:
 - Spawn `agents/executor.md` (Sonnet if `tier=economy`; main session model if `tier=standard`; the tier was decided at step 7).
 - **Spawn-prompt context (executor stack)** - explicit, not inherited:
   - hypothesis (verbatim)
-  - `goal` - the single goal string from `hypothesis.goals[]` for this task (one task per goal under `goals.length > 1`; the single goal under `goals.length == 1`)
+  - `goal` - the task's `hypothesis.goals[]` entry as a **condensed key-term label** (<=6 terms via the step-6 deterministic recipe: lowercase, drop stopwords + <4-char tokens; e.g. `"onboarding stuck-redirect session"` not the 16-34 word clause). One task per goal under `goals.length > 1`; the single goal under `goals.length == 1`. Do NOT restate the verbatim clause in the spawn prompt - it duplicates `hypothesis` (carried verbatim above) and lives in `{session}-hypothesis.json` for step 15's user-facing per-goal list; the executor echoes this label back in its return so `dispatch-summary.json` stays compact too. Reflector cluster ce72570d / f218909a / 6a103a25 / 0a742137 / 716befea / 6aa28b2d: spawn-prompt + dispatch-summary goal echo restated the full clause every spawn.
   - per-task scope (`allowed_files` subset)
   - **scope budget hint (E2)**: one-line `"Expected scope: <N> files, ~<K> LOC. If you exceed 2x (>2N files OR >2K LOC), stop and return split-needed."` Compute K via `wc -l` on the per-task `allowed_files`.
   - step 5 lessons hits relevant to the task
