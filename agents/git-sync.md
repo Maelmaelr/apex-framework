@@ -30,17 +30,22 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 
 4. **Draft commit message**: freeform from diff context (`git diff --staged --stat` + `git diff --staged`); VERSION bump may be referenced in title.
 
-5. **Single chained git command** (one Bash call):
+5. **Stage, scope-verify, then commit + push** (one Bash call; stage and commit are deliberately NOT a single `&&` chain so the staged set can be inspected before the commit lands):
    ```
-   bash "$HOME/.claude/skills/apex/scripts/git-stage-files.sh" --head-sha {baseline_head_sha} --session {session} && git commit -m "<message>" && git push
+   bash "$HOME/.claude/skills/apex/scripts/git-stage-files.sh" --head-sha {baseline_head_sha} --session {session} 2> >(tee /tmp/{session}-stage.err >&2)
    ```
-   `git-stage-files.sh` owns the change-set + filter pipeline (pre-dirty / dotenv / check-ignore / cross-session). Push fail-silent (errors -> `~/.claude/tmp/git-agent-errors.log`); never `--force`, never auto-set-upstream.
+   `git-stage-files.sh` owns the change-set + filter pipeline (pre-dirty / dotenv / check-ignore / cross-session). Then, BEFORE committing:
+   - **Scope-guard fail-closed**: if `/tmp/{session}-stage.err` contains `SCOPE-GUARD-DISABLED`, the session's own `main-scope.json` was absent and staging ran UNFILTERED (sibling cleanup-session wipe; reflector 6714d9ba / 460877e7). Do NOT commit. Append `ERROR: session={session} SCOPE-GUARD-DISABLED - staged set unfiltered, commit aborted` to `~/.claude/tmp/git-agent-errors.log` and return `{status: "scope-guard-disabled"}`.
+   - **Cardinality WARN** (best-effort, non-blocking): if `.claude-tmp/apex-active/{session}-main-scope.json` exists, compare `git diff --staged --name-only | wc -l` to `jq '.allowed_files | length'` + a small safety-path allowance (VERSION/docs/README). If staged count materially exceeds it, append one `WARN: session={session} staged={n} allowed={m} (possible scope over-stage)` line to `~/.claude/tmp/git-agent-errors.log` - arms the next /apex-improve; does not block.
+   - Otherwise `git commit -m "<message>" && git push`.
+
+   Push fail-silent (errors -> `~/.claude/tmp/git-agent-errors.log`); never `--force`, never auto-set-upstream.
 
 6. **Files-touched sanity check** (best-effort, non-blocking): read `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (absent on trivial path -> skip); collect the union of `files_touched[]` across executor returns; for each path NOT in `git diff --staged --name-only` AND NOT in `{baseline.pre_dirty}`, append one line to `~/.claude/tmp/git-agent-errors.log`: `WARN: session={session} files_touched={path} not staged (filter: pre-dirty / dotenv / check-ignore / cross-session)`. Reflector 6dad99bf surfaced the symptom: implementation files reported by executors did not land staged while tests did. Sanity check arms the next /apex-improve to investigate; never blocks the return.
 
 ## Return to caller
 
-`{status: "ok" | "push-fail" | "skip-no-version", commit_sha: "<sha-or-empty>", bump_kind: "minor" | "patch" | "none"}`. NEVER the diff body.
+`{status: "ok" | "push-fail" | "skip-no-version" | "scope-guard-disabled", commit_sha: "<sha-or-empty>", bump_kind: "minor" | "patch" | "none"}`. NEVER the diff body. `scope-guard-disabled` = staging ran unfiltered (no own main-scope.json); nothing committed, caller must investigate before re-running.
 
 ## What this agent does NOT do
 

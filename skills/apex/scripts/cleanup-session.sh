@@ -41,6 +41,19 @@
 #                            0cdd8999 left manifest + 4 siblings under
 #                            /Users/mael/Dev/flowctory/.claude-tmp/apex-active because the
 #                            reflector ran cleanup from a CWD without that subtree.)
+#   --caller-cc-session <id> (optional; the invoking CC session's cc_session_id,
+#                            from get-cc-session-id.sh. When provided and the
+#                            target manifest carries a cc_session_id that DIFFERS,
+#                            cleanup is refused -- even under --post-success --
+#                            because a cross-CC-session cleanup is never the
+#                            trusted own-session path. This is the cc_session_id
+#                            sibling-wipe guard: reflector e0259412 saw a
+#                            sibling-session SessionEnd delete a live session's
+#                            manifest/baseline/scope/hypothesis/tier mid-run
+#                            because the PID guard is bypassed by --post-success.
+#                            Absent flag, or manifest with no cc_session_id ->
+#                            prior behaviour (PID guard remains the protection;
+#                            truly-dead orphans still drained by sweep-stale-runs).)
 #
 # Exit code: always 0 (idempotent contract; warnings to stderr).
 
@@ -51,6 +64,7 @@ set -uo pipefail
 SESSION=""
 POST_SUCCESS=0
 APEX_ACTIVE_OVERRIDE=""
+CALLER_CC_SESSION=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --session)
@@ -63,6 +77,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --apex-active-dir)
       APEX_ACTIVE_OVERRIDE="${2:-}"
+      shift 2
+      ;;
+    --caller-cc-session)
+      CALLER_CC_SESSION="${2:-}"
       shift 2
       ;;
     *)
@@ -128,6 +146,31 @@ except Exception:
         warn "refusing cleanup: session $SESSION pid=$manifest_pid is live (comm=claude); manifest preserved"
         exit 0
       fi
+    fi
+  fi
+fi
+
+# cc_session_id sibling-wipe guard. Applies even under --post-success: a
+# cleanup whose caller cc_session_id differs from the target manifest's
+# cc_session_id is, by definition, one CC session reaping another's apex
+# session. The PID guard does not catch this (--post-success bypasses it,
+# and SessionEnd legitimately uses --post-success for its OWN session).
+# Refuse + warn; the truly-dead-orphan path is sweep-stale-runs.sh, which
+# is PID-based and does not pass --caller-cc-session. Skipped silently when
+# the flag is absent or the manifest has no cc_session_id (back-compat).
+if [[ -n "$CALLER_CC_SESSION" ]]; then
+  MF_CC="$APEX_ACTIVE/${SESSION}.json"
+  if [[ -f "$MF_CC" ]]; then
+    manifest_cc=$(python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1], encoding='utf-8')).get('cc_session_id', ''))
+except Exception:
+    pass
+" "$MF_CC" 2>/dev/null || true)
+    if [[ -n "$manifest_cc" && "$manifest_cc" != "$CALLER_CC_SESSION" ]]; then
+      warn "refusing cleanup: session $SESSION belongs to cc_session_id=$manifest_cc, caller is cc_session_id=$CALLER_CC_SESSION (sibling-wipe guard); manifest preserved"
+      exit 0
     fi
   fi
 fi

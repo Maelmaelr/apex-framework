@@ -192,6 +192,20 @@ if [[ -z "$CHANGE_SET" ]]; then
   exit 0
 fi
 
+# Degraded-path marker. Every scope guard below is gated on OWN_SCOPE_FILES
+# being non-empty; when our own main-scope.json is absent the guards all
+# no-op and staging is UNFILTERED. The fall-open is deliberate (reflector
+# 87c0386e: never harden past the producer's own discipline) but it is also
+# the exact path by which a cleanup-session.sh sibling-wipe of our
+# main-scope.json mid-run turns into mass over-staging (reflector 6714d9ba:
+# 16 files for a 3-file scope) or silent scope loss (460877e7). Emit a
+# distinct, greppable stderr token so the step-12 caller's post-stage
+# cardinality check (agents/git-sync.md) can detect the unfiltered path and
+# fail closed BEFORE commit instead of discovering it in reflection.
+if [[ -z "$OWN_SCOPE_FILES" ]]; then
+  echo "git-stage-files.sh: SCOPE-GUARD-DISABLED no own main-scope.json ($OWN_SCOPE_PATH); staging is UNFILTERED - caller must verify staged-file cardinality before commit" >&2
+fi
+
 rc=0
 while IFS= read -r path; do
   [[ -z "$path" ]] && continue
