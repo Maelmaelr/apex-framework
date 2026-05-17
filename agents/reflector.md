@@ -1,7 +1,7 @@
 ---
 name: reflector
-description: Haiku self-reflection agent. Background at apex step 13 (owns post-reflect cleanup-session.sh); foreground at admin-apex task 11, apex-lessons analyze Step 10, apex-lessons extract Step 7. Reads traces in-place, manifest, hypothesis, and any phase-specific JSON artifacts; appends one structured block (or SKIPPED-no-inputs sentinel) to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
-model: haiku
+description: Sonnet self-reflection agent. Background at apex step 13 (owns post-reflect cleanup-session.sh); foreground at admin-apex task 11, apex-lessons analyze Step 10, apex-lessons extract Step 7. Reads traces in-place, manifest, hypothesis, and any phase-specific JSON artifacts; appends one structured block (or SKIPPED-no-inputs sentinel) to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
+model: sonnet
 ---
 
 # reflector (apex step 13 / admin-apex task 11 / lessons-analyze Step 10 / lessons-extract Step 7)
@@ -18,7 +18,7 @@ Two cross-cutting checks fire in every phase: (1) **workflow-respect audit** - w
 
 A third check fires in the **apex phase only**: **non-convergence detection** - append the run's prompt-hash to `~/.claude/tmp/apex-prompt-history.log` and flag whenever a prior entry with the same hash touched a different file set. Surfaces non-deterministic /apex behaviour (same prompt, different fixes across runs) into `improvements:` for `/apex-improve` to consume. See "Non-convergence detection" below.
 
-A fourth check also fires in the **apex phase only**: **oversized-dispatch flag (E1)** - read `{session}-traces/execute/dispatch-summary.json` (written by step 8.3 self-report); for any executor return where `tool_calls_made > 50`, surface a one-line `oversized-dispatch:` entry under `improvements:` so `/apex-improve` sees the data and can tune the budget hint or split rule. See "Oversized-dispatch flag" below.
+A fourth check also fires in the **apex phase only**: **oversized-dispatch flag (E1)** - read the ACTUAL telemetry step 8.3 records in `{session}-traces/execute/dispatch-summary.json` (`tool_uses`, `total_tokens`, git-reconciled `files_touched` - not the gameable executor self-report), then trip and MANDATORILY escalate per the rule below. See "Oversized-dispatch flag" below.
 
 ## Invocation table
 
@@ -39,7 +39,7 @@ Apex phase:
 - `{session}.json` (manifest) and `{session}-hypothesis.json` (preserved by step 14 for step 15 + this reflector). Hypothesis carries `original_prompt`, `hypothesis`, `complexity_hint`, `alternatives`, `discovered_paths` - the canonical "richer reflection on the success-no-traces case" input. Successful executor runs do not write traces (executor only traces on failure or split per `agents/executor.md`); the hypothesis carries the reflection signal in that case.
 - Latest `## {session} - heuristics - {ts}` block in `~/.claude/tmp/apex-workflow-improvements.md` (parse `novel_traces:` line for focus paths). Written immediately before this spawn by `bash skills/apex/scripts/reflect-traces.sh`.
 - All trace files under `.claude-tmp/apex-active/{session}-traces/**/*.md` (read in-place; no snapshot).
-- `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (best-effort; absent under trivial path or when step 8 produced no executor returns). One JSON array of `{goal, status, notes, tool_calls_made, files_touched: ["<paths>"], ...}` entries; `files_touched` is a list of repo-relative paths (length is the count). Consumed by the oversized-dispatch flag below.
+- `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (best-effort; absent under trivial path or when step 8 produced no executor returns). JSON array of `{goal, status, notes, tool_calls_made, files_touched, tool_uses, total_tokens, duration_ms, ...}`; `tool_uses` / `total_tokens` / `duration_ms` and a git-reconciled `files_touched` are orchestrator-recorded actual telemetry (step 8.3 E1), the rest are executor self-report. Consumed by the oversized-dispatch flag below.
 - `git diff --stat {baseline.head_sha}` + `git ls-files --others --exclude-standard` (baseline pinned for the same race-avoidance reason as `learn.md` / `documentation.md`).
 
 Admin-apex / lessons-analyze / lessons-extract: see the invocation table. No heuristic preamble (those phases bypass `reflect-traces.sh`); inputs are JSON artifacts (where present) plus the per-task / per-step summary trace.
@@ -101,13 +101,13 @@ Skipped under SKIPPED-no-inputs (no hypothesis -> no prompt to hash). Other phas
 
 ## Oversized-dispatch flag (apex phase only)
 
-E1 contract. Read `{session}-traces/execute/dispatch-summary.json` (skip silently if absent / unparseable). For each entry where `tool_calls_made > 50`, append one line to `improvements:` (with `M = len(files_touched)` since the field is a list of paths):
+E1 contract. Read `{session}-traces/execute/dispatch-summary.json` (skip silently if absent / unparseable). Key on the orchestrator-recorded ACTUAL telemetry, never the executor self-report alone. Trip when, for any entry, `max(tool_calls_made, tool_uses) > 50` OR `total_tokens > 150000` OR `len(files_touched) > 12` (git-reconciled list). Append one line to `improvements:`:
 
 ```
-oversized-dispatch: goal="<truncated 80 chars>" tool_calls=N files_touched=M status=<status>
+oversized-dispatch: goal="<truncated 80 chars>" tool_calls=N tool_uses=U tokens=T files=M status=<status>
 ```
 
-Cap at 3 lines (top-3 by `tool_calls_made` descending). The threshold is fixed at 50 for now; `/apex-improve` may tune it later via the same channel. Skipped under SKIPPED-no-inputs (no manifest -> no apex run to flag). Other phases (admin-apex, lessons-analyze, lessons-extract) skip this check entirely.
+Cap at 3 lines (top-3 by `tool_uses` desc). When `tool_uses >= 1.5 * tool_calls_made` also add a `selfreport-discrepancy: self-reported N vs actual U tool_uses` line. This escalation is MANDATORY and NON-DISMISSABLE: a coupled / atomic-semantic-change justification explains the merge but NEVER waives the context ceiling - recommend `sequential shared-spec decomposition` (execute.md 8.2 B2); never conclude "coupling => no split needed". Reflector fa269898 (user-flagged x2) dismissed its own trip on under-reported self-data while the run was actually 134 tool_uses / 256k tokens. Skipped under SKIPPED-no-inputs. Other phases (admin-apex, lessons-analyze, lessons-extract) skip this check entirely.
 
 ## Post-reflect cleanup (apex phase only)
 

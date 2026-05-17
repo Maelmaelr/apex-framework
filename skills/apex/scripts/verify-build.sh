@@ -104,6 +104,7 @@ run_or_fail() {
   local label="$1"
   local cmd="$2"
   local warn_as_error="${3:-0}"
+  local scope_annotate="${4:-0}"
   : > "$TMP_OUT"
   local rc=0
   bash -c "$cmd" >"$TMP_OUT" 2>&1 || rc=$?
@@ -118,6 +119,7 @@ run_or_fail() {
         cat "$TMP_OUT"
       } > "$ERRORS_FILE"
       echo "verify-build.sh: $label FAILED (lint warnings; warn-as-error); errors -> $ERRORS_FILE" >&2
+      (( scope_annotate == 1 )) && annotate_foreign_lint
       exit 1
     fi
   fi
@@ -130,8 +132,27 @@ run_or_fail() {
       cat "$TMP_OUT"
     } > "$ERRORS_FILE"
     echo "verify-build.sh: $label FAILED (exit $rc); errors -> $ERRORS_FILE" >&2
+    (( scope_annotate == 1 )) && annotate_foreign_lint
     exit 1
   fi
+}
+
+# F2 (reflector cluster 0c22bd50 / 8309ce2e / 9401d64d / 00b95640): a lint
+# failure that implicates NO in-scope allowed_file is foreign / pre-existing
+# debt in an unmodified package, not what this session's executor produced.
+# We still first-fail-stop (never fail open - silently masking a real
+# in-scope regression is worse than a noisy foreign one), but append a
+# greppable NOTE so the step-10 orchestrator runs the scoped in-scope
+# lint/tsc/build the reflectors had to derive by hand (see apex-core.md
+# step 10). No main-scope.json / no jq -> no-op (behavior unchanged).
+annotate_foreign_lint() {
+  local scope_json="$APEX_ACTIVE/${SESSION}-main-scope.json"
+  command -v jq >/dev/null 2>&1 && [[ -f "$scope_json" ]] || return 0
+  local f
+  while IFS= read -r f; do
+    [[ -n "$f" ]] && grep -Fq -- "$f" "$TMP_OUT" && return 0
+  done < <(jq -r '.allowed_files[]?' "$scope_json" 2>/dev/null || true)
+  printf '## NOTE: no in-scope allowed_file implicated - lint failure appears foreign/pre-existing; orchestrator should verify in-scope lint/typecheck/build separately before treating the run as blocked (apex-core.md step 10).\n' >> "$ERRORS_FILE"
 }
 
 # Cached space-padded list of npm script names; populated once per run when
@@ -220,7 +241,7 @@ case "$PROJECT_TYPE" in
         ran_anything=1
         if [[ "$script" == "lint" ]]; then
           bash -c "$RUN_PREFIX lint $LINT_FIX_ARGS" >/dev/null 2>&1 || true
-          run_or_fail "lint ($PM)" "$RUN_PREFIX lint" 1
+          run_or_fail "lint ($PM)" "$RUN_PREFIX lint" 1 1
         else
           run_or_fail "$script ($PM)" "$RUN_PREFIX $script" 0
         fi

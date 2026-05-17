@@ -110,6 +110,22 @@ is_safety_path() {
   return 1
 }
 
+# Narrower safety exemption for UNTRACKED paths only. A brand-new untracked
+# file outside allowed_files under docs/** (or named README) is the exact
+# commit-creep leak reflector da97c3c1 caught: a doc agent's untracked
+# docs/features/analytics-posthog.md + docs/features/index.md got bundled
+# into a foreign commit via the blanket docs/** is_safety_path bypass. Only
+# the VERSION family (written untracked by bump-version.sh) is exempted for
+# untracked paths; legitimate apex-created files are already kept in scope by
+# executor.md behavior 3 (append new file to main-scope before Write), so the
+# docs/** blanket pass is pure leakage for untracked. Tracked-modified paths
+# keep the broader is_safety_path via their own guard further below.
+is_untracked_safe_path() {
+  local base
+  base=$(basename -- "$1")
+  [[ "$base" == "VERSION" || "$base" == "VERSION.txt" ]]
+}
+
 # Compute change set. Both branches required: `git diff` excludes untracked, so
 # a new file apex created via Write would otherwise never get staged.
 #
@@ -257,7 +273,7 @@ while IFS= read -r path; do
   if [[ -n "$UNTRACKED_SET" ]] && [[ -n "$OWN_SCOPE_FILES" ]]; then
     if printf '%s\n' "$UNTRACKED_SET" | grep -Fx -- "$path" >/dev/null 2>&1; then
       if ! printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-        if ! is_safety_path "$path"; then
+        if ! is_untracked_safe_path "$path"; then
           echo "git-stage-files.sh: skipping untracked outside own scope: $path" >&2
           continue
         fi
