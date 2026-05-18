@@ -35,7 +35,7 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
    bash "$HOME/.claude/skills/apex/scripts/git-stage-files.sh" --head-sha {baseline_head_sha} --session {session} --message "<drafted message>" 2> >(tee /tmp/{session}-stage.err >&2)
    ```
    Branch on the first stdout token:
-   - `SCOPE-GUARD-DISABLED` -> no manifest source (neither own `main-scope.json` nor `dispatch-summary.json`); the script refused to build an unscoped commit (fail-closed; replaces the old fall-open). Nothing landed. Append `ERROR: session={session} SCOPE-GUARD-DISABLED - no manifest source, commit refused` to `~/.claude/tmp/git-agent-errors.log` and return `{status: "scope-guard-disabled"}`.
+   - `SCOPE-GUARD-DISABLED` -> no manifest source (neither own `main-scope.json` nor `dispatch-summary.json`), OR a source exists but `jq` is unavailable to parse it; either way the script refused to build an unscoped/partially-scoped commit (fail-closed; replaces the old fall-open). Nothing landed. Append `ERROR: session={session} SCOPE-GUARD-DISABLED - no parseable manifest, commit refused` to `~/.claude/tmp/git-agent-errors.log` and return `{status: "scope-guard-disabled"}`.
    - `NOOP` -> manifest produced nothing dirty (e.g. all executors `already-satisfied`); empty-diff path, return `{status: "ok", commit_sha: "", bump_kind}`.
    - `COMMIT <sha>` -> commit landed; the next line is `PUSH ok` | `PUSH fail` | `PUSH skipped` (push is fail-silent inside the script; `PUSH fail` => `{status: "push-fail"}`, else `{status: "ok"}`). Record `<sha>`.
    - Non-zero exit (no `COMMIT`/`NOOP`/`SCOPE-GUARD-DISABLED`) -> git plumbing failure or CAS exhaustion; stderr was tee'd to `/tmp/{session}-stage.err`. Append it to `~/.claude/tmp/git-agent-errors.log` and return `{status: "push-fail", commit_sha: ""}` (nothing landed).
@@ -46,7 +46,7 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 
 ## Return to caller
 
-`{status: "ok" | "push-fail" | "skip-no-version" | "scope-guard-disabled", commit_sha: "<sha-or-empty>", bump_kind: "minor" | "patch" | "none"}`. NEVER the diff body. `scope-guard-disabled` = no manifest source (no own main-scope.json AND no dispatch-summary.json); the script refused to build an unscoped commit (fail-closed), nothing landed, caller must investigate before re-running.
+`{status: "ok" | "push-fail" | "skip-no-version" | "scope-guard-disabled", commit_sha: "<sha-or-empty>", bump_kind: "minor" | "patch" | "none"}`. NEVER the diff body. `scope-guard-disabled` = no parseable manifest (no own main-scope.json AND no dispatch-summary.json, OR a source present but `jq` unavailable); the script refused to build an unscoped/partially-scoped commit (fail-closed), nothing landed, caller must investigate before re-running.
 
 ## What this agent does NOT do
 

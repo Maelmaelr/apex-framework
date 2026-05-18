@@ -54,9 +54,12 @@
 #   3. gitignore: SKIP if `git check-ignore` returns 0.
 #
 # Args:
-#   --head-sha <sha>   required; baseline head_sha from {session}-baseline.json.
-#                      Shape-validated; used for the pre-dirty/baseline read.
-#                      NOT the staging base (the live branch tip is).
+#   --head-sha <sha>   required; accepted and shape-validated for caller-
+#                      signature stability (agents/git-sync.md + apex-core.md
+#                      step 12 always pass it). NOT consumed by this script:
+#                      the pre-dirty/baseline read is keyed off --session
+#                      ({session}-baseline.json), and the staging base is the
+#                      live branch tip - never this value.
 #   --session <token>  required; calling apex {session} (8-hex). Selects the
 #                      own-scope manifest + baseline + dispatch-summary.
 #   --message <msg>    required unless --dry-run; commit message. The caller
@@ -71,8 +74,10 @@
 #   PUSH ok|fail|skipped       ok / non-fast-forward-or-no-upstream / detached)
 #   NOOP                       manifest produced nothing dirty to commit
 #   SCOPE-GUARD-DISABLED       no manifest source (no main-scope.json AND no
-#                              dispatch-summary.json); nothing committed.
-#                              Caller MUST treat as abort (fail-closed).
+#                              dispatch-summary.json), OR a source exists but
+#                              jq is unavailable to parse it; nothing
+#                              committed. Caller MUST treat as abort
+#                              (fail-closed).
 #   <paths...>                 under --dry-run only: the resolved stage set.
 #
 # Exit codes:
@@ -153,6 +158,19 @@ HAVE_MANIFEST_SOURCE=0
 # Refuse to commit instead. agents/git-sync.md treats this token as abort.
 if (( ! HAVE_MANIFEST_SOURCE )); then
   echo "git-stage-files.sh: SCOPE-GUARD-DISABLED no manifest source (neither $OWN_SCOPE_PATH nor $DISPATCH_PATH); refusing to build an unscoped commit" >&2
+  echo "SCOPE-GUARD-DISABLED"
+  exit 0
+fi
+
+# Fail-closed #2: a manifest source exists on disk but jq is unavailable, so
+# the authoritative allowlist cannot be parsed at all. Without jq,
+# OWN_SCOPE_FILES and TOUCHED_FILES are empty, the no-source guard above does
+# NOT fire (the files exist), and only a dirty VERSION would be staged -
+# silently dropping this session's own fix code (the original incident's
+# second symptom). The fail-closed guarantee must not be jq-conditional:
+# refuse rather than commit an unparseable-manifest subset.
+if (( ! have_jq )); then
+  echo "git-stage-files.sh: SCOPE-GUARD-DISABLED jq unavailable; cannot parse the authoritative manifest ($OWN_SCOPE_PATH / $DISPATCH_PATH); refusing to build a partially-scoped commit" >&2
   echo "SCOPE-GUARD-DISABLED"
   exit 0
 fi
