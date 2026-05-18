@@ -10,7 +10,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
 - **economy** decided at step 7 by deterministic rule. Step 8 executors run on Sonnet; **step 9 polish skipped**; step 11 skips `learn`.
 - **standard** default at step 7 when the deterministic rule does not classify economy. Step 8 executors run on the main session model; full tail.
 
-**Step 13 reflector is background** in non-trivial paths (economy + standard); the reflector owns the post-reflect `cleanup-session.sh --post-success` call as its final action. Step 14 only runs on the trivial path (where step 13 was skipped). Step 15's commit-creep audit runs inline (no LLM hop).
+**Step 13 reflector is background** in non-trivial paths (economy + standard); the reflector owns the post-reflect `cleanup-session.sh --post-success` call as its final action. Step 14 only runs on the trivial path (where step 13 was skipped). Step 15's inline summary is fully deterministic (no LLM hop, no git audit pass).
 
 ## Conventions
 
@@ -246,14 +246,14 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
     - **Live-session guard + --post-success bypass**: by default, `cleanup-session.sh` reads the manifest's `pid` and refuses cleanup if the PID is alive AND `ps -o comm=` matches `claude` (defends against sibling classifier bugs). `--post-success` bypasses the guard for trusted own-session callers (step 14 trivial path, the reflector's post-reflect call at step 13, mid-flow abort, SessionEnd of own session). Without that flag the guard would block legit own-cleanup since manifest.pid is the still-alive caller's claude pid.
 
 15. Inline summary | Blocked by #14
-    - inline task prompt reads `{session}-hypothesis.json` (preserved by step 13/14 cleanup) and the per-goal status map collected at step 8.3
-    - **Inline post-apex commit-creep audit** (no LLM hop; was step 14 in the prior contract): `git log {baseline_head_sha}..HEAD --pretty=format:'%h %an %s'`. Surface as a one-line warning in the summary any commit whose subject does NOT start with `apex git-sync` (post-apex commit creep unrelated to hypothesis; reflector 88ba4171). When step 12 is skipped (trivial path) the audit still runs - it just observes user-side commits since baseline.
-    - emits:
-      - Original prompt summary (from `original_prompt` field)
-      - Short hypothesis vs reality (gaps spotted) summary
-      - **Per-goal status**: `N/M goals passed` line where N = count of goals with status `implemented` + `already-satisfied`, M = `len(hypothesis.goals)`. Below the headline, list each goal with its status (`implemented` | `already-satisfied` | `failed`) and one-line note from the executor return. This is the first and only place the user sees the goal decomposition - as a record of what was done, never as a question.
-      - Commit-creep warning (if any non-`apex git-sync` commits since baseline).
-      - Short executive summary
+    - inline task prompt reads `{session}-hypothesis.json` (preserved by step 13/14 cleanup), the per-goal status map collected at step 8.3, and step 12 git-sync's recorded outcome
+    - **fully deterministic** (no LLM hop, no git audit pass, no executive prose): emits EXACTLY these sections in order, nothing else (no commit-creep / scope-overspill audit, no next-steps checklist):
+      - `# apex summary - session {session}` H1 title (the session id lives here; no other section repeats it)
+      - **Original request**: `original_prompt` verbatim (not paraphrased or padded; session id not appended - it is in the title)
+      - **Hypothesis vs reality**: 1-2 sentences (step-4 hypothesis, then whether reality matched; gaps only if present)
+      - **Per-goal status**: `N/M goals passed` line where N = count of goals with status `implemented` + `already-satisfied`, M = `len(hypothesis.goals)`; then ONE simple sentence per goal `<goal label> - <status>`. No executor-note dumps, no multi-line per-goal detail. First and only place the user sees the goal decomposition - a record of what was done, never a question.
+      - **Mid-run notes**: ONLY when an executor returned a `MANUAL:`-prefixed line in dispatch-summary `notes` - each such command verbatim, one per line, flagged as the sole user-run residual (destructive / prod / credential-gated). apex ran every other work-produced command itself. Section omitted entirely when no MANUAL residual (user-driven c29bc734).
+      - **Result**: git actions only, from step 12 git-sync - `VERSION <old> -> <new>`, `commit <short-sha> <subject>`, `push <branch> -> <remote>` (or `push: skipped` / `not pushed`). No file lists, no diffstat, no warnings.
     - **on success: two explicit closing actions in this order**: (1) inline `Bash` `rm -f .claude-tmp/apex-active/{session}-hypothesis.json` immediately after the summary is emitted - step 15 is the consumer; cleanup is its responsibility, an observable action, not a trailing intent; (2) `TaskUpdate` task 15 -> `completed` as the final orchestrator action - the final step has no successor task to start, so without an explicit close the TaskList strands at `1 in progress` after `/apex` exits (run 599cd572). `session-end-hook.sh` remains the idempotent fallback for aborts that bypass step 15.
 
 ## Failure handling

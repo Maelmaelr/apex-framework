@@ -14,7 +14,7 @@ Legend: `inline` = main-orchestrator inline prompt | `skill` = `~/.claude/skills
 | economy  | step 7     | step 8 executors = sonnet; step 9 polish skipped; step 11 learn skipped. All other steps run.     |
 | standard | step 7     | step 8 executors = main session model; full tail.                                                 |
 
-Step 13 reflector is **background** in non-trivial paths; reflector owns post-reflect `cleanup-session.sh --post-success`. Step 14 only runs on trivial path. Step 15 commit-creep audit is inline (no LLM hop).
+Step 13 reflector is **background** in non-trivial paths; reflector owns post-reflect `cleanup-session.sh --post-success`. Step 14 only runs on trivial path. Step 15 inline summary is fully deterministic (no LLM hop, no git audit pass).
 
 ---
 
@@ -117,9 +117,8 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - wipes session dir except {session}-hypothesis.json (do not clean concurrent session files)
 
 15. Inline summary: inline
-    - reads {session}-hypothesis.json + per-goal status map from step 8.3
-    - **inline commit-creep audit** (no LLM hop): `git log {baseline_head_sha}..HEAD`; flag commits whose subject does not start with `apex git-sync`
-    - emits summary including per-goal status (N/M goals passed; per-goal status + note) + commit-creep warning if any
+    - reads {session}-hypothesis.json + per-goal status map from step 8.3 + step 12 git-sync outcome
+    - **fully deterministic** (no LLM hop, no git audit pass): emits EXACTLY title (`# apex summary - session {session}`) + Original request + Hypothesis vs reality + Per-goal status (N/M goals passed; one sentence per goal) + Mid-run notes (MANUAL residuals only, else omitted) + Result (git actions only: version, commit, push)
     - removes hypothesis on success
 ```
 
