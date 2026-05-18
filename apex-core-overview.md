@@ -118,7 +118,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 
 15. Inline summary: inline
     - reads {session}-hypothesis.json + per-goal status map from step 8.3 + step 12 git-sync outcome
-    - **fully deterministic** (no LLM hop, no git audit pass): emits EXACTLY title (`# apex summary - session {session}`) + Original request + Hypothesis vs reality + Per-goal status (N/M goals passed; one sentence per goal) + Mid-run notes (MANUAL residuals only, else omitted) + Result (git actions only: version, commit, push)
+    - **fully deterministic** (no LLM hop, no git audit pass): emits EXACTLY title (`# apex summary - session {session}`) + Original request + Hypothesis vs reality (one line) + Per-goal status (N/M goals passed; one short line per goal) + Mid-run notes (MANUAL residuals only, else omitted) + Result (git actions only: version, commit, push)
     - removes hypothesis on success
 ```
 
