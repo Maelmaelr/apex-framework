@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "lesson-screened.schema.json",
   "title": "{session}-lesson-screened.json",
-  "description": "Step 5 lesson-screener output. Single Sonnet call; keep / drop with free-text reason per matched lesson section. See apex-core.md step 5 / agents/lesson-screener.md.",
+  "description": "Step 5 lesson-screener output. Single Haiku call; keep / drop with free-text reason per matched lesson section. Screener emits kept[] as ranges+reason only (no `content`); the orchestrator back-fills kept[].content post-screen via slice-lessons.sh. See apex-core.md step 5 / agents/lesson-screener.md.",
   "type": "object",
   "required": ["kept", "dropped"],
   "properties": {
@@ -10,7 +10,7 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["line_range", "section_title", "screener_reason", "content"],
+        "required": ["line_range", "section_title", "screener_reason"],
         "properties": {
           "line_range": {
             "type": "string",
@@ -27,7 +27,7 @@
           },
           "content": {
             "type": "string",
-            "description": "Verbatim section body (header + lesson lines) propagated forward as advisory context to steps 6 / 8 / 9 / 10 / 11."
+            "description": "Verbatim section body (header + lesson lines). NOT screener-emitted - the orchestrator slices it from lessons.md post-screen via slice-lessons.sh over line_range and back-fills it here for the downstream-spawn role (advisory context to steps 6 / 8 / 9 / 10 / 11). Absent in raw screener output; optional."
           }
         }
       }
