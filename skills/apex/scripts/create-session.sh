@@ -44,6 +44,30 @@
 
 set -euo pipefail
 
+# CWD=PROJECT_ROOT fail-fast guard (reflector c5ea7797): this script writes the
+# manifest to the RELATIVE path .claude-tmp/apex-active, so it MUST run from the
+# project root. Invoked from the apex skill dir (or any non-root CWD) it would
+# silently create a manifest under the wrong .claude-tmp and strand the session.
+# Fail loudly instead of corrupting state.
+#   (a) never run from inside the apex install tree ($HOME/.claude/...)
+#   (b) when in a git repo, CWD must be the git toplevel (manifest at repo root)
+# Non-git projects skip (b) but still get (a). No jq/git dependency for (a).
+_CSH_PWD="$(pwd -P)"
+_CSH_HOME_CLAUDE="$(cd "$HOME/.claude" 2>/dev/null && pwd -P || echo "$HOME/.claude")"
+case "$_CSH_PWD/" in
+  "$_CSH_HOME_CLAUDE"/*)
+    echo "create-session.sh: refusing to run from inside the apex install tree ($_CSH_PWD); cd to the project root first" >&2
+    exit 1
+    ;;
+esac
+if _CSH_TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"; then
+  _CSH_TOPLEVEL="$(cd "$_CSH_TOPLEVEL" 2>/dev/null && pwd -P || echo "$_CSH_TOPLEVEL")"
+  if [[ "$_CSH_PWD" != "$_CSH_TOPLEVEL" ]]; then
+    echo "create-session.sh: CWD ($_CSH_PWD) is not the git toplevel ($_CSH_TOPLEVEL); run from the project root so the manifest lands in the right .claude-tmp" >&2
+    exit 1
+  fi
+fi
+
 APEX_ACTIVE=".claude-tmp/apex-active"
 
 CC_SESSION_ID=""
