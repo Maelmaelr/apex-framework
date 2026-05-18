@@ -14,7 +14,7 @@ Spec: `skills/admin-apex/SKILL.md` task 7.
 
 ## Output
 
-- `.claude-tmp/admin-apex-active/{run}-docs-changed.txt` - one repo-relative path per line; lines may repeat (one per Edit). Used by SKILL task 9 git-add manifest.
+- `.claude-tmp/admin-apex-active/{run}-docs-changed.txt` - one repo-relative path per line, **deduplicated** before the final write (a file edited N times appears once). Used by SKILL task 9 git-add manifest.
 
 ## Procedure
 
@@ -49,7 +49,7 @@ Spec: `skills/admin-apex/SKILL.md` task 7.
    ```
    so the next audit surfaces a `dead comment` cleanup.
 
-5. **Write `docs-changed.txt`** even if empty - SKILL task 9 expects the file to exist.
+5. **Write `docs-changed.txt`** even if empty - SKILL task 9 expects the file to exist. Dedup the accumulated paths before the final write (`sort -u`, or equivalent): a file edited N times in step 3 must appear exactly once. Duplicate entries waste downstream git-add reads and make the audit trail misleading (reflectors 130a8c9f + 19826768: apex-core.md listed twice across two runs).
 
 6. **Polish (post-implementation check)**: `bash scripts/polish-check.sh --run {run}`. Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch / dead-hook detectors (mirrors `audit.md`), diffs against `{run}-drift-report.json` so only NEW drift introduced by evolve apply + sync-docs surfaces. Skipped automatically when 0 ops applied.
    - Exit `0` -> clean; continue.
