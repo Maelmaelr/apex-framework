@@ -85,7 +85,7 @@ Spawn-prompt: ranked top-K + hypothesis (verbatim from this agent's spawn input)
 
 ## Output
 
-`.claude-tmp/apex-active/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json`. Then write the scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single-line absolute path to the scope JSON; arms the scope-check PreToolUse hook for downstream Edit / Write).
+`.claude-tmp/apex-active/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json` - validation MUST fail loud and abort the return on any missing schema-required field (e.g. `session`) rather than emitting a non-conformant artifact for the orchestrator to patch mid-tail (reflector 94bc1b7f). Then write the scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single-line absolute path to the scope JSON; arms the scope-check PreToolUse hook for downstream Edit / Write).
 
 **Token discipline (canonical naming).** Two distinct identifiers appear in the output paths and they MUST NOT be confused:
 - `{session}` is the 8-hex apex token; it appears in the parent directory name (`.claude-tmp/apex-active/{session}-*`) and in the main-scope.json filename.
@@ -94,7 +94,7 @@ Writing the pointer as `{session}.txt` (e.g., `b69d28ba.txt`) is a contract viol
 
 **Producer ownership.** The discoverer writes `main-scope.json` directly here, BEFORE returning to the orchestrator. The orchestrator MUST read `allowed_files` from `main_scope` only; reconstructing `allowed_files` from `screened.json` `kept[]` on the orchestrator side is a contract violation (reflector 9f07a2db: orchestrator was reconstructing `9f07a2db-main-scope.json` from screened output rather than reading the producer's artifact).
 
-`allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated layer output). Standard safety paths from `apex-core.md` Conventions are implicit at the hook layer; do not list them in `allowed_files`.
+`allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated layer output), UNION the **doc-surface** set: every doc path named in `hypothesis.goals[]`, plus the `docs/**` / `docs/architecture/**` / `.claude/rules/**` files that document a behavior any goal modifies. Doc-surface inclusion is mandatory at scope-finalization for code+docs work - omitting it strands the step-11 doc edit and forces a reactive step-12 expand (recurring cluster 006ab516/94c44d6c/87c0386e/7fd94f70/94bc1b7f/f3915610). Standard safety paths from `apex-core.md` Conventions are implicit at the hook layer; do not list them in `allowed_files`.
 
 ## Return to caller
 

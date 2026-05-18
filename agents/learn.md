@@ -28,7 +28,7 @@ Curation into the project lessons-index is owned by `/apex-lessons`.
 
 The bar is **evidence of difficulty** in this session. A lesson is worth recording ONLY if all three hold:
 
-1. **Difficulty signal in the trace.** `.claude-tmp/apex-active/{session}-fix-attempts.json` shows `attempts >= 1` (verify fix-loop ran), OR the spawn prompt explicitly tags this run as multi-retry / non-converging. First-try-clean sessions do NOT produce lessons - skip the agent's body and exit silently.
+1. **Difficulty signal in the trace.** `.claude-tmp/apex-active/{session}-fix-attempts.json` shows `attempts >= 1` (verify fix-loop ran), OR the spawn prompt explicitly tags this run as multi-retry / non-converging. First-try-clean sessions do NOT produce lessons - skip the agent's body and exit silently. **Stale-lesson exception:** if the diff or spawn prompt notes that an existing lesson is now contradicted / superseded by this session's fix, append a one-line `stale-lesson:` entry (lesson id + why stale) to `~/.claude/tmp/apex-workflow-improvements.md` via `append-with-lock.sh` BEFORE the silent exit - the difficulty gate must not swallow the only correction signal for stale lesson prose (reflector 332473b3).
 2. **Concrete cause.** The diff carries the surprise that caused the retry: a hidden constraint, a race / ordering rule, a framework gotcha, an anti-default behavior. State the cause and the fix together; both are required.
 3. **Non-derivable.** The pattern is NOT inferable from `CLAUDE.md`, framework docs, or apex-core.md.
 
