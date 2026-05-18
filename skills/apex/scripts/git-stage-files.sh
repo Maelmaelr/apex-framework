@@ -1,90 +1,128 @@
 #!/usr/bin/env bash
-# Step 12 git-stage helper: stage the apex-driven change set with a deterministic dotenv guard.
-# Spec: apex-core.md step 12 ("per-file pre-filter" contract).
+# Step 12 build-and-commit helper: assemble the apex-driven commit from this
+# session's OWN authoritative file manifest, via a session-private git index,
+# and land it with a compare-and-swap ref update + plain push.
+# Spec: apex-core.md step 12.
 #
-# Stages, per-file, the union of:
-#   - git diff --name-only HEAD                 (tracked-modified, WT-only)
-#   - git ls-files --others --exclude-standard  (untracked-non-ignored)
-# HEAD-relative diff (NOT vs the baseline $HEAD_SHA) is deliberate: a sibling
-# /apex session's commit can advance HEAD past our baseline, and using
-# $HEAD_SHA as the diff base would surface the sibling's already-committed
-# paths as "changed" and stage them under our session's commit. See
-# inline rationale block at the diff-computation site.
+# WHY THIS IS AN ALLOWLIST, NOT A WORKING-TREE SCAN
+# -------------------------------------------------
+# The previous implementation staged a working-tree diff and then ran a
+# denylist of sibling-claimed paths through it. That design failed OPEN: when a
+# concurrent /apex session's main-scope.json was not yet on disk at the moment
+# this script ran, the sibling's in-progress files were invisible to the
+# denylist and got committed under THIS session's commit, while this session's
+# own fix files were simultaneously dropped by an over-broad filter (the
+# recurring cross-session contamination failure mode; reflector cluster
+# 6714d9ba / 460877e7 / 72418039 / fad39712 / 17645693 / 3c16319f / 7f9de350 /
+# 8418c06e / 5c32d3e2 and the documented race note that the denylist "is only
+# as effective as the sibling's main-scope.json being on disk").
 #
-# Filter (block-by-default for dotenv shapes; the only protection for `git add`
-# of .env-shaped paths since `protect-env-hook.sh` covers Edit/Write only):
-#   1. SKIP if basename matches `.env*` AND basename NOT in the template
-#      allowlist `{.env.example, .env.sample, .env.template}`. Closed allowlist
-#      catches .env.staging / .env.test / .env.ci / .envrc / etc. that a narrow
-#      denylist would miss.
-#   2. SKIP if `git check-ignore <path>` returns 0 (covers `.claude-tmp/` and
-#      the project's `.gitignore`).
+# This version inverts the data flow: the commit is built from the union of
+# THIS session's own `allowed_files` + executor `files_touched` + a dirty
+# VERSION (the authoritative "what this session produced" manifest). A sibling
+# session's file is structurally incapable of entering this commit because it
+# is not on this session's manifest - independent of whether the sibling's
+# scope artifact exists yet. This session's own files cannot be silently
+# dropped because they are on the manifest by construction. Fail-CLOSED: with
+# no manifest source at all, nothing is committed (never the whole tree).
 #
-# Stages survivors via per-file `git add` (NEVER `git add -A`).
+# WHY A PRIVATE INDEX + commit-tree + CAS update-ref
+# --------------------------------------------------
+# Concurrent sessions share one .git/index and one HEAD. `git add` + porcelain
+# `git commit` race on both. This script stages into a per-invocation
+# GIT_INDEX_FILE (sibling `git add` can never interleave), builds the commit
+# with `git commit-tree` parented on the LIVE branch tip (never a stale
+# baseline - seeding from a stale tree silently reverts a sibling's just-landed
+# work), and moves the branch ref with the 3-arg compare-and-swap form of
+# `git update-ref` (a concurrent ref move fails the CAS; we re-read the new tip
+# and rebuild, bounded retry - lock-free, portable, no flock dependency since
+# macOS ships no flock(1)). The shared working tree is never modified, so
+# sibling/user dirty state is preserved.
+#
+# Stages, from the manifest, the subset that is actually dirty:
+#   dirty = (git diff --name-only HEAD; git ls-files --others --exclude-standard)
+#   stage = manifest INTERSECT dirty, minus the guards below.
+#
+# Guards (defense in depth; the allowlist already excludes foreign paths):
+#   1. pre-dirty: drop paths in {session}-baseline.json:pre_dirty UNLESS the
+#      path is also in our own allowed_files (in-scope pre-dirty is
+#      apex-intentional - sibling /apex leftover or user-staged hand-off, not
+#      WIP to protect; reflector 8418c06e).
+#   2. dotenv: SKIP basenames matching `.env*` not in the template allowlist
+#      {.env.example,.env.sample,.env.template} (the only `git add` protection
+#      for .env shapes; mirrors protect-env-hook.sh which covers Edit/Write).
+#   3. gitignore: SKIP if `git check-ignore` returns 0.
 #
 # Args:
-#   --head-sha <sha>   required; baseline head_sha read from {session}-baseline.json
-#   --session <token>  required; calling apex {session} (8-hex). Used to scope the
-#                      cross-session filter: paths in OTHER sessions' main-scope
-#                      allowed_files are skipped (concurrent-session contamination
-#                      guard - mirrors apex-conflict-check.sh granularity).
-#   --dry-run          optional; emits surviving paths to stdout WITHOUT staging
-#                      (callers that only need the filtered list use this)
+#   --head-sha <sha>   required; baseline head_sha from {session}-baseline.json.
+#                      Shape-validated; used for the pre-dirty/baseline read.
+#                      NOT the staging base (the live branch tip is).
+#   --session <token>  required; calling apex {session} (8-hex). Selects the
+#                      own-scope manifest + baseline + dispatch-summary.
+#   --message <msg>    required unless --dry-run; commit message. The caller
+#                      (agents/git-sync.md) drafts it from the working-tree
+#                      diff BEFORE this script runs, because staging is private
+#                      (no shared `git diff --staged` to draft from post-hoc).
+#   --dry-run          optional; print the resolved stage set to stdout and
+#                      exit WITHOUT building/committing/pushing.
+#
+# Stdout (machine-readable, one token line first):
+#   COMMIT <full-sha>          commit landed (push result on the next line:
+#   PUSH ok|fail|skipped       ok / non-fast-forward-or-no-upstream / detached)
+#   NOOP                       manifest produced nothing dirty to commit
+#   SCOPE-GUARD-DISABLED       no manifest source (no main-scope.json AND no
+#                              dispatch-summary.json); nothing committed.
+#                              Caller MUST treat as abort (fail-closed).
+#   <paths...>                 under --dry-run only: the resolved stage set.
 #
 # Exit codes:
-#   0  success - all survivors staged (or listed under --dry-run); 0 survivors is also success
-#   1  git failure (status / add) - errors written to stderr
+#   0  success / NOOP / SCOPE-GUARD-DISABLED / dry-run (all non-error)
+#   1  git failure (read-tree / write-tree / commit-tree / ref CAS exhausted)
 #   2  invocation error (bad args)
 
 set -uo pipefail
 
 HEAD_SHA=""
 SESSION=""
+MESSAGE=""
 DRY_RUN=0
+HAVE_MESSAGE=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --head-sha)
-      HEAD_SHA="${2:-}"
-      shift 2
-      ;;
-    --session)
-      SESSION="${2:-}"
-      shift 2
-      ;;
-    --dry-run)
-      DRY_RUN=1
-      shift
-      ;;
-    *)
-      echo "git-stage-files.sh: unknown arg: $1" >&2
-      exit 2
-      ;;
+    --head-sha) HEAD_SHA="${2:-}"; shift 2 ;;
+    --session)  SESSION="${2:-}"; shift 2 ;;
+    --message)  MESSAGE="${2:-}"; HAVE_MESSAGE=1; shift 2 ;;
+    --dry-run)  DRY_RUN=1; shift ;;
+    *) echo "git-stage-files.sh: unknown arg: $1" >&2; exit 2 ;;
   esac
 done
 
 if [[ -z "$HEAD_SHA" ]]; then
-  echo "git-stage-files.sh: --head-sha is required" >&2
-  exit 2
+  echo "git-stage-files.sh: --head-sha is required" >&2; exit 2
 fi
-
 if [[ ! "$HEAD_SHA" =~ ^[0-9a-f]{7,40}$ ]]; then
-  echo "git-stage-files.sh: invalid head_sha shape: $HEAD_SHA (expected 7-40 char lowercase hex)" >&2
-  exit 2
+  echo "git-stage-files.sh: invalid head_sha shape: $HEAD_SHA (expected 7-40 char lowercase hex)" >&2; exit 2
 fi
-
 if [[ -z "$SESSION" ]]; then
-  echo "git-stage-files.sh: --session is required" >&2
-  exit 2
+  echo "git-stage-files.sh: --session is required" >&2; exit 2
 fi
-
 if [[ ! "$SESSION" =~ ^[0-9a-f]{8}$ ]]; then
-  echo "git-stage-files.sh: invalid session token shape: $SESSION (expected 8-char lowercase hex)" >&2
-  exit 2
+  echo "git-stage-files.sh: invalid session token shape: $SESSION (expected 8-char lowercase hex)" >&2; exit 2
+fi
+if (( ! DRY_RUN )) && (( ! HAVE_MESSAGE )); then
+  echo "git-stage-files.sh: --message is required (unless --dry-run)" >&2; exit 2
 fi
 
-# Closed template allowlist - any other .env* basename is blocked. Keep in sync
-# with `protect-env-hook.sh` (the analogous gate for Edit/Write).
+APEX_ACTIVE=".claude-tmp/apex-active"
+OWN_SCOPE_PATH="$APEX_ACTIVE/$SESSION-main-scope.json"
+BASELINE_PATH="$APEX_ACTIVE/$SESSION-baseline.json"
+DISPATCH_PATH="$APEX_ACTIVE/$SESSION-traces/execute/dispatch-summary.json"
+ERR_LOG="$HOME/.claude/tmp/git-agent-errors.log"
+
+have_jq=0
+command -v jq >/dev/null 2>&1 && have_jq=1
+
 is_env_template() {
   case "$1" in
     .env.example|.env.sample|.env.template) return 0 ;;
@@ -92,160 +130,79 @@ is_env_template() {
   esac
 }
 
-# Safety-path predicate. Mirrors scope-check-hook.sh:is_safety_path for the
-# subset relevant at stage-time (docs/**, README* basename, VERSION basename).
-# The scope-outside guards below skip these regardless of main-scope.json
-# contents - without this exception, bump-version.sh's post-baseline VERSION
-# write is dropped by the tracked-outside-scope guard (reflector 5cdc8eb0:
-# VERSION bumped on disk but not committed). Closed set; .env* and .git/ are
-# excluded by their own guards earlier in the loop.
-is_safety_path() {
-  local target="$1"
-  [[ "$target" == "docs/"* ]] && return 0
-  [[ "$target" == */docs/* ]] && return 0
-  local base
-  base=$(basename -- "$target")
-  [[ "$base" == README* ]] && return 0
-  [[ "$base" == "VERSION" ]] && return 0
-  return 1
-}
-
-# Narrower safety exemption for UNTRACKED paths only. A brand-new untracked
-# file outside allowed_files under docs/** (or named README) is the exact
-# commit-creep leak reflector da97c3c1 caught: a doc agent's untracked
-# docs/features/analytics-posthog.md + docs/features/index.md got bundled
-# into a foreign commit via the blanket docs/** is_safety_path bypass. Only
-# the VERSION family (written untracked by bump-version.sh) is exempted for
-# untracked paths; legitimate apex-created files are already kept in scope by
-# executor.md behavior 3 (append new file to main-scope before Write), so the
-# docs/** blanket pass is pure leakage for untracked. Tracked-modified paths
-# keep the broader is_safety_path via their own guard further below.
-is_untracked_safe_path() {
-  local base
-  base=$(basename -- "$1")
-  [[ "$base" == "VERSION" || "$base" == "VERSION.txt" ]]
-}
-
-# Compute change set. Both branches required: `git diff` excludes untracked, so
-# a new file apex created via Write would otherwise never get staged.
-#
-# TRACKED diff base is HEAD (working-tree-only), NOT $HEAD_SHA. If a SIBLING
-# /apex session commits between this session's step 8.0 baseline capture and
-# this script's invocation, HEAD advances past $HEAD_SHA. `git diff $HEAD_SHA`
-# would then surface the sibling's already-committed paths as "changed" and
-# stage them under our session's commit (silent cross-session leak documented
-# by reflectors 3c16319f + 7f9de350: text-preview.tsx, en.json, fr.json from
-# session 084e7178 overwriting tokenCount threading). HEAD-relative diff
-# excludes already-committed work (ours or sibling) and only stages genuinely
-# uncommitted working-tree changes - which is the actual semantics of "stage
-# what is dirty". $HEAD_SHA is preserved as a required arg for shape validation
-# and downstream guards but is no longer the staging diff base.
-TRACKED=$(git diff --name-only HEAD 2>/dev/null || true)
-UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
-CHANGE_SET=$(printf '%s\n%s\n' "$TRACKED" "$UNTRACKED" | grep -v '^$' | sort -u)
-# Untracked membership snapshot for the own-scope stowaway guard (per-path
-# loop applies it without re-running ls-files).
-UNTRACKED_SET=$(printf '%s\n' "$UNTRACKED" | grep -v '^$' | sort -u || true)
-
-# Cross-session contamination guard. Build the union of `allowed_files` from
-# every OTHER active session's main-scope (excluding our own SESSION). Any
-# path in CHANGE_SET that appears in that union is dropped before staging -
-# that file belongs to a sibling /apex run, and committing it under our
-# session's commit would silently steal their work. Mirrors the granularity
-# of apex-conflict-check.sh (main-scope only).
-#
-# RACE NOTE (reflector 72418039, workflow-respected: no): this filter is only
-# as effective as the sibling's main-scope.json being on disk at the moment
-# git-stage runs. If session A starts at step 6 (discoverer not yet returned)
-# while sibling B reaches step 12, B's git-stage cannot see A's allowed_files
-# yet - any deletion / write A is racing on slips through under B's commit.
-# Repro: B deleted 6 provider-tab files belonging to A's split-anthropic
-# refactor. Mitigations to consider (out of scope for this script):
-#   1. Defer git-stage when a sibling manifest exists without main-scope.json
-#      yet (cooperative wait with timeout).
-#   2. Promote per-session staging-area locking via a flock on apex-active/.
-# For now: deletion paths still flow through the same OTHER_SCOPE_FILES check
-# below; a sibling whose main-scope IS on disk at the time of staging is
-# correctly protected.
-APEX_ACTIVE=".claude-tmp/apex-active"
-OTHER_SCOPE_FILES=""
-if command -v jq >/dev/null 2>&1 && [[ -d "$APEX_ACTIVE" ]]; then
-  shopt -s nullglob
-  for scope in "$APEX_ACTIVE"/*-main-scope.json; do
-    [[ -f "$scope" ]] || continue
-    [[ "$scope" == *"$SESSION-main-scope.json" ]] && continue
-    while IFS= read -r f; do
-      [[ -z "$f" ]] && continue
-      OTHER_SCOPE_FILES+="$f"$'\n'
-    done < <(jq -r '.allowed_files[]?' "$scope" 2>/dev/null || true)
-  done
-  shopt -u nullglob
-fi
-OTHER_SCOPE_FILES=$(printf '%s' "$OTHER_SCOPE_FILES" | grep -v '^$' | sort -u || true)
-
-# Load OUR own allowed_files. Under proceed-alongside, sibling sessions
-# intentionally share scope; paths in OUR main-scope must NOT be dropped by
-# the cross-session filter below (otherwise the filter no-ops the entire
-# stage in alongside mode - reflector a06efb91).
+# ---- Build the authoritative manifest (the allowlist) --------------------
+# own allowed_files
 OWN_SCOPE_FILES=""
-OWN_SCOPE_PATH="$APEX_ACTIVE/$SESSION-main-scope.json"
-if command -v jq >/dev/null 2>&1 && [[ -f "$OWN_SCOPE_PATH" ]]; then
-  OWN_SCOPE_FILES=$(jq -r '.allowed_files[]?' "$OWN_SCOPE_PATH" 2>/dev/null | sort -u || true)
+if (( have_jq )) && [[ -f "$OWN_SCOPE_PATH" ]]; then
+  OWN_SCOPE_FILES=$(jq -r '.allowed_files[]?' "$OWN_SCOPE_PATH" 2>/dev/null | grep -v '^$' | sort -u || true)
 fi
 
-# Pre-dirty filter. Read `pre_dirty` from {session}-baseline.json (captured at
-# step 8.0). User-pre-existing WIP is never bundled into the apex commit, even
-# when apex deliberately edited a pre-dirty file (the merged change stays dirty
-# for the user to review and commit). Spec: apex-core.md step 12.
-PRE_DIRTY_FILES=""
-BASELINE_PATH="$APEX_ACTIVE/$SESSION-baseline.json"
-if command -v jq >/dev/null 2>&1 && [[ -f "$BASELINE_PATH" ]]; then
-  PRE_DIRTY_FILES=$(jq -r '.pre_dirty[]?' "$BASELINE_PATH" 2>/dev/null | sort -u || true)
+# executor files_touched (recursive: tolerates JSON array, single object, or
+# NDJSON of executor returns - matches agents/git-sync.md's documented read).
+TOUCHED_FILES=""
+if (( have_jq )) && [[ -f "$DISPATCH_PATH" ]]; then
+  TOUCHED_FILES=$(jq -r '.. | .files_touched? // empty | .[]?' "$DISPATCH_PATH" 2>/dev/null | grep -v '^$' | sort -u || true)
 fi
 
-if [[ -z "$CHANGE_SET" ]]; then
-  # Nothing changed since baseline. Not an error.
+HAVE_MANIFEST_SOURCE=0
+[[ -f "$OWN_SCOPE_PATH" || -f "$DISPATCH_PATH" ]] && HAVE_MANIFEST_SOURCE=1
+
+# Fail-closed: with no manifest source there is no authoritative "our files"
+# set. The previous implementation fell OPEN here (staged the whole working
+# tree, filtered by a denylist) - the exact cross-session contamination path.
+# Refuse to commit instead. agents/git-sync.md treats this token as abort.
+if (( ! HAVE_MANIFEST_SOURCE )); then
+  echo "git-stage-files.sh: SCOPE-GUARD-DISABLED no manifest source (neither $OWN_SCOPE_PATH nor $DISPATCH_PATH); refusing to build an unscoped commit" >&2
+  echo "SCOPE-GUARD-DISABLED"
   exit 0
 fi
 
-# Degraded-path marker. Every scope guard below is gated on OWN_SCOPE_FILES
-# being non-empty; when our own main-scope.json is absent the guards all
-# no-op and staging is UNFILTERED. The fall-open is deliberate (reflector
-# 87c0386e: never harden past the producer's own discipline) but it is also
-# the exact path by which a cleanup-session.sh sibling-wipe of our
-# main-scope.json mid-run turns into mass over-staging (reflector 6714d9ba:
-# 16 files for a 3-file scope) or silent scope loss (460877e7). Emit a
-# distinct, greppable stderr token so the step-12 caller's post-stage
-# cardinality check (agents/git-sync.md) can detect the unfiltered path and
-# fail closed BEFORE commit instead of discovering it in reflection.
-if [[ -z "$OWN_SCOPE_FILES" ]]; then
-  echo "git-stage-files.sh: SCOPE-GUARD-DISABLED no own main-scope.json ($OWN_SCOPE_PATH); staging is UNFILTERED - caller must verify staged-file cardinality before commit" >&2
+MANIFEST=$(printf '%s\n%s\n' "$OWN_SCOPE_FILES" "$TOUCHED_FILES" | grep -v '^$' | sort -u || true)
+
+# ---- Intersect with the actually-dirty working tree ----------------------
+TRACKED=$(git diff --name-only HEAD 2>/dev/null || true)
+UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
+DIRTY=$(printf '%s\n%s\n' "$TRACKED" "$UNTRACKED" | grep -v '^$' | sort -u || true)
+
+# A dirty VERSION (any depth, basename match) is part of this session's output:
+# git-sync.md runs bump-version.sh BEFORE this script, so VERSION is dirty by
+# now and is authoritative even if absent from allowed_files (reflector
+# 5cdc8eb0: VERSION bumped on disk but not committed). Add such paths to the
+# manifest. No blanket docs/** or README pass: legitimate docs reach the commit
+# via allowed_files (pre-coordinated) or files_touched; the old blanket pass
+# was itself a leak (reflector da97c3c1).
+VERSION_DIRTY=""
+while IFS= read -r d; do
+  [[ -z "$d" ]] && continue
+  [[ "$(basename -- "$d")" == "VERSION" ]] && VERSION_DIRTY+="$d"$'\n'
+done <<< "$DIRTY"
+if [[ -n "$VERSION_DIRTY" ]]; then
+  MANIFEST=$(printf '%s\n%s\n' "$MANIFEST" "$VERSION_DIRTY" | grep -v '^$' | sort -u || true)
 fi
 
-rc=0
+# pre-dirty (user WIP at step-8 baseline)
+PRE_DIRTY_FILES=""
+if (( have_jq )) && [[ -f "$BASELINE_PATH" ]]; then
+  PRE_DIRTY_FILES=$(jq -r '.pre_dirty[]?' "$BASELINE_PATH" 2>/dev/null | grep -v '^$' | sort -u || true)
+fi
+
+# stage set = MANIFEST INTERSECT DIRTY, minus guards
+STAGE_SET=""
 while IFS= read -r path; do
   [[ -z "$path" ]] && continue
+  # must be on the manifest (the allowlist)
+  printf '%s\n' "$MANIFEST" | grep -Fxq -- "$path" || continue
   base=$(basename -- "$path")
 
-  # Pre-dirty guard. Drop paths user already had dirty at step 8.0 baseline -
-  # any apex edit on top of the user's WIP stays dirty for them to review.
-  # Exception: paths in OUR own main-scope allowed_files are apex-intentional
-  # (the executor was authorized to modify them); pre-existing dirt on in-scope
-  # paths is sibling /apex leftover or a user-staged hand-off, not WIP to be
-  # protected. Reflector 8418c06e: 3 i18n files pre-dirty from a sibling
-  # session were silently dropped despite this session's executor touching
-  # them in-scope (5 of 7 files_touched landed staged).
-  if [[ -n "$PRE_DIRTY_FILES" ]] && printf '%s\n' "$PRE_DIRTY_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-    if [[ -n "$OWN_SCOPE_FILES" ]] && printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-      :  # in-scope pre-dirty: apex-intentional; fall through to staging
-    else
+  # pre-dirty guard (own-scope exception, reflector 8418c06e)
+  if [[ -n "$PRE_DIRTY_FILES" ]] && printf '%s\n' "$PRE_DIRTY_FILES" | grep -Fxq -- "$path"; then
+    if ! { [[ -n "$OWN_SCOPE_FILES" ]] && printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fxq -- "$path"; }; then
       echo "git-stage-files.sh: skipping pre-dirty (user WIP at baseline): $path" >&2
       continue
     fi
   fi
 
-  # Dotenv guard. Glob match `.env*` (literal dot + `env` prefix); template
-  # allowlist is the only escape hatch.
+  # dotenv guard
   case "$base" in
     .env*)
       if ! is_env_template "$base"; then
@@ -255,87 +212,126 @@ while IFS= read -r path; do
       ;;
   esac
 
-  # gitignore guard. `git check-ignore` exits 0 if the path is ignored.
+  # gitignore guard
   if git check-ignore -q -- "$path" 2>/dev/null; then
     echo "git-stage-files.sh: skipping gitignored: $path" >&2
     continue
   fi
 
-  # Own-scope stowaway guard for untracked paths. Untracked files outside
-  # OUR main-scope allowed_files are upstream WIP cruft, design-tool exports,
-  # or sibling-run leftovers - not legitimate /apex output. Tracked-modified
-  # paths bypass this guard (user/apex may have intentionally edited files
-  # outside scope; the cross-session guard below covers sibling ownership).
-  # Skip when OWN_SCOPE_FILES is empty (no main-scope.json) so we never harden
-  # past the producer's own discipline (reflector 87c0386e: hailuo-color.svg
-  # untracked asset staged alongside zh-CN i18n session because --others had
-  # no scope gate).
-  if [[ -n "$UNTRACKED_SET" ]] && [[ -n "$OWN_SCOPE_FILES" ]]; then
-    if printf '%s\n' "$UNTRACKED_SET" | grep -Fx -- "$path" >/dev/null 2>&1; then
-      if ! printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-        if ! is_untracked_safe_path "$path"; then
-          echo "git-stage-files.sh: skipping untracked outside own scope: $path" >&2
-          continue
-        fi
-      fi
+  STAGE_SET+="$path"$'\n'
+done <<< "$DIRTY"
+STAGE_SET=$(printf '%s' "$STAGE_SET" | grep -v '^$' || true)
+
+if (( DRY_RUN )); then
+  [[ -n "$STAGE_SET" ]] && printf '%s\n' "$STAGE_SET"
+  exit 0
+fi
+
+if [[ -z "$STAGE_SET" ]]; then
+  echo "NOOP"
+  exit 0
+fi
+
+# ---- Resolve target ref --------------------------------------------------
+BRANCH=$(git symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+if [[ -n "$BRANCH" ]]; then
+  TARGET_REF="refs/heads/$BRANCH"
+  CAN_PUSH=1
+else
+  TARGET_REF="HEAD"   # detached: move HEAD itself, do not push
+  CAN_PUSH=0
+fi
+
+# ---- Private-index build + CAS ref update (bounded retry) -----------------
+PRIV_IDX="$(mktemp "${TMPDIR:-/tmp}/apex-idx.$SESSION.XXXXXX")" || {
+  echo "git-stage-files.sh: mktemp failed for private index" >&2; exit 1
+}
+cleanup() { rm -f "$PRIV_IDX"; }
+trap cleanup EXIT
+
+NEW_COMMIT=""
+TIP=""
+attempt=0
+MAX_ATTEMPTS=5
+while (( attempt < MAX_ATTEMPTS )); do
+  attempt=$((attempt + 1))
+  TIP=$(git rev-parse --verify HEAD 2>/dev/null || true)
+  if [[ -z "$TIP" ]]; then
+    echo "git-stage-files.sh: cannot resolve HEAD" >&2; exit 1
+  fi
+
+  : > "$PRIV_IDX"
+  if ! GIT_INDEX_FILE="$PRIV_IDX" git read-tree "$TIP" 2>/dev/null; then
+    echo "git-stage-files.sh: read-tree failed at $TIP" >&2; exit 1
+  fi
+
+  add_rc=0
+  while IFS= read -r path; do
+    [[ -z "$path" ]] && continue
+    # `git add` records modifications, additions AND deletions, so a manifest
+    # path the executor deleted is staged correctly.
+    if ! GIT_INDEX_FILE="$PRIV_IDX" git add -- "$path" 2>/dev/null; then
+      echo "git-stage-files.sh: git add failed (private index): $path" >&2
+      add_rc=1
     fi
+  done <<< "$STAGE_SET"
+  (( add_rc )) && exit 1
+
+  TREE=$(GIT_INDEX_FILE="$PRIV_IDX" git write-tree 2>/dev/null || true)
+  if [[ -z "$TREE" ]]; then
+    echo "git-stage-files.sh: write-tree failed" >&2; exit 1
   fi
 
-  # Cross-session guard. Drop paths claimed by another active session's
-  # main-scope allowed_files (sibling /apex run owns this file). Also
-  # actively unstage if the sibling pre-staged the path - 'continue' alone
-  # leaves prior `git add` in the index, which would commit the contaminant
-  # under our session. Exception: if the path is ALSO in OUR own main-scope
-  # (intentional proceed-alongside overlap), keep it - sibling claim does
-  # not override our own scope.
-  if [[ -n "$OTHER_SCOPE_FILES" ]] && printf '%s\n' "$OTHER_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-    if [[ -n "$OWN_SCOPE_FILES" ]] && printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-      :  # alongside-shared scope; fall through to staging
-    else
-      if git diff --cached --name-only 2>/dev/null | grep -Fx -- "$path" >/dev/null 2>&1; then
-        git restore --staged -- "$path" 2>/dev/null || git reset HEAD -- "$path" >/dev/null 2>&1 || true
-        echo "git-stage-files.sh: unstaged cross-session contaminant (sibling main-scope): $path" >&2
-      else
-        echo "git-stage-files.sh: skipping cross-session (claimed by sibling main-scope): $path" >&2
-      fi
-      continue
-    fi
+  # No-op guard: identical to the tip tree means nothing of ours actually
+  # changed relative to HEAD (e.g. all executors already-satisfied).
+  TIP_TREE=$(git rev-parse --verify "$TIP^{tree}" 2>/dev/null || true)
+  if [[ -n "$TIP_TREE" && "$TREE" == "$TIP_TREE" ]]; then
+    echo "NOOP"
+    exit 0
   fi
 
-  # Tracked-modified outside-own-scope guard (block-by-default).
-  # Tracked paths bypass the untracked own-scope stowaway guard above. The
-  # earlier WARN-only branch (which staged anyway) recurrently leaked sibling
-  # work and pre-existing user WIP into apex commits whenever the sibling had
-  # already committed + removed its main-scope.json (5+ session cluster:
-  # 5c32d3e2 / 01f141a2 / 63c33bec / 221e71c1 / e0a4b03f; prior cluster ids
-  # 94000169 / 88250748 / 8a1bcc90 / 54b24cf0 / d2564b0f). Skip + stderr
-  # surface, mirroring the untracked-outside-own-scope branch. Reflectors
-  # fad39712 + 17645693 originally surfaced parallel-session contamination
-  # (16+ / 17+ files); the WARN-only fix turned out insufficient.
-  if [[ -n "$OWN_SCOPE_FILES" ]]; then
-    is_untracked=0
-    if [[ -n "$UNTRACKED_SET" ]] && printf '%s\n' "$UNTRACKED_SET" | grep -Fx -- "$path" >/dev/null 2>&1; then
-      is_untracked=1
-    fi
-    if (( ! is_untracked )); then
-      if ! printf '%s\n' "$OWN_SCOPE_FILES" | grep -Fx -- "$path" >/dev/null 2>&1; then
-        if ! is_safety_path "$path"; then
-          echo "git-stage-files.sh: skipping tracked-modified outside own scope: $path" >&2
-          continue
-        fi
-      fi
-    fi
+  NEW_COMMIT=$(GIT_INDEX_FILE="$PRIV_IDX" git commit-tree "$TREE" -p "$TIP" -m "$MESSAGE" 2>/dev/null || true)
+  if [[ -z "$NEW_COMMIT" ]]; then
+    echo "git-stage-files.sh: commit-tree failed" >&2; exit 1
   fi
 
-  if (( DRY_RUN )); then
-    printf '%s\n' "$path"
-    continue
+  # 3-arg update-ref = compare-and-swap. If a sibling moved the ref since our
+  # `git rev-parse HEAD`, this fails atomically and we rebuild from the new
+  # tip (re-reading it picks up the sibling's just-landed files, so we never
+  # revert their work).
+  if git update-ref "$TARGET_REF" "$NEW_COMMIT" "$TIP" 2>/dev/null; then
+    break
   fi
+  NEW_COMMIT=""
+  sleep "0.$(( (RANDOM % 5) + 1 ))"
+done
 
-  if ! git add -- "$path" 2>&1; then
-    echo "git-stage-files.sh: git add failed: $path" >&2
-    rc=1
-  fi
-done <<< "$CHANGE_SET"
+if [[ -z "$NEW_COMMIT" ]]; then
+  echo "git-stage-files.sh: ref CAS exhausted after $MAX_ATTEMPTS attempts ($TARGET_REF moved by concurrent sessions)" >&2
+  exit 1
+fi
 
-exit $rc
+# Refresh the SHARED index for OUR committed paths only. update-ref moved HEAD
+# but left the shared .git/index at the pre-commit snapshot; without this a
+# sibling's `git status`/`git diff --cached` would show our committed paths as
+# phantom staged deletions. Scoped to STAGE_SET so sibling/user shared-index
+# state is untouched. Working tree is never modified by anything above.
+while IFS= read -r path; do
+  [[ -z "$path" ]] && continue
+  git reset -q HEAD -- "$path" 2>/dev/null || true
+done <<< "$STAGE_SET"
+
+echo "COMMIT $NEW_COMMIT"
+
+# ---- Push (plain; never --force, never auto-set-upstream; fail-silent) ----
+if (( ! CAN_PUSH )); then
+  echo "PUSH skipped"
+  exit 0
+fi
+if git push 2>>"$ERR_LOG"; then
+  echo "PUSH ok"
+else
+  echo "ERROR: session=$SESSION push failed (no upstream / non-fast-forward); commit $NEW_COMMIT is local-only" >> "$ERR_LOG"
+  echo "PUSH fail"
+fi
+exit 0

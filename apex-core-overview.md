@@ -103,7 +103,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - read <project-root>/VERSION (vX.Y.Z); missing = silent skip the bump (still commit/push)
     - agent classifies diff -> minor | patch (never major; major is user-set)
     - bump-version.sh increments matching segment + resets patch=0 on minor
-    - git-stage-files.sh (change-set + pre-dirty/dotenv/check-ignore/cross-session filters + per-file add) && git commit -m "<freeform>" && git push (one chain)
+    - git-stage-files.sh owns the whole commit: own-manifest allowlist (allowed_files + files_touched + dirty VERSION) INTERSECT dirty, minus pre-dirty/dotenv/check-ignore guards, built in a private GIT_INDEX_FILE via commit-tree on the live tip + compare-and-swap update-ref (bounded retry) + plain push; fail-closed with no manifest source
 
 13. Self-reflect: reflect-traces.sh + reflector.md (**background** in non-trivial paths)
     - reads traces in-place from .claude-tmp/apex-active/{session}-traces/
