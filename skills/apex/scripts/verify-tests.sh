@@ -251,10 +251,17 @@ PY
     }
 
     if [[ "$RUNNER" == "vitest" ]]; then
+      # vitest@3.2.4 crashes on `run --related` (reflector c4b6d57b: the crash
+      # was logged out-of-scope to git-agent-errors.log and the related run's
+      # true pass/fail was never gated). Route v3+ through the same
+      # deterministic derived-test-files path as vitest-v2 so run_or_fail
+      # stays a meaningful pass/fail gate instead of a swallowed CLI crash.
+      DERIVED=$(derive_test_files)
+      [[ -n "$DERIVED" ]] || skip "no related test files (vitest heuristic)"
       if [[ "$PM" == "pnpm" ]]; then
-        run_or_fail "vitest related (pnpm exec)" "pnpm exec vitest run --related $(echo "$EXISTING" | tr '\n' ' ')"
+        run_or_fail "vitest run (pnpm exec)" "pnpm exec vitest run $(echo "$DERIVED" | tr '\n' ' ')"
       else
-        run_or_fail "vitest related" "$RUN_PREFIX test -- --run --related $(echo "$EXISTING" | tr '\n' ' ')"
+        run_or_fail "vitest run" "$RUN_PREFIX test -- --run $(echo "$DERIVED" | tr '\n' ' ')"
       fi
     elif [[ "$RUNNER" == "vitest-v2" ]]; then
       # vitest 2.x lacks --related (v3+ flag). Expand to test files via the
