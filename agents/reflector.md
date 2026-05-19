@@ -89,7 +89,7 @@ If only ONE of the two inputs is missing, still emit the structured block - hypo
 Canonical contract (when, collision condition, output line format, history-log path): `apex-core.md` step 13. Implementation specifics:
 
 1. `prompt_hash` = sha1 of normalized `original_prompt` from `{session}-hypothesis.json` (recipe: `skills/apex/scripts/discovery-cache.sh:normalize_prompt`).
-2. `scope_count` from `{session}-main-scope.json` `allowed_files.length` (0 if missing); `touched_count` from `git diff --name-only {baseline.head_sha}` line count; `files_touched` from the same output (sorted, comma-joined, truncated at 240 chars).
+2. `scope_count` from `{session}-main-scope.json` `allowed_files.length`; when that artifact is absent fall back to `{session}-discovery-skip.json` `inlined_paths.length`; record `0` only when neither artifact exists - never read it from the sparse manifest, which carries no `allowed_files` key (reflector 2f253b91: the log recorded `scope_count=0` because only the manifest was consulted). `touched_count` from `git diff --name-only {baseline.head_sha}` line count; `files_touched` from the same output (sorted, comma-joined, truncated at 240 chars).
 3. Collision filter: prior entry in `~/.claude/tmp/apex-prompt-history.log` with `hash == prompt_hash` AND `session != {session}` -> emit the `non-convergence:` `improvements:` line. No prior match -> no extra line.
 4. Append this run's record to the log regardless:
    ```
