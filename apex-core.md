@@ -170,6 +170,24 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
       - cap at 3 attempts
       - on cap exhaustion: AskUserQuestion (`abort` | `proceed-with-errors`; dismiss/cancel = abort). On `abort`: clean exit via `session-end-hook.sh {session}` inline. On `proceed-with-errors`: append the verify-errors body to `~/.claude/tmp/git-agent-errors.log` and fall through to step 11 with the build still broken (the user explicitly chose to commit a known-broken state).
 
+10.5. Review (sub-step of #10; runs ONLY after step 10 exits 0)
+    - skill `~/.claude/skills/apex/review.md` (sub-skill mirror of `execute.md`); agent `~/.claude/agents/reviewer.md` (Sonnet, foreground; subagents do NOT inherit working memory - orchestrator propagates `session`, `main_scope_path`, `baseline_head_sha`, `project_root`, `attempt`, optional `prior_findings_path` explicitly at the spawn site).
+    - **Deterministic gate** (inline at orchestrator; NO AI emit). Fires when ALL hold:
+      - `tier == "standard"` (economy always skips; mirrors step 9 polish-skip rule - tiny scope rarely produces CLAUDE.md-rule violations worth the hop)
+      - `len(touched_files INTERSECT allowed_files) >= 3` where `touched_files = (git diff --name-only {baseline.head_sha}; git ls-files --others --exclude-standard) | sort -u`
+      - `hypothesis.complexity_hint == "high"` OR any `hypothesis.goals[]` matches `/\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i`
+    - On gate-skip: orchestrator writes `.claude-tmp/apex-active/{session}-review-skipped.json` with `{reason: "<one-line>"}` for `/apex-improve` audit, then proceeds to step 11. No agent spawn.
+    - On gate-fire: spawn `reviewer.md`. Agent reads `git diff {baseline.head_sha}..HEAD` INTERSECTED with `allowed_files`, scans against CLAUDE.md rules (pattern-following, over-engineering, security-at-boundaries, i18n-completeness, cognitive-complexity > 15) loading BOTH global `$HOME/.claude/CLAUDE.md` AND `<project-root>/CLAUDE.md` when present (project rules override on conflict per CLAUDE.md authority order).
+    - **Hard cap 5 findings** (ranked: security > pattern > over-engineering > i18n > complexity); a synthetic 6th `additional` entry surfaces when more were observed.
+    - Agent returns JSON `{session, attempt, findings: [{kind, file, line, summary, severity?}], action: pass|fix-needed|escalate, notes?}` validated against `review-result.schema.json` (producer-validate via `bash skills/apex/scripts/validate-json.sh review-result.schema.json <path>`).
+    - **Branch on `action`**:
+      - `pass`: proceed to step 11. No trace.
+      - `fix-needed`: dispatch `agents/executor.md` ONCE (always Sonnet, regardless of step 8 tier; cap 1, no retry; spawn-prompt carries findings as fix scope, no `goal` field - this is a fix-loop invocation analogous to step 10's). After the executor returns, re-spawn `reviewer.md` with `attempt=2` + `prior_findings_path = .claude-tmp/apex-active/{session}-traces/review/result-1.json`. Persistent `fix-needed` on attempt 2 forces `action: escalate`.
+      - `escalate`: AskUserQuestion (`accept-and-proceed` | `apply-fix-manually` | `abort`; dismiss/cancel = `accept-and-proceed`). On `abort`: clean exit via `session-end-hook.sh {session}` inline. On `apply-fix-manually`: surface the findings to the user and proceed to step 11 (no auto-fix).
+    - **Hard cap on hops**: max 2 reviews + 1 fix = 3 hops total. Counter at `.claude-tmp/apex-active/{session}-review-attempts.json`.
+    - **Trace path**: `.claude-tmp/apex-active/{session}-traces/review/result-{attempt}.md` written ONLY when `action != pass`. Fix-dispatch trace lives under `.claude-tmp/apex-active/{session}-traces/verify/fix-{attempt-N}.md` (attempt-N offset by step-10's fix-attempts counter) so review-fixes share the verify fix-loop timeline for reflector continuity.
+    - **Reviewer never edits**. Reports only. Fix dispatch is the orchestrator's job, executed by `agents/executor.md`. Pre-existing code in untouched files is out of scope (review-surface = diff INTERSECT allowed_files only).
+
 11. Tail (foreground; Sonnet latest) | Blocked by #10
     - **standard**: `documentation.md` always; `learn.md` ONLY when the **difficulty gate** holds. Both dispatched in parallel when the gate opens; otherwise `documentation.md` runs alone.
     - **economy**: `documentation.md` only (`learn.md` skipped unconditionally - small scope rarely produces novel project-specific patterns worth distilling).

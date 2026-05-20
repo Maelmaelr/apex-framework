@@ -95,6 +95,14 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - if errors: executor.md (always Sonnet for fix-loop, regardless of step 8's tier; cap 3)
     - on cap exhaustion: AskUserQuestion (abort | proceed-with-errors)
 
+10.5 Review (sub-step; runs ONLY on step 10 exit 0): review.md -> reviewer.md (Sonnet, foreground)
+    - deterministic gate: tier==standard AND len(touched INTERSECT allowed_files)>=3 AND (complexity_hint==high OR any goal matches /\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i)
+    - reviewer scans diff INTERSECT allowed_files against CLAUDE.md rules (pattern, over-engineering, security-at-boundaries, i18n, cognitive-complexity); cap 5 findings
+    - returns {action: pass|fix-needed|escalate} validated against review-result.schema.json
+    - fix-needed: executor.md cap-1 (Sonnet) -> re-spawn reviewer with attempt=2; persistent fix-needed -> escalate
+    - escalate: AskUserQuestion (accept-and-proceed | apply-fix-manually | abort)
+    - hard cap: 2 reviews + 1 fix; reviewer never edits files
+
 11. Tail (foreground):
     - standard: parallel(documentation.md, learn.md)
     - economy: documentation.md only (learn skipped)
@@ -152,6 +160,7 @@ Any orchestrator exit bypassing step 14 runs `session-end-hook.sh {session}` inl
 | 8    | skip    | run (sonnet)   | run (main)       |
 | 9    | skip    | skip           | run              |
 | 10   | skip    | run            | run              |
+| 10.5 | skip    | skip           | run (gated)      |
 | 11   | skip    | run (no learn) | run (full)       |
 | 12   | skip    | run            | run              |
 | 13   | skip    | run (background) | run (background) |
