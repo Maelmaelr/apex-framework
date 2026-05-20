@@ -204,6 +204,40 @@ if (( have_jq )) && [[ -f "$BASELINE_PATH" ]]; then
   PRE_DIRTY_FILES=$(jq -r '.pre_dirty[]?' "$BASELINE_PATH" 2>/dev/null | grep -v '^$' | sort -u || true)
 fi
 
+# Sibling-scope exclusion set: union of every CONCURRENT sibling session's
+# allowed_files + pre_dirty list (excluding our own SESSION). Defense-in-depth
+# atop the manifest allowlist: if our own dispatch-summary or allowed_files
+# accidentally absorbed a sibling-owned path (executor false self-report on a
+# sibling-dirty file, reactive scope expansion that grabbed a foreign path,
+# concurrent fdab39c3-shape leakage), the sibling-set guard refuses to stage
+# the path regardless of how it entered our manifest. Recurring 4-session
+# cluster: b512525e (54 staged vs 24 allowed_files), afc641e8 (stitch-item-list
+# from sibling b512525e pre_dirty), a10cfe1e (VERSION cross-bump), 1291f646.
+SIBLING_SCOPED=""
+if (( have_jq )); then
+  for f in "$APEX_ACTIVE"/*-main-scope.json; do
+    [[ -f "$f" ]] || continue
+    bn=$(basename -- "$f")
+    [[ "$bn" == "$SESSION-main-scope.json" ]] && continue
+    SIBLING_SCOPED+=$(jq -r '.allowed_files[]?' "$f" 2>/dev/null | grep -v '^$' || true)
+    SIBLING_SCOPED+=$'\n'
+  done
+  for f in "$APEX_ACTIVE"/*-baseline.json; do
+    [[ -f "$f" ]] || continue
+    bn=$(basename -- "$f")
+    [[ "$bn" == "$SESSION-baseline.json" ]] && continue
+    SIBLING_SCOPED+=$(jq -r '.pre_dirty[]?' "$f" 2>/dev/null | grep -v '^$' || true)
+    SIBLING_SCOPED+=$'\n'
+  done
+  SIBLING_SCOPED=$(printf '%s' "$SIBLING_SCOPED" | grep -v '^$' | sort -u || true)
+  # never let the sibling set veto our OWN explicit allowed_files: a path the
+  # user authored into both manifests (legitimate co-edit on `proceed alongside`)
+  # was already disambiguated at step 8.0 conflict-check.
+  if [[ -n "$SIBLING_SCOPED" && -n "$OWN_SCOPE_FILES" ]]; then
+    SIBLING_SCOPED=$(comm -23 <(printf '%s\n' "$SIBLING_SCOPED") <(printf '%s\n' "$OWN_SCOPE_FILES") || true)
+  fi
+fi
+
 # stage set = MANIFEST INTERSECT DIRTY, minus guards
 STAGE_SET=""
 while IFS= read -r path; do
@@ -218,6 +252,13 @@ while IFS= read -r path; do
       echo "git-stage-files.sh: skipping pre-dirty (user WIP at baseline): $path" >&2
       continue
     fi
+  fi
+
+  # sibling-scope guard: refuse paths owned by a concurrent sibling session
+  # (their allowed_files or pre_dirty), even if our manifest absorbed them.
+  if [[ -n "$SIBLING_SCOPED" ]] && printf '%s\n' "$SIBLING_SCOPED" | grep -Fxq -- "$path"; then
+    echo "git-stage-files.sh: skipping sibling-owned: $path" >&2
+    continue
   fi
 
   # dotenv guard

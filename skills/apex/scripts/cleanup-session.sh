@@ -156,8 +156,18 @@ fi
 # session. The PID guard does not catch this (--post-success bypasses it,
 # and SessionEnd legitimately uses --post-success for its OWN session).
 # Refuse + warn; the truly-dead-orphan path is sweep-stale-runs.sh, which
-# is PID-based and does not pass --caller-cc-session. Skipped silently when
-# the flag is absent or the manifest has no cc_session_id (back-compat).
+# is PID-based and does not pass --caller-cc-session. When --caller-cc-session
+# is absent, the script best-effort auto-resolves the caller's cc_session_id
+# via get-cc-session-id.sh (env-then-jsonl resolver) so every cleanup call is
+# protected by default. Reflector 0208a2d7: concurrent-sibling cleanup-session
+# deleted this session's full artifact set (manifest+hypothesis+traces+
+# dispatch-summary) before step 13/15 consumers ran; the cc_session_id guard
+# closes that race without forcing every callsite to thread --caller-cc-session.
+if [[ -z "$CALLER_CC_SESSION" ]]; then
+  if [[ -x "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh" ]]; then
+    CALLER_CC_SESSION=$(bash "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh" 2>/dev/null || true)
+  fi
+fi
 if [[ -n "$CALLER_CC_SESSION" ]]; then
   MF_CC="$APEX_ACTIVE/${SESSION}.json"
   if [[ -f "$MF_CC" ]]; then

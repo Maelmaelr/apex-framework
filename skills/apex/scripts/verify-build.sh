@@ -29,15 +29,29 @@
 # executor's tool-call gate).
 #
 # Args:
-#   --session <token>  required, 8-char lowercase hex
-#   --with-tests       optional, opt-in test phase after build (delegates to
-#                      verify-tests.sh; project-aware; tests scoped to files
-#                      modified since session baseline; auto-skip when no
-#                      baseline / no test runner / no related tests)
+#   --session <token>   required, 8-char lowercase hex
+#   --with-tests        optional, opt-in test phase after build (delegates to
+#                       verify-tests.sh; project-aware; tests scoped to files
+#                       modified since session baseline; auto-skip when no
+#                       baseline / no test runner / no related tests)
+#   --in-scope-only     optional. When set, a first-fail whose error output
+#                       implicates NO file in {session}-main-scope.json
+#                       allowed_files is treated as foreign / pre-existing
+#                       debt and the script exits 0 (errors file removed).
+#                       Defends step 10 against sibling baseline-dirty lint
+#                       failures that would otherwise abort the in-scope
+#                       verify on first-fail-stop. Recurring 2-session
+#                       request: 6689bc2b (xai_image_helpers complexity 24),
+#                       51b2f54a (canvas_stitch_worker_client cogcomplexity
+#                       17). No main-scope.json / no jq -> falls back to the
+#                       normal (no-flag) behavior so the flag is safe to pass
+#                       universally.
 #
 # Exit codes:
 #   0  clean (all available commands passed) OR no recognized manifest
-#   1  one of the verify commands failed (errors file populated)
+#      OR (--in-scope-only) only foreign / pre-existing debt failed
+#   1  one of the verify commands failed (errors file populated; with
+#      --in-scope-only, only when at least one in-scope file is implicated)
 #   2  invocation error (bad args, malformed session token)
 
 set -uo pipefail
@@ -49,6 +63,7 @@ PROJECT_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 APEX_ACTIVE="$PROJECT_ROOT/.claude-tmp/apex-active"
 SESSION=""
 WITH_TESTS=0
+IN_SCOPE_ONLY=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -58,6 +73,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --with-tests)
       WITH_TESTS=1
+      shift
+      ;;
+    --in-scope-only)
+      IN_SCOPE_ONLY=1
       shift
       ;;
     *)
@@ -119,7 +138,13 @@ run_or_fail() {
         cat "$TMP_OUT"
       } > "$ERRORS_FILE"
       echo "verify-build.sh: $label FAILED (lint warnings; warn-as-error); errors -> $ERRORS_FILE" >&2
-      (( scope_annotate == 1 )) && annotate_foreign_lint
+      if (( scope_annotate == 1 )); then
+        if ! annotate_foreign_lint && (( IN_SCOPE_ONLY == 1 )); then
+          echo "verify-build.sh: $label foreign-only (no in-scope file implicated); --in-scope-only treats as clean" >&2
+          rm -f "$ERRORS_FILE"
+          exit 0
+        fi
+      fi
       exit 1
     fi
   fi
@@ -145,6 +170,8 @@ run_or_fail() {
 # greppable NOTE so the step-10 orchestrator runs the scoped in-scope
 # lint/tsc/build the reflectors had to derive by hand (see apex-core.md
 # step 10). No main-scope.json / no jq -> no-op (behavior unchanged).
+# Returns 0 if at least one in-scope allowed_file is implicated in the error
+# output, 1 if the failure is entirely foreign (used by --in-scope-only).
 annotate_foreign_lint() {
   local scope_json="$APEX_ACTIVE/${SESSION}-main-scope.json"
   command -v jq >/dev/null 2>&1 && [[ -f "$scope_json" ]] || return 0
@@ -153,6 +180,7 @@ annotate_foreign_lint() {
     [[ -n "$f" ]] && grep -Fq -- "$f" "$TMP_OUT" && return 0
   done < <(jq -r '.allowed_files[]?' "$scope_json" 2>/dev/null || true)
   printf '## NOTE: no in-scope allowed_file implicated - lint failure appears foreign/pre-existing; orchestrator should verify in-scope lint/typecheck/build separately before treating the run as blocked (apex-core.md step 10).\n' >> "$ERRORS_FILE"
+  return 1
 }
 
 # Cached space-padded list of npm script names; populated once per run when

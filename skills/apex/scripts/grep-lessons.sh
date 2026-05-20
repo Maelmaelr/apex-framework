@@ -25,10 +25,14 @@
 #   Line numbers are absolute in lessons.md and feed update-hit.sh directly
 #   (range tokens like `522-573` are accepted by update-hit.sh as of reflector
 #   00bac875).
-#   Total output capped at MAX_OUTPUT_LINES (120) with a TRUNCATED footer
+#   Total output capped at MAX_OUTPUT_LINES (180) with a TRUNCATED footer
 #   when the cap fires; orchestrator should re-run with fewer / more specific
-#   terms. Cap tightened from 150 (reflector 27f893e1: ~20% slack reduces
-#   baseline tokens without losing kept[] signal).
+#   terms. Cap walked back up from 120 to 180 because the tightened 120 cap
+#   silently dropped entire subsections of 10-section grep outputs (reflector
+#   cluster 88c1d75f / b512525e / 093978c0: truncated=true returned to caller
+#   with sections past line 120 unseen, no follow-up grep fired). 180 keeps
+#   most of the 27f893e1 token discipline while covering the 8-10 section
+#   common case without truncation.
 #
 # Exit codes:
 #   0 - success OR no matches OR project lessons absent (no-output success)
@@ -74,9 +78,12 @@ done < <(grep -iF "${GREP_ARGS[@]}" "$INDEX_FILE" 2>/dev/null || true)
 [[ ${#MATCHED_SECTIONS[@]} -eq 0 ]] && exit 0
 
 # Output cap: defense-in-depth against exceeding Read tool / context limits.
-# Reduced 150 -> 120 per reflector 27f893e1 cluster (lesson-screener routinely
-# accepted full 150-line baseline; ~20% headroom recovered with no signal loss).
-MAX_OUTPUT_LINES=120
+# Walked back 120 -> 180 per reflector cluster 88c1d75f / b512525e / 093978c0:
+# the 120 cap silently dropped entire subsections of 10-section grep outputs
+# and no follow-up grep fired downstream. 180 keeps the bulk of the 27f893e1
+# token discipline (vs. the historical 150) while restoring coverage on the
+# 8-10 section common case.
+MAX_OUTPUT_LINES=180
 OUTPUT_LINES=0
 TOTAL_LINES=$(wc -l < "$LESSONS_FILE")
 

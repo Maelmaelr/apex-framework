@@ -21,6 +21,7 @@ A single Haiku screener call gates lesson hits before they enter main-orchestrat
 ## Behavior
 
 Per section in the raw input, decide keep / drop with a free-text reason. Bias rules:
+- **Hypothesis-domain pre-rank**: BEFORE iterating sections, extract the domain noun-set from `hypothesis` (`original_prompt` + `hypothesis` + `goals[]` if present, lowercase + drop stopwords + drop <4-char tokens; same recipe as discoverer keyword extraction). Sort the input sections so any section whose `--- LINES ---` block contains 2+ matches against that noun-set is evaluated FIRST. The downstream cap budget then lands on hypothesis-relevant sections rather than the input's grep-order top entries (reflector 093978c0: hypothesis named credits-reconciliation / cancel-orchestration / refund-idempotency / cron-guard but screener walked grep order; b512525e: tangential first-wins-dedup section kept while hypothesis-named sections truncated).
 - Sections whose header / body align with `original_prompt` tokens or `hypothesis.discovered_paths` -> tilt keep.
 - Generic / off-topic sections (e.g., a section about CI flakiness when the prompt is about a UI bug) -> tilt drop.
 - Anti-pattern sections relevant to the prompt domain -> always keep (high signal).
