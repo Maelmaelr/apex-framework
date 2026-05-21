@@ -171,6 +171,42 @@ for name in sorted(os.listdir(active)):
 PY
 )
 
+# Orphan-CC-session downgrade (reflector fd09e42c): a manifest from a prior CC
+# session can register as active because the long-lived claude PID is shared
+# across CC sessions and survives a CC restart - PID-alive + comm-match alone
+# returns persistent overlap false-positives every apex run after a CC restart
+# (the cited cluster: prior-CC manifests 7e0abf6a + b01eecec kept triggering
+# overlap detection every subsequent apex run). When an active token's manifest
+# carries a cc_session_id that differs from ours AND no sibling artifact under
+# its {session}-* prefix has been touched in the last hour (a live apex run
+# continuously writes traces / dispatch artifacts; an orphan is silent), demote
+# from active to stale so the orchestrator's auto-cleanup-stale-and-proceed
+# path applies. Keeps PID liveness as the cheap first filter; the cc_session_id
+# + activity check is the second filter that distinguishes co-running sibling
+# from prior-CC orphan.
+if [[ ${#active_tokens[@]} -gt 0 ]]; then
+  active_tokens_filtered=()
+  for tok in "${active_tokens[@]}"; do
+    manifest_path="$APEX_ACTIVE/$tok.json"
+    manifest_cc="$(python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1])).get('cc_session_id', ''))
+except Exception:
+    pass
+" "$manifest_path" 2>/dev/null || true)"
+    if [[ -n "$manifest_cc" && "$manifest_cc" != "$CC_SESSION_ID" ]]; then
+      newest_sibling="$(find "$APEX_ACTIVE" -name "${tok}-*" -mmin -60 -print -quit 2>/dev/null || true)"
+      if [[ -z "$newest_sibling" ]]; then
+        stale_tokens+=("$tok")
+        continue
+      fi
+    fi
+    active_tokens_filtered+=("$tok")
+  done
+  active_tokens=("${active_tokens_filtered[@]}")
+fi
+
 if [[ ${#active_tokens[@]} -gt 0 || ${#stale_tokens[@]} -gt 0 ]]; then
   if [[ $ALONGSIDE -eq 1 ]]; then
     # Caller explicitly opted in to running alongside detected siblings;
