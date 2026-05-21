@@ -56,7 +56,7 @@ if [[ -z "$RUN" || ! "$RUN" =~ ^[0-9a-f]{8}$ ]]; then
   exit 1
 fi
 
-ACTIVE_DIR=".claude-tmp/apex-merge-active"
+ACTIVE_DIR="$HOME/.claude/.claude-tmp/apex-merge-active"
 [[ -z "$DISCOVERY" ]] && DISCOVERY="$ACTIVE_DIR/$RUN-discovery.json"
 [[ -z "$RESULT" ]]    && RESULT="$ACTIVE_DIR/$RUN-merge-result.json"
 
@@ -97,8 +97,13 @@ PY
 }
 
 # Iterate discovery entries via python (avoid jq dependency assumption parity
-# with apex hot path which already mixes both).
-mapfile -t ENTRIES < <(python3 - "$DISCOVERY" "$SINGLE_BRANCH" <<'PY'
+# with apex hot path which already mixes both). Use a portable while-read loop
+# rather than `mapfile -t` so macOS env-resolved bash 3.2 does not silently
+# abort with `unbound variable` (mapfile is a bash 4+ builtin).
+ENTRIES=()
+while IFS= read -r _line; do
+  ENTRIES+=("$_line")
+done < <(python3 - "$DISCOVERY" "$SINGLE_BRANCH" <<'PY'
 import json, sys
 path, only = sys.argv[1], sys.argv[2]
 with open(path, encoding="utf-8") as f:

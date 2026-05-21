@@ -151,14 +151,13 @@ case "$PROJECT_TYPE" in
         # --env-file=...) as its own; without it the inner command sees a
         # cwd-confused environment (.env.test resolution drifts).
         case "$runner" in
-          vitest)
-            run_or_fail "$pkg_name vitest related" "pnpm --filter $pkg_name exec -- vitest run --related $files_str"
-            ;;
-          vitest-v2)
-            # vitest 2.x does not support --related (v3+ flag). Files have
-            # already been expanded to test-file paths by the python helper;
-            # pass them directly.
-            run_or_fail "$pkg_name vitest run (v2)" "pnpm --filter $pkg_name exec -- vitest run $files_str"
+          vitest|vitest-v2)
+            # vitest 3.2.4 crashes on `run --related` (reflector c4b6d57b +
+            # e1827632); vitest 2.x never supported --related. Both variants
+            # receive test-file paths already expanded by verify-tests-pnpm-
+            # groups.py and run `vitest run <test-files>` directly - parity
+            # with the single-package path below.
+            run_or_fail "$pkg_name vitest run" "pnpm --filter $pkg_name exec -- vitest run $files_str"
             ;;
           jest)
             run_or_fail "$pkg_name jest --findRelatedTests" "pnpm --filter $pkg_name exec -- jest --findRelatedTests $files_str"

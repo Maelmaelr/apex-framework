@@ -23,6 +23,7 @@ Spec: `skills/admin-apex/SKILL.md` task 3 (audit drift) | task 4 (audit gate).
       "id": "<short-slug>",
       "kind": "oversized-files | orphan-refs | missing-refs | stale-spec | schema-mismatch | dead-hook | user-driven",
       "items": [ "<repo-relative path or descriptor>", ... ],
+      "source_block_token": "<run-or-block-id>",
       "summary": "<one-line human description>"
     }, ...
   ],
@@ -42,7 +43,7 @@ Empty `clusters: []` -> "clean" outcome (SKILL task 4 prints report path and exi
 | `stale-spec` | A spec doc names a file under skills/apex/scripts that did exist in the inventory at task 2 but does NOT exist on disk at task 3 read time (i.e., race / mid-flight rename). Flagged as a hard-stop cluster - SKILL gate downgrades to audit-only. |
 | `schema-mismatch` | Inventory `schemas[]` entry where `id != basename(path)`. The `$id == filename` rule (per apex-core.md Conventions / JSON Schema validation) is non-negotiable. |
 | `dead-hook` | Inventory `hooks[]` entry whose `command` references a script path that does not exist on disk. Use `${CLAUDE_PROJECT_DIR}` substitution (resolves to repo root) when checking existence. |
-| `user-driven` | Reads `.claude-tmp/admin-apex-active/{run}-user-concern.md` written by SKILL task 1 (sourced from `$ARGUMENTS` or an AskUserQuestion fallback). If the file is present and non-blank, emits a single cluster with `summary` = first non-blank line and `items` = repo-relative `skills/...` / `agents/...` / `scripts/...` / `apex-core*.md` / `README.md` / `CLAUDE.md` paths grep'd from the body (de-duplicated, in document order). No file = no cluster. This is the user-supplied channel - it sits alongside the structural detectors so user concerns flow through the same gate (keep / apply / defer) instead of needing a manual override of task 4's soft-skip. |
+| `user-driven` | Reads `.claude-tmp/admin-apex-active/{run}-user-concern.md` written by SKILL task 1 (sourced from `$ARGUMENTS` or an AskUserQuestion fallback). If the file is present and non-blank, emits a single cluster with `summary` = first non-blank line and `items` = repo-relative `skills/...` / `agents/...` / `scripts/...` / `apex-core*.md` / `README.md` / `CLAUDE.md` paths grep'd from the body (de-duplicated, in document order). When `items` ends up empty (no path tokens in the concern body), populate `source_block_token = {run}` so the eventual placeholder Edit op carries a back-reference to the originating user concern run - keeps the audit trail traceable for clusters whose rationale is freeform-only (reflector 03d9a286: user-driven cluster with empty items had no source id, leaving rationale untraceable). No file = no cluster. This is the user-supplied channel - it sits alongside the structural detectors so user concerns flow through the same gate (keep / apply / defer) instead of needing a manual override of task 4's soft-skip. |
 
 ## Procedure
 
@@ -54,7 +55,7 @@ Empty `clusters: []` -> "clean" outcome (SKILL task 4 prints report path and exi
 
 2. **Run each detector** in declaration order; collect non-empty clusters into `clusters[]`. Each cluster gets a short slug id (`oversized`, `orphan`, `missing`, `stale`, `schema`, `dead-hook`, `user-driven`) plus a human one-liner.
 
-   For `user-driven`: read `.claude-tmp/admin-apex-active/{run}-user-concern.md`. If the file is missing or blank (only whitespace), skip - emit no cluster. Otherwise: `summary` = first non-blank line (truncated at 240 chars); `items` = `grep -oE '\b(skills/[^\s\)\`]+|agents/[^\s\)\`]+|scripts/[^\s\)\`]+|apex-core[^\s\)\`]*\.md|README\.md|CLAUDE\.md)' <file>` rstripped of `.,;:)`'\"` and de-duplicated in document order. Empty items list is allowed (the concern is informational); evolve.md task 5 will then translate it to a single `edit` op against `skills/admin-apex/SKILL.md` as a placeholder for the planner to redirect.
+   For `user-driven`: read `.claude-tmp/admin-apex-active/{run}-user-concern.md`. If the file is missing or blank (only whitespace), skip - emit no cluster. Otherwise: `summary` = first non-blank line (truncated at 240 chars); `items` = `grep -oE '\b(skills/[^\s\)\`]+|agents/[^\s\)\`]+|scripts/[^\s\)\`]+|apex-core[^\s\)\`]*\.md|README\.md|CLAUDE\.md)' <file>` rstripped of `.,;:)`'\"` and de-duplicated in document order. Empty items list is allowed (the concern is informational); when `items` is empty, populate `source_block_token = {run}` on the cluster so evolve.md task 5's placeholder `edit` op against `skills/admin-apex/SKILL.md` carries a back-reference to the originating user concern run (audit trail completeness, reflector 03d9a286). evolve.md task 5 then translates the cluster to a single `edit` op as a placeholder for the planner to redirect.
 
 3. **Pre-compute spec-doc coverage map ONCE** (single `scripts/grep-apex-refs.sh` sweep over inventory basenames against spec_docs[]); orphan-refs and missing-refs both consume it - never re-grep per detector. Treat zero hits as "missing"; any hit pointing at a path not in inventory as "orphan".
 

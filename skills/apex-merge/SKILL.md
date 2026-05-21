@@ -32,8 +32,11 @@ TaskCreate "7. Self-reflect"
    COMMON=$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)
    [[ "$TOP" == "$COMMON" ]] || { echo "/apex-merge must run from the main worktree" >&2; exit 1; }
    ```
-   Main worktree may be dirty. The `.apex-worktrees/` directory created by `apex create-session` is untracked-by-design; filter that single line before measuring. Anything else is auto-committed inline before proceeding - the user's policy is "just commit, don't ask" (run 03d9a286), so /apex-merge MUST NOT block on AskUserQuestion at precheck. Discard / stash-first are no longer offered; run `git restore` / `git stash` manually before /apex-merge if either is the intent:
+   Main worktree may be dirty. The `.apex-worktrees/` directory created by `apex create-session` is untracked-by-design; filter that single line before measuring. Anything else is auto-committed inline before proceeding - the user's policy is "just commit, don't ask" (run 03d9a286), so /apex-merge MUST NOT block on AskUserQuestion at precheck. Discard / stash-first are no longer offered; run `git restore` / `git stash` manually before /apex-merge if either is the intent. First, unstage any `.apex-worktrees/*` paths that a prior `git add .` accidentally recorded as mode-160000 gitlinks (reflector ba0afe92: gitlink residue forced an extra cleanup commit before the VERSION bump):
    ```bash
+   if [[ -n "$(git ls-files .apex-worktrees 2>/dev/null)" ]]; then
+     git rm --cached -r .apex-worktrees 2>/dev/null || true
+   fi
    DIRTY_COUNT=$(git status --porcelain | grep -v '^?? \.apex-worktrees/$' | wc -l | tr -d ' ')
    if [[ "$DIRTY_COUNT" -gt 0 ]]; then
      git add -A
@@ -68,7 +71,7 @@ TaskCreate "7. Self-reflect"
    - BASE = `jq -r .base_branch "$MANIFEST"` (default `main` if absent).
    - BUMP_HINT = `jq -r '.bump_hint // empty' "$MANIFEST"`.
    - HAS_COMMITS = `git log "$BASE..$B" --oneline` (non-empty -> queue for merge; empty -> queue for cleanup only).
-   Write the discovery summary to `.claude-tmp/apex-merge-active/<run>-discovery.json` (`<run>` minted at Step 1). When `--branch <name>` is set, filter to that single branch. For single-branch clean-merge runs (branches.length==1 AND that branch has no conflicts at Step 4) omit per-entry `worktree_path` + manifest absolute paths from the artifact - the Step 6 summary already names the branch, so those fields are pure overhead. Append a one-line outcome to `<run>-summary.md` (e.g., `step-2: discovered N branches (M needs-merge, K cleanup-only)`).
+   Write the discovery summary to `$HOME/.claude/.claude-tmp/apex-merge-active/<run>-discovery.json` (same canonical location as the manifest at Step 1; merge-loop.sh reads/writes the same path, so reflector + scripts probe ONE location, not two - reflector ba0afe92). Schema per entry: `{branch, base, subject, status}` where `status` is the string `"needs-merge"` (HAS_COMMITS non-empty) OR `"cleanup-only"` (HAS_COMMITS empty); top-level shape is `{branches: [<entry>, ...]}`. `merge-loop.sh` filters on `status == "needs-merge"` (string compare, NOT a `needs_merge` boolean - keep the field name + value in sync with the script or it silently returns zero entries, reflector ba0afe92). When `--branch <name>` is set, filter to that single branch. For single-branch clean-merge runs (branches.length==1 AND that branch has no conflicts at Step 4) omit per-entry `worktree_path` + manifest absolute paths from the artifact - the Step 6 summary already names the branch, so those fields are pure overhead. Append a one-line outcome to `<run>-summary.md` (e.g., `step-2: discovered N branches (M needs-merge, K cleanup-only)`).
 
 3. **Update main** - inline. `git fetch origin`. Refuse non-FF pull:
    ```bash
@@ -83,10 +86,11 @@ TaskCreate "7. Self-reflect"
    - All conflicts resolved -> `git merge --continue`.
    Per-branch result recorded in `<run>-merge-result.json` (`status`: `merged` | `skipped-conflict-abort` | `nothing-to-merge`; `pushed`: `true` | `false` | `not-attempted` - populated by Step 6 after `git push`). Append `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort>)` per branch to `<run>-summary.md` so the Step 7 reflector sees per-branch friction without re-reading the result JSON.
 
-5. **Cleanup merged branches** - inline. For each branch with status `merged` OR `nothing-to-merge`:
+5. **Cleanup merged branches** - inline. For each branch with status `merged` OR `nothing-to-merge`, run in THIS order (git refuses to delete a branch while a worktree still references it, so worktree removal must precede branch deletion - reflector ba0afe92):
+   - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty` flag was passed by caller).
+   - `git worktree prune` (idempotent; mandatory, not optional - drains stale worktree admin entries so the next `git branch -D` succeeds even if a prior aborted remove left a stale registration).
    - `git branch -D "$B"`
    - `git push origin --delete "$B" 2>/dev/null || true` (silent on no remote tracking)
-   - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty` flag was passed by caller).
    Branches with status `skipped-conflict-abort` keep their worktree + branch (try again next /apex-merge). Append `step-5: cleaned Q worktrees, kept P (conflict-abort)` to `<run>-summary.md`.
 
 6. **Final push + summary** - inline.

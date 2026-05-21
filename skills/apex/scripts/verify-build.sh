@@ -206,6 +206,26 @@ has_npm_script() {
 # Returns 0 if the binary is on PATH.
 has_bin() { command -v "$1" >/dev/null 2>&1; }
 
+# --- Docs-only fast-path ---
+# When every file modified since the session baseline is documentation
+# (*.md / *.markdown / *.txt under docs/** or top-level README/CHANGELOG),
+# there is nothing to lint or build. Skips the eslint/clippy/ruff binary
+# lookup + the foreign-error noise that a docs-only diff would otherwise
+# trip (reflector a2181263: docs-only session ran eslint and emitted a
+# foreign-parked error against a TS file outside the session's diff).
+BASELINE_JSON="$APEX_ACTIVE/${SESSION}-baseline.json"
+if [[ -f "$BASELINE_JSON" ]] && command -v jq >/dev/null 2>&1; then
+  BASE_SHA=$(jq -r .head_sha "$BASELINE_JSON" 2>/dev/null || true)
+  if [[ -n "$BASE_SHA" && "$BASE_SHA" != "null" ]]; then
+    CHANGED=$( { git diff --name-only "$BASE_SHA" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+    if [[ -n "$CHANGED" ]] && ! printf '%s\n' "$CHANGED" \
+        | grep -vE '\.(md|markdown|txt|MD)$|^docs/|^CHANGELOG|^README' >/dev/null 2>&1; then
+      echo "verify-build.sh: docs-only diff (no lint/build surface); skipping" >&2
+      exit 0
+    fi
+  fi
+fi
+
 # --- Detect project type (first manifest wins) ---
 
 PROJECT_TYPE=""
