@@ -26,6 +26,11 @@
 #
 # Runs on success completion AND on abort / crash. Idempotent.
 # Exit code: 0 always (treat as pass for SessionEnd hook contract).
+# Stdout: forwards cleanup-session.sh stdout verbatim - the main-worktree path
+#         on every branch where it resolves. Manual-mode callers (apex mid-flow
+#         abort) capture this and `cd` there to leave the (possibly removed)
+#         worktree subdirectory. SessionEnd hook mode ignores stdout (CC session
+#         is ending). See cleanup-session.sh header for the contract.
 
 set -euo pipefail
 
@@ -86,6 +91,13 @@ if d.get('cc_session_id') == sid:
 }
 
 run_cleanup() {
+  # Forwards cleanup-session.sh's stdout (the main-worktree path on every
+  # branch where it resolves) to our own stdout so manual-mode callers (apex
+  # mid-flow abort, e.g., step 1/2/6/8/10 cascade) can capture and `cd` out
+  # of the (possibly removed) worktree. SessionEnd-hook callers (CC harness)
+  # do not consume stdout - the inherited CC session is ending anyway - but
+  # forwarding is harmless and keeps the hook contract symmetric with manual
+  # mode (user-driven 35679220).
   local session="$1"
   local target_active="${2:-}"
   [[ -z "$session" ]] && return 0
