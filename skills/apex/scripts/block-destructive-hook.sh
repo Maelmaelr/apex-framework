@@ -102,9 +102,32 @@ if [[ "$COMMAND" =~ git[[:space:]]+restore[[:space:]] ]] && ! [[ "$COMMAND" =~ -
   exit 0
 fi
 
-# git reset --hard (discards all uncommitted changes)
-if [[ "$COMMAND" =~ git[[:space:]]+reset[[:space:]]+--hard ]]; then
-  deny "GUARDRAIL: git reset --hard discards all uncommitted changes. Ask user via AskUserQuestion before proceeding."
+# git reset with --hard/--keep/--merge (all discard or rewrite working-tree state).
+# The simple `git\s+reset\s+--hard` regex was bypassed by:
+#   - flag-after-ref: `git reset 725fdcfd --hard`
+#   - per-invocation config:  `git -c X=Y reset --hard`
+#   - per-command cwd:        `git -C path reset --hard`
+# Sub-command split + python parser mirrors CHECKOUT_BYPASS / STASH_CREATE: each
+# segment is normalized, `git` prefix flags consumed, then --hard/--keep/--merge
+# is matched anywhere in the remaining argv.
+RESET_DESTRUCTIVE=$(echo "$COMMAND" | python3 -c "
+import re, sys
+cmd = sys.stdin.read().strip()
+subcmds = re.split(r'\s*(?:&&|;|\|\|)\s*', cmd)
+for s in subcmds:
+    s = s.strip()
+    # git, then any number of -c X=Y or -C path prefix options, then reset.
+    m = re.match(r'git\b(?:\s+-[cC]\s+\S+)*\s+reset\b(.*)$', s)
+    if not m:
+        continue
+    args = m.group(1)
+    if re.search(r'(?:^|\s)(--hard|--keep|--merge)(?:\s|=|$)', args):
+        print('yes')
+        sys.exit(0)
+" 2>/dev/null || echo "")
+
+if [[ "$RESET_DESTRUCTIVE" == "yes" ]]; then
+  deny "GUARDRAIL: git reset with --hard/--keep/--merge discards or rewrites uncommitted work. Ask user via AskUserQuestion before proceeding."
   exit 0
 fi
 

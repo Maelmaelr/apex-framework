@@ -14,6 +14,7 @@
 #   - skills/apex/**
 #   - skills/admin-apex/**
 #   - skills/apex-improve/**            (self-improvement engine; closes the reflector loop)
+#   - skills/apex-merge/**              (worktree-mode integration skill; merges apex/<session> branches into recorded base)
 #   - skills/apex-tech-watch/**         (weekly tech-watch fetcher; produces tech-updates.md)
 #   - agents/**
 #   - VERSION
@@ -82,7 +83,7 @@ DOCS="$ACTIVE/${RUN}-docs-changed.txt"
 
 allowed() {
   case "$1" in
-    skills/apex/*|skills/admin-apex/*|skills/apex-improve/*|skills/apex-tech-watch/*|agents/*|VERSION|apex-core.md|apex-core-overview.md)
+    skills/apex/*|skills/admin-apex/*|skills/apex-improve/*|skills/apex-merge/*|skills/apex-tech-watch/*|agents/*|VERSION|apex-core.md|apex-core-overview.md)
       return 0 ;;
     *) return 1 ;;
   esac
