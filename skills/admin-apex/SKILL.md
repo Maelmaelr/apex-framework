@@ -79,7 +79,7 @@ Mid-flight drift: see `evolve.md` lines 53-57 for the `restart | commit-partial 
 
 ## Task 7: Sync docs (+ polish)
 
-Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.txt`. Closing phase invokes `scripts/polish-check.sh` (post-implementation staleness / inconsistency / unused check; see sync-docs.md step 6). Polish drift, when present, is escalated to `~/.claude/tmp/apex-workflow-improvements.md` for the next `/apex-improve` run; it does NOT gate the current admin-apex run.
+Read and follow `skills/admin-apex/sync-docs.md`. Produces `{run}-docs-changed.txt`: include EVERY edited `.md` file under `skills/**` (sub-skill SKILL.md + supporting skill docs), `agents/`, and the top-level spec docs - not just README/apex-core/overview/CLAUDE.md. A doc_only filter that omits `skills/<x>/SKILL.md` is wrong: skill SKILL.md files are doc-like specs that participate in `task-9` staging and `task-10` mirror just like the top-level docs (reflector 8917fc0e: `skills/apex/SKILL.md` edits were absent from docs-changed.txt and traceability for orchestrator-driven status updates broke). Closing phase invokes `scripts/polish-check.sh` (post-implementation staleness / inconsistency / unused check; see sync-docs.md step 6). Polish drift, when present, is escalated to `~/.claude/tmp/apex-workflow-improvements.md` for the next `/apex-improve` run; it does NOT gate the current admin-apex run.
 
 ## Task 8: Test apex scripts
 
@@ -122,7 +122,7 @@ Env knob: `APEX_MIRROR_NO_PUSH=1` skips both pushes (commit-only inspect). Top-l
 
 ## Task 11: Self-reflect
 
-Spawn `agents/reflector.md` (Haiku, foreground) with the admin-apex phase. The agent reads its own contract for input/output shape (table row `admin-apex task 11`); this skill supplies only the run-specific context. The reflector's appended block in `~/.claude/tmp/apex-workflow-improvements.md` is consumed by `/apex-improve`'s next run, which can target `skills/admin-apex/**` in `target_files` - closing the self-improvement loop.
+Spawn `agents/reflector.md` (Sonnet, foreground) with the admin-apex phase. The agent reads its own contract for input/output shape (table row `admin-apex task 11`); this skill supplies only the run-specific context. The reflector's appended block in `~/.claude/tmp/apex-workflow-improvements.md` is consumed by `/apex-improve`'s next run, which can target `skills/admin-apex/**` in `target_files` - closing the self-improvement loop.
 
 Spawn-prompt template (substitute `{run}`):
 

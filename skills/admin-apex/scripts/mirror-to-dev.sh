@@ -81,12 +81,67 @@ ACTIVE="$PRIVATE/.claude-tmp/admin-apex-active"
 DIRTY="$ACTIVE/${RUN}-dirty-paths.txt"
 DOCS="$ACTIVE/${RUN}-docs-changed.txt"
 
+# Static allowlist + dynamic extension: any skills/* or agents/* path created or
+# renamed during THIS run is auto-added so a newly-created public-eligible skill
+# is mirrored on the first run that introduced it. Reflector 5df5c184 saw the
+# manual-allowlist-only model omit skills/apex-merge/ in the run that created
+# it; the auto-extend below reads {run}-applied-ops.json for create/rename ops
+# and unions their target paths into a per-run dynamic allowlist. The denylist
+# (settings.json / CLAUDE.md / skills/apex-eod / apex-fix / apex-git / apex-init
+# / apex-file-health / apex-lessons / README.md / plugins / statusline / tmp)
+# always wins and is checked BEFORE the auto-extend.
+DYNAMIC_ALLOWED=""
+APPLIED="$ACTIVE/${RUN}-applied-ops.json"
+if [[ -s "$APPLIED" ]]; then
+  DYNAMIC_ALLOWED=$(python3 -c "
+import json, sys, os
+try:
+    ops = json.load(open(sys.argv[1], encoding='utf-8'))
+except Exception:
+    sys.exit(0)
+paths = set()
+for op in ops if isinstance(ops, list) else []:
+    if not isinstance(op, dict):
+        continue
+    kind = op.get('kind', '')
+    if kind in ('create', 'rename'):
+        for key in ('target', 'rename_to'):
+            v = op.get(key, '')
+            if isinstance(v, str) and (v.startswith('skills/') or v.startswith('agents/')):
+                paths.add(v)
+print('\n'.join(sorted(paths)))
+" "$APPLIED" 2>/dev/null || true)
+fi
+
+denied_by_static() {
+  # Private orchestration skills + user-specific docs - NEVER mirrored even if
+  # an op creates a file under them.
+  case "$1" in
+    settings.json|CLAUDE.md|skills/README.md) return 0 ;;
+    skills/apex-eod/*|skills/apex-fix/*|skills/apex-git/*|skills/apex-init/*|skills/apex-file-health/*|skills/apex-lessons/*) return 0 ;;
+    plugins/*|statusline/*|tmp/*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
 allowed() {
+  if denied_by_static "$1"; then return 1; fi
   case "$1" in
     skills/apex/*|skills/admin-apex/*|skills/apex-improve/*|skills/apex-merge/*|skills/apex-tech-watch/*|agents/*|VERSION|apex-core.md|apex-core-overview.md)
       return 0 ;;
-    *) return 1 ;;
   esac
+  if [[ -n "$DYNAMIC_ALLOWED" ]]; then
+    while IFS= read -r dyn; do
+      [[ -z "$dyn" ]] && continue
+      # Allow exact match OR the file lives under a dyn-allowed dir.
+      if [[ "$1" == "$dyn" || "$1" == "$dyn"/* ]]; then return 0; fi
+      # Or the new path's dir matches a dyn-allowed file's dir (e.g. dyn = skills/new-skill/SKILL.md
+      # auto-extends to skills/new-skill/*).
+      dyn_dir="${dyn%/*}/"
+      if [[ "$1" == "$dyn_dir"* ]]; then return 0; fi
+    done <<< "$DYNAMIC_ALLOWED"
+  fi
+  return 1
 }
 
 paths=()

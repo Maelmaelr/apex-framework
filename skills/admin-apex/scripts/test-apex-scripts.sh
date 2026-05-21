@@ -369,6 +369,16 @@ session_end_foreign_clean_fixture() {
 }
 run_fixture "apex session-end-hook.sh manual --foreign" 0 session_end_foreign_clean_fixture
 
+# 4k. block-destructive-hook.sh: `-c X=Y` and `-C path` prefix-flags before `reset --hard` must deny (reflectors ac85c725 + 5b218a81: regex hardening landed without coverage).
+block_destructive_reset_prefix_fixture() {
+  local hook="$REPO_ROOT/skills/apex/scripts/block-destructive-hook.sh" out
+  for cmd in 'git -c user.email=t@t reset --hard HEAD~1' 'git -C /tmp reset --hard'; do
+    out=$(printf '{"tool_input":{"command":"%s"}}' "$cmd" | bash "$hook" 2>/dev/null)
+    [[ "$out" == *'"deny"'* ]] || return 1
+  done; return 0
+}
+run_fixture "block-destructive-hook.sh reset prefix-flags" 0 block_destructive_reset_prefix_fixture
+
 # 5. admin-apex-finalize.sh: rejects missing args (exit 1).
 run_fixture "admin-apex-finalize.sh missing-args" 1 \
   bash "$REPO_ROOT/skills/admin-apex/scripts/admin-apex-finalize.sh"

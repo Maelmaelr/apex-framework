@@ -62,4 +62,4 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 - Resolving merges this resolver did not start. The skill's PRECHECK and the conflict-loop guarantee the resolver is only invoked mid-merge on a conflicted file.
 - Editing the file directly. Reports only.
 
-See `skills/apex-merge/SKILL.md` step 4 for the spawn site and the AskUserQuestion that consumes this agent's output.
+See `skills/apex-merge/SKILL.md` step 4 for the spawn site and the AskUserQuestion that consumes this agent's output. (See-also: `/apex-merge` is the orchestrator that spawns this resolver per-conflicted-file; reflector ac85c725 flagged the missing back-reference inside this agent file.)

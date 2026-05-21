@@ -37,6 +37,8 @@ Set `doc_only: true` for any op that does NOT touch `skills/apex*/`, `skills/adm
 
 **Cluster-vs-applied-ops accounting.** A drift cluster routinely mixes code-edit targets (which become evolve ops here) with doc-sync targets (apex-core.md / overview / SKILL.md spec mirrors, applied by sync-docs task 7, NOT evolve ops). `applied-ops.json` therefore covers only the code-edit subset, so a smaller applied-ops count than cluster `items[]` size is expected, not a miss - audits must compare applied-ops against the code-edit items only (reflector bc695e6f: a 4-item cluster with 2 code edits + 3 doc-sync targets read as a phantom 2-vs-4 discrepancy). **Skip-rationale record.** When the plan does NOT translate a cluster `items[]` entry into an op (already-fixed in current code, intentionally deferred, doc-sync-only, etc.), record the skip in `_meta.skipped_items`: an array of `{path, cluster_id, reason}` triples added alongside `_meta.source_clusters`. The reflector reads this list to distinguish skipped-by-design from forgotten and stops flagging the cluster-vs-ops gap (reflector 77eb9f50: a 9-item cluster produced 6 ops + 3 silent drops with no audit trail). The evolve-plan schema's `_meta` is open-shape so the extra key is accepted without a schema bump.
 
+**Plan is the single source of op rationale.** `{run}-evolve-plan.json` is authoritative; `{run}-applied-ops.json` MUST NOT restate the `rationale` / `target` / `kind` fields of an op verbatim - applied entries reference the plan by op-index (`{plan_op_index: N, status: applied, delta_lines: ..., dirty_paths: [...]}`) and any structured outcome fields (drift, errors, retries). Task 6 may patch the plan in place before applying when an auto-fix or scope-overspill discovers an extra op (preserve original `_meta.generated_at`; bump `_meta.amended_at`); task 8 auto-fixes that add ops likewise patch the plan first, NEVER append directly to applied-ops without a plan op. Closes the recurring plan-vs-applied divergence cluster (reflector 5df5c184 10-vs-13 count delta; 5b218a81 verbatim duplication doubling artifact size; 67cd0fff ~117 vs ~25 LOC rationale drift; ac85c725 passively-mirrored files conflated with applied ops).
+
 Validate the plan before write. Admin-apex schemas live at `skills/admin-apex/schemas/` (siblings of apex schemas). Two equivalent invocation paths:
 
 ```
@@ -57,8 +59,8 @@ Strict-mode: admin-apex task 1 calls `scripts/check-deps.sh`, which hard-fails i
 
 Per-op loop. Before each op:
 
-1. **Re-snapshot inventory**: `bash scripts/inventory-apex.sh --out .claude-tmp/admin-apex-active/{run}-inventory-step{N}.json`
-2. **Diff against** `{run}-inventory.json`. If any path the upcoming op depends on (target / merge_sources / split source) has moved/renamed/disappeared since task 2, that is **mid-flight drift**.
+1. **Re-snapshot inventory**: `bash scripts/inventory-apex.sh --out .claude-tmp/admin-apex-active/{run}-inventory-current.json` (constant filename, overwritten between ops; never emit per-step files - the drift check below is the sole consumer, so `step1` / `step2` / `post` snapshots are pure artifact bloat, reflectors ac85c725 / 67cd0fff / 8917fc0e).
+2. **Diff against** `{run}-inventory.json`. If any path the upcoming op depends on (target / merge_sources / split source) has moved/renamed/disappeared since task 2, that is **mid-flight drift**. Skip the post-mirror inventory write entirely - the drift report is the only downstream consumer and it lives in `{run}-drift-report.json`, not in a final inventory snapshot.
 3. On drift -> AskUserQuestion (header: "Mid-flight drift on op {N}"):
    - `restart` - abort current op, re-run audit (SKILL task 3) with current state
    - `commit-partial` - skip remaining ops, jump to task 7 (sync-docs) with applied ops so far
@@ -79,7 +81,7 @@ Use `Glob` and `Grep` (or `scripts/grep-apex-refs.sh`) BEFORE any `Edit` to conf
 | `schema-add` / `schema-remove` | Mirror `create` / `retire`. Producer must enforce `$id == basename`. |
 | `hook-add` / `hook-remove` | Edit `settings.json` only. JSON edit via Python (not Edit tool) to preserve formatting; one-shot inline `python3 -c "..."` snippet. |
 
-After each successful op, append the op (verbatim from the plan) to `.claude-tmp/admin-apex-active/{run}-applied-ops.json` (JSON array, append-and-rewrite). Append every modified/created/deleted path to `{run}-dirty-paths.txt`.
+After each successful op, append an outcome entry to `.claude-tmp/admin-apex-active/{run}-applied-ops.json` (JSON array, append-and-rewrite) of shape `{plan_op_index: N, status: "applied", delta_lines: <int|null>, dirty_paths: [<paths>], notes: <optional>}` - reference the plan op by index, do NOT restate `kind` / `target` / `rationale` (per the plan-is-authoritative rule above). Append every modified/created/deleted path to `{run}-dirty-paths.txt` as a clean repo-relative path with NO trailing ` (deleted)` suffix - `admin-apex-finalize.sh` strips defensively but writers MUST emit clean paths to avoid xargs split (reflector 00d40528).
 
 ## Failure modes
 

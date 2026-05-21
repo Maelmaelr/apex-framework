@@ -180,8 +180,14 @@ print(f'{maj}.{min_}.{pat}')
 fi
 
 # Step 2: Stage evolve dirty paths + docs + private-tracked roots.
+# DIRTY entries may carry a trailing " (deleted)" suffix when retire ops paste
+# from `git status` output; xargs would otherwise split each such line into
+# {path, (deleted)} and silently drop the path from staging (reflector 00d40528
+# stranded the VERSION-bump in a 3-commit split). Strip the suffix first; use
+# `git add -A` so deletions in DIRTY are staged correctly alongside additions
+# and modifications.
 if [[ -s "$DIRTY" ]]; then
-  xargs git add -- < "$DIRTY"
+  sed -E 's/[[:space:]]+\(deleted\)[[:space:]]*$//' "$DIRTY" | xargs git add -A --
 fi
 if [[ -s "$DOCS" ]]; then
   xargs git add -- < "$DOCS"
