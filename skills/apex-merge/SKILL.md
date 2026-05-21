@@ -32,12 +32,14 @@ TaskCreate "7. Self-reflect"
    COMMON=$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)
    [[ "$TOP" == "$COMMON" ]] || { echo "/apex-merge must run from the main worktree" >&2; exit 1; }
    ```
-   Main worktree must be clean. The `.apex-worktrees/` directory created by `apex create-session` is untracked-by-design; filter that single line before the emptiness check so a fresh apex layout is not flagged dirty:
+   Main worktree may be dirty. The `.apex-worktrees/` directory created by `apex create-session` is untracked-by-design; filter that single line before measuring. Anything else is auto-committed inline before proceeding - the user's policy is "just commit, don't ask" (run 03d9a286), so /apex-merge MUST NOT block on AskUserQuestion at precheck. Discard / stash-first are no longer offered; run `git restore` / `git stash` manually before /apex-merge if either is the intent:
    ```bash
-   [[ -z "$(git status --porcelain | grep -v '^?? \.apex-worktrees/$')" ]] \
-     || AskUserQuestion(`commit-first` | `stash-first` | `abort`; dismiss = abort)
+   DIRTY_COUNT=$(git status --porcelain | grep -v '^?? \.apex-worktrees/$' | wc -l | tr -d ' ')
+   if [[ "$DIRTY_COUNT" -gt 0 ]]; then
+     git add -A
+     git commit -m "apex-merge: auto-commit dirty main before integration ($DIRTY_COUNT files)"
+   fi
    ```
-   `git stash` is explicit user opt-in and bypasses the block-destructive hook only for this prompt.
 
    **Mint run + manifest** (arms SessionEnd sweep + the Step 7 reflector):
    ```bash
@@ -48,10 +50,15 @@ TaskCreate "7. Self-reflect"
    printf '{"run":"%s","cc_session_id":"%s","pid":%s,"producer":"apex-merge"}\n' \
      "$RUN" "$CC_ID" "$PID" > "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}.json"
    ```
-   NEVER write `cc_session_id:""` (breaks `skills/admin-apex/scripts/session-end-hook.sh` sweep) and NEVER use bare `$PPID` inside a `bash -c` subshell (captures transient zsh pid). Reuse this `RUN` across all subsequent steps (replaces the inline `openssl rand -hex 4` previously minted at Step 2). Initialize the per-run summary trace consumed by Step 7's reflector:
+   NEVER write `cc_session_id:""` (breaks `skills/admin-apex/scripts/session-end-hook.sh` sweep) and NEVER use bare `$PPID` inside a `bash -c` subshell (captures transient zsh pid). Reuse this `RUN` across all subsequent steps (replaces the inline `openssl rand -hex 4` previously minted at Step 2). Initialize the per-run summary trace consumed by Step 7's reflector (record whether the precheck auto-committed so the reflector sees the friction):
    ```bash
-   printf 'step-1: precheck ok (main worktree clean)\n' \
-     >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md"
+   if [[ "$DIRTY_COUNT" -gt 0 ]]; then
+     printf 'step-1: precheck ok (auto-committed %s dirty files on main)\n' "$DIRTY_COUNT" \
+       >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md"
+   else
+     printf 'step-1: precheck ok (main worktree clean)\n' \
+       >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md"
+   fi
    ```
 
 2. **Discover** - inline. Enumerate `git branch --list 'apex/*'`. For each branch B:
