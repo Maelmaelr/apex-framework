@@ -28,7 +28,7 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 
 - `session` - 8-char hex token.
 - `main_scope_path` - `.claude-tmp/apex-active/{session}-main-scope.json`.
-- `baseline_head_sha` - read from `manifest.effective_baseline_sha` if present else `{session}-baseline.json`.
+- `baseline_head_sha` - read from `{session}-baseline.json` (`head_sha`); worktree isolation makes the baseline fixed at step 2 with no mid-run supersede path.
 - `project_root` - absolute path to repo root.
 - `attempt` - 1 on initial spawn; 2 on post-fix re-review.
 - `prior_findings_path` - present ONLY on attempt 2: `.claude-tmp/apex-active/{session}-traces/review/result-1.json`.

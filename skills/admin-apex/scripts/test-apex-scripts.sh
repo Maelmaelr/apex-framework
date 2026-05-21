@@ -270,14 +270,29 @@ sweep_stale_no_pid_fixture() {
 }
 run_fixture "sweep-stale-runs.sh no-pid-preserved" 0 sweep_stale_no_pid_fixture
 
-# 4e. apex session-end-hook.sh: cc_session_id match -> manifest cleaned.
+# 4e. apex session-end-hook.sh (worktree mode): cc_session_id match -> hook
+#     scans <main>/.apex-worktrees/*/.claude-tmp/apex-active/*.json, locates
+#     the worktree-resident manifest, dispatches cleanup-session.sh, which
+#     removes the worktree (clean tree + no commits past base).
 apex_session_end_clean_fixture() {
-  mkdir -p .claude-tmp/apex-active
-  printf '{"session":"feedface","pid":1,"cc_session_id":"FIXTURE-CC1"}\n' \
-    > .claude-tmp/apex-active/feedface.json
-  printf '{"session_id":"FIXTURE-CC1"}' \
-    | bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh"
-  [[ -e .claude-tmp/apex-active/feedface.json ]] && return 1
+  # Mint a real git sandbox with a worktree-resident apex session.
+  git init -q -b main . >/dev/null
+  printf '.claude-tmp/\n.apex-worktrees/\n' > .gitignore
+  git -c user.email=t@t -c user.name=t add .gitignore >/dev/null
+  git -c user.email=t@t -c user.name=t commit -q -m init >/dev/null
+  local token="feedface" wt=".apex-worktrees/feedface"
+  git worktree add -q -b "apex/$token" "$wt" HEAD >/dev/null
+  mkdir -p "$wt/.claude-tmp/apex-active"
+  printf '{"session":"%s","pid":1,"cc_session_id":"FIXTURE-CC1","worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n' \
+    "$token" "$PWD/$wt" "$token" \
+    > "$wt/.claude-tmp/apex-active/$token.json"
+  CLAUDE_PROJECT_DIR="$PWD" \
+    bash -c 'printf "{\"session_id\":\"FIXTURE-CC1\"}" | bash "$1"' \
+    _ "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh"
+  # Worktree removed -> the entire subtree (incl. manifest) is gone.
+  [[ -d "$wt" ]] && return 1
+  # Branch deleted.
+  git show-ref --verify --quiet "refs/heads/apex/$token" && return 1
   return 0
 }
 run_fixture "apex session-end-hook.sh clean" 0 apex_session_end_clean_fixture
@@ -303,40 +318,53 @@ find_claude_pid_fixture() {
 }
 run_fixture "find-claude-pid.sh smoke" 0 find_claude_pid_fixture
 
-# 4i. cleanup-session.sh: --post-success bypasses the live-PID guard. With
-#     manifest pid=$$ (definitely alive; comm=bash, not claude), the guard
-#     would fail open anyway via comm-mismatch - so this fixture verifies the
-#     happy-path (cleanup proceeds) and shape-check that --post-success is
-#     accepted as a known flag (no "unknown arg" warning). We can't easily
-#     mint a process with comm="claude" inside the harness, so the live-claude
-#     refuse branch is left as a manual / production check.
+# 4i. cleanup-session.sh (worktree mode): clean tree + no commits past
+#     base_branch -> git worktree remove --force + git branch -D. The legacy
+#     PID guard / cc_session_id sibling-wipe guard / --post-success bypass
+#     are retired; --post-success / --caller-cc-session are silently accepted
+#     no-ops for back-compat with old callers.
 cleanup_session_post_success_fixture() {
-  mkdir -p .claude-tmp/apex-active
-  printf '{"session":"deafbead","pid":%d,"cc_session_id":"X"}\n' "$$" \
-    > .claude-tmp/apex-active/deafbead.json
-  # --caller-cc-session matches the fixture manifest's cc_session_id so the
-  # sibling-wipe guard recognizes this as the own-session cleanup path
-  # (rather than auto-resolving to the live CC session that runs the test
-  # harness, which would refuse cleanup as a cross-CC reap).
+  git init -q -b main . >/dev/null
+  printf '.claude-tmp/\n.apex-worktrees/\n' > .gitignore
+  git -c user.email=t@t -c user.name=t add .gitignore >/dev/null
+  git -c user.email=t@t -c user.name=t commit -q -m init >/dev/null
+  local token="deafbead" wt=".apex-worktrees/deafbead"
+  git worktree add -q -b "apex/$token" "$wt" HEAD >/dev/null
+  mkdir -p "$wt/.claude-tmp/apex-active"
+  printf '{"session":"%s","pid":1,"cc_session_id":"X","worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n' \
+    "$token" "$PWD/$wt" "$token" \
+    > "$wt/.claude-tmp/apex-active/$token.json"
   bash "$REPO_ROOT/skills/apex/scripts/cleanup-session.sh" \
-    --session deafbead --post-success --caller-cc-session X
-  [[ -e .claude-tmp/apex-active/deafbead.json ]] && return 1
+    --session "$token" \
+    --apex-active-dir "$PWD/$wt/.claude-tmp/apex-active" \
+    --post-success --caller-cc-session X
+  [[ -d "$wt" ]] && return 1
+  git show-ref --verify --quiet "refs/heads/apex/$token" && return 1
   return 0
 }
-run_fixture "cleanup-session.sh --post-success" 0 cleanup_session_post_success_fixture
+run_fixture "cleanup-session.sh worktree-clean" 0 cleanup_session_post_success_fixture
 
-# 4j. session-end-hook.sh manual mode --foreign: passes through to
-#     cleanup-session.sh WITHOUT --post-success (foreign cleanup-stale path).
-#     Manifest pid=$$ alive but comm=bash != claude -> guard fails open ->
-#     cleanup proceeds. Hypothesis fallback rm runs since manifest was wiped.
+# 4j. session-end-hook.sh manual mode (--foreign no-op): dispatches
+#     cleanup-session.sh against the supplied token. In the worktree-only
+#     model --foreign is meaningless (kept as a parsed no-op for back-compat);
+#     the cleanup decision is purely worktree state.
 session_end_foreign_clean_fixture() {
-  mkdir -p .claude-tmp/apex-active
-  printf '{"session":"deafdead","pid":%d,"cc_session_id":"X"}\n' "$$" \
-    > .claude-tmp/apex-active/deafdead.json
-  printf 'hyp\n' > .claude-tmp/apex-active/deafdead-hypothesis.json
-  bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh" deafdead --foreign
-  [[ -e .claude-tmp/apex-active/deafdead.json ]] && return 1
-  [[ -e .claude-tmp/apex-active/deafdead-hypothesis.json ]] && return 1
+  git init -q -b main . >/dev/null
+  printf '.claude-tmp/\n.apex-worktrees/\n' > .gitignore
+  git -c user.email=t@t -c user.name=t add .gitignore >/dev/null
+  git -c user.email=t@t -c user.name=t commit -q -m init >/dev/null
+  local token="deafdead" wt=".apex-worktrees/deafdead"
+  git worktree add -q -b "apex/$token" "$wt" HEAD >/dev/null
+  mkdir -p "$wt/.claude-tmp/apex-active"
+  printf '{"session":"%s","pid":1,"cc_session_id":"X","worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n' \
+    "$token" "$PWD/$wt" "$token" \
+    > "$wt/.claude-tmp/apex-active/$token.json"
+  printf 'hyp\n' > "$wt/.claude-tmp/apex-active/$token-hypothesis.json"
+  # Manual mode: cd into the worktree so cleanup-session.sh's APEX_ACTIVE
+  # resolution lands on the worktree-resident apex-active dir.
+  ( cd "$wt" && bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh" "$token" --foreign )
+  [[ -d "$wt" ]] && return 1
+  git show-ref --verify --quiet "refs/heads/apex/$token" && return 1
   return 0
 }
 run_fixture "apex session-end-hook.sh manual --foreign" 0 session_end_foreign_clean_fixture

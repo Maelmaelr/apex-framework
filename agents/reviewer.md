@@ -14,7 +14,7 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 
 - `session` - 8-char hex token (for trace path).
 - `main_scope_path` - path to `{session}-main-scope.json` (read for `allowed_files`).
-- `baseline_head_sha` - git rev from `{session}-baseline.json` or `manifest.effective_baseline_sha` (used for `git diff`).
+- `baseline_head_sha` - git rev from `{session}-baseline.json` `head_sha` (used for `git diff`). Worktree isolation makes the baseline fixed at step 2 with no mid-run supersede path.
 - `project_root` - absolute repo root.
 - `attempt` - 1 (initial) or 2 (post-fix re-review). Threaded through to trace path.
 - `prior_findings_path` - optional, present only on `attempt=2`: path to prior `{session}-traces/review/result-1.json` so the agent can confirm prior findings are now resolved.
