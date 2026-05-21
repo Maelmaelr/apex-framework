@@ -31,7 +31,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - exit 10 (overlap):
      - stale-only: auto-cleanup-and-proceed (session-end-hook.sh <stale> --foreign per stale; re-run create-session.sh)
      - active: AskUserQuestion (abort | proceed-alongside | cleanup-stale-and-proceed)
-   - create-session.sh additionally creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. All subsequent steps run inside the worktree (isolated .claude-tmp/apex-active/, isolated index, isolated working tree). Nested-worktree / detached-HEAD / non-git-repo guards refuse to mint. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree).
+   - create-session.sh additionally creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. All subsequent steps run inside the worktree (isolated .claude-tmp/apex-active/, isolated index, isolated working tree). Per-project dep bootstrap (node_modules / .venv / target / etc.) is the project's responsibility, not the framework's; step-10 verify-build is the silent failure point when deps are missing (see apex-core.md Conventions / Worktree dependency bootstrap). Nested-worktree / detached-HEAD / non-git-repo guards refuse to mint. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree).
 
 3. Trivial pre-flight: inline
    - trivial = single-file edit, no new public symbol, named target file, ANY ambiguity = non-trivial
