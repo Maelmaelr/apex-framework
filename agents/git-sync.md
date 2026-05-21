@@ -1,6 +1,6 @@
 ---
 name: git-sync
-description: Step 12 VERSION bump + git sync. Reads diff, classifies minor|patch (never major), drafts commit message, runs bump-version.sh then git-stage-files.sh (which owns the private-index allowlist build + commit-tree + CAS ref update + push). Returns success/error. Subagents do NOT inherit working memory - all inputs come via spawn prompt.
+description: Step 12 VERSION bump + git sync. Reads diff, classifies minor|patch (never major), drafts commit message. In pre-migration mode runs bump-version.sh; in worktree mode (manifest has worktree_path) persists bump_hint into the manifest instead and defers the bump to /apex-merge step 6. Then invokes git-stage-files.sh (which owns the private-index allowlist build + commit-tree + CAS ref update + push). Returns success/error. Subagents do NOT inherit working memory - all inputs come via spawn prompt.
 model: haiku
 ---
 
@@ -26,7 +26,14 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
    - **minor**: new feature, new public symbol / route / component, additive, OR breaking API change (removed/renamed public symbol, contract change, schema migration).
    - **patch**: bug fix, refactor, tweak, internal-only change.
 
-3. **Bump VERSION**: `bash "$HOME/.claude/skills/apex/scripts/bump-version.sh" --kind {minor|patch}` (increments matching segment; resets patch=0 on minor; writes back to VERSION). Absolute `$HOME/.claude` path is mandatory: this subagent's cwd is the project root, not the apex skill dir, so a relative `skills/apex/scripts/...` path fails to resolve - and the agent must NEVER recreate the script in cwd (reflector 4f6c2f9c).
+3. **Bump VERSION or persist hint** (forks on worktree mode):
+   - Read this session's manifest at `.claude-tmp/apex-active/{session}.json` (worktree-mode CWD is the worktree root, so the relative path resolves to the worktree-local manifest; pre-migration CWD is the project root, same relative path resolves to the shared apex-active dir). If `jq` is unavailable, treat as pre-migration (no `worktree_path`).
+   - **Worktree mode** (`worktree_path` is set in manifest): DO NOT call `bump-version.sh`. Instead, persist the classified tier into the manifest for `/apex-merge` step 6 to consume:
+     ```
+     tmpf=$(mktemp) && jq --arg h "{minor|patch}" '. + {bump_hint: $h}' .claude-tmp/apex-active/{session}.json > "$tmpf" && mv "$tmpf" .claude-tmp/apex-active/{session}.json
+     ```
+     VERSION stays untouched in this worktree; `/apex-merge` picks the highest tier across all merged sessions and bumps ONCE on the final integration commit. `bump_kind` returned to the caller is the classified tier (so step 15's "VERSION old -> new" summary can still report intent), but commit_sha will land without a VERSION delta.
+   - **Pre-migration mode** (`worktree_path` absent): `bash "$HOME/.claude/skills/apex/scripts/bump-version.sh" --kind {minor|patch}` (increments matching segment; resets patch=0 on minor; writes back to VERSION). Absolute `$HOME/.claude` path is mandatory: this subagent's cwd is the project root, not the apex skill dir, so a relative `skills/apex/scripts/...` path fails to resolve - and the agent must NEVER recreate the script in cwd (reflector 4f6c2f9c).
 
 4. **Draft commit message**: freeform from WORKING-TREE diff context **scoped to the OWN allowlist** (`git diff {baseline_head_sha}..HEAD --stat -- <allowlist-paths>` plus `git diff HEAD -- <allowlist-paths>` / `git status --porcelain -- <allowlist-paths>`), NOT `git diff --staged` and NOT the unscoped working tree. Compose `<allowlist-paths>` as the union of `.claude-tmp/apex-active/{session}-main-scope.json` `allowed_files` + every executor return's `files_touched` from `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` + the VERSION path; this is the SAME allowlist `git-stage-files.sh` commits from, so the drafted message describes exactly what will land. A sibling-session's pre-existing working-tree dirt outside the allowlist NEVER enters the message (reflector 1c24ae73: drafted message claimed canvas-runner-state + seeder changes that were NOT staged because the unscoped `git diff HEAD` saw a sibling's pre-existing modifications across 8 sibling-owned files; the commit then landed correctly via allowlist-scoped staging but the message hallucinated content). Staging is session-private (a temp `GIT_INDEX_FILE` inside the script), so there is no shared staged set to draft from post-hoc; the message MUST be drafted before invoking the script and passed via `--message`. VERSION bump may be referenced in title.
 
