@@ -30,7 +30,7 @@ A fourth check also fires in the **apex phase only**: **oversized-dispatch flag 
 | admin-apex task 11       | `admin-apex`      | `{run}-summary.md` + JSON artifacts (`{run}-drift-report.json`, `{run}-evolve-plan.json`, `{run}-applied-ops.json`, `{run}-dirty-paths.txt`, `{run}-docs-changed.txt`) - whichever exist | `$HOME/.claude/.claude-tmp/admin-apex-active/{run}.json`            |
 | lessons-analyze Step 10  | `lessons-analyze` | `{run}-summary.md` + per-run `{run}-*.json` / `{run}-*.txt` - whichever exist                              | `.claude-tmp/lessons-analyze-active/{run}.json`                       |
 | lessons-extract Step 7   | `lessons-extract` | `{run}-summary.md` (linear pipeline; no JSON artifacts beyond manifest)                                     | `.claude-tmp/lessons-extract-active/{run}.json`                       |
-| apex-merge step 7        | `apex-merge`      | `{run}-summary.md` + JSON artifacts (`{run}-discovery.json`, `{run}-merge-result.json`) - whichever exist + conflict resolver returns recorded in summary | `$HOME/.claude/.claude-tmp/apex-merge-active/{run}.json`            |
+| apex-merge step 7        | `apex-merge`      | `{run}-summary.md` + JSON artifacts (`{run}-discovery.json`, `{run}-merge-result.json`) + `{run}-orchestrator-proposals.md` when present - whichever exist + conflict resolver returns recorded in summary | `$HOME/.claude/.claude-tmp/apex-merge-active/{run}.json`            |
 
 `{token}` = session token for apex; run token (also 8-hex) for admin-apex / lessons-analyze / lessons-extract / apex-merge.
 
@@ -46,6 +46,8 @@ Apex phase:
 - `git diff --stat {baseline.head_sha}` + `git ls-files --others --exclude-standard` (baseline pinned for the same race-avoidance reason as `learn.md` / `documentation.md`).
 
 Admin-apex / lessons-analyze / lessons-extract / apex-merge: see the invocation table. No heuristic preamble (those phases bypass `reflect-traces.sh`); inputs are JSON artifacts (where present) plus the per-task / per-step summary trace.
+
+**Orchestrator-proposals input (apex-merge only, optional).** When `{run}-orchestrator-proposals.md` exists, parse its `- gap: ...` / `- improvement: ...` lines and roll each into the `gaps:` / `improvements:` lines of the structured output (subject to the per-line cap; route overflow to `improvements:` rather than dropping). This is a free-form sidecar the apex-merge orchestrator writes when it routed around a shipped script or skipped a documented step mid-run; treating it as a second input closes the structural blind-spot where summary-only inputs miss "I skipped X because Y" decisions (reflector cluster 69ea7cd2: merge-loop precheck COMMON-sed + .apex-worktrees-porcelain bugs only surfaced via a human-prompted manual append). Restructure freely (tighten wording, dedupe) but never silently reject; if an entry is genuinely irrelevant, note it once in `fixes-observed:` rather than dropping. Other phases ignore this input.
 
 ## Output
 

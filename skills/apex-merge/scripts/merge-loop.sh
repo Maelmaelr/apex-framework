@@ -66,15 +66,17 @@ if [[ ! -f "$DISCOVERY" ]]; then
 fi
 
 # Precheck: must run from MAIN worktree.
-TOP="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-COMMON="$(git rev-parse --git-common-dir 2>/dev/null | sed 's,/\.git$,,' || true)"
-COMMON="$(cd "$COMMON" 2>/dev/null && pwd -P || echo "$COMMON")"
-TOP_RES="$(cd "$TOP" 2>/dev/null && pwd -P || echo "$TOP")"
-if [[ -z "$TOP_RES" || "$TOP_RES" != "$COMMON" ]]; then
-  echo "merge-loop.sh: must run from main worktree (top=$TOP_RES common=$COMMON)" >&2
+# git-common-dir returns "$worktree_root/.git" for linked worktrees and a bare ".git"
+# for the main worktree, so resolve via "$(...)/.." + pwd -P (handles both shapes).
+TOP_RES="$(cd "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null && pwd -P || true)"
+COMMON_ABS="$(cd "$(git rev-parse --git-common-dir 2>/dev/null)/.." 2>/dev/null && pwd -P || true)"
+if [[ -z "$TOP_RES" || "$TOP_RES" != "$COMMON_ABS" ]]; then
+  echo "merge-loop.sh: must run from main worktree (top=$TOP_RES common=$COMMON_ABS)" >&2
   exit 2
 fi
-if [[ -n "$(git status --porcelain)" ]]; then
+# .apex-worktrees/ is the apex create-session worktree root; untracked-by-design.
+# Filter that single line so the dirty-tree gate does not flag a fresh apex layout.
+if [[ -n "$(git status --porcelain | grep -v '^?? \.apex-worktrees/$')" ]]; then
   echo "merge-loop.sh: main worktree is dirty; resolve before merge" >&2
   exit 2
 fi

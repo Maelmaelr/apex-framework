@@ -44,6 +44,15 @@
 
 set -euo pipefail
 
+# Bash 4+ guard (reflector 4cbf7e86): this script uses heredocs inside process
+# substitutions which fail silently on macOS's default /bin/bash 3.2, leaving
+# the manifest half-written and stranding the session with no clear error.
+# Fail loud at entry rather than mid-heredoc.
+if (( BASH_VERSINFO[0] < 4 )); then
+  echo "create-session.sh: bash >= 4 required (current: $BASH_VERSION). On macOS install via 'brew install bash' and re-run with /opt/homebrew/bin/bash (or /usr/local/bin/bash on Intel)." >&2
+  exit 1
+fi
+
 # CWD=PROJECT_ROOT fail-fast guard (reflector c5ea7797): this script writes the
 # manifest to the RELATIVE path .claude-tmp/apex-active, so it MUST run from the
 # project root. Invoked from the apex skill dir (or any non-root CWD) it would
@@ -258,7 +267,7 @@ fi
 # subsequent /apex steps operate inside the worktree. Integration is owned
 # by /apex-merge (skills/apex-merge/SKILL.md).
 _WT_TOP="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
-_WT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null | sed 's,/\.git$,,' || echo "")"
+_WT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null | sed -e 's,/\.git$,,' -e 's,^\.git$,.,' || echo "")"
 _WT_COMMON_RES="$(cd "$_WT_COMMON" 2>/dev/null && pwd -P || echo "$_WT_COMMON")"
 _WT_TOP_RES="$(cd "$_WT_TOP" 2>/dev/null && pwd -P || echo "$_WT_TOP")"
 if [[ -z "$_WT_TOP_RES" || -z "$_WT_COMMON_RES" ]]; then

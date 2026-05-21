@@ -28,11 +28,16 @@ TaskCreate "7. Self-reflect"
 
 1. **Precheck** - inline. Refuse to run outside the main worktree:
    ```bash
-   TOP=$(git rev-parse --show-toplevel)
-   COMMON=$(git rev-parse --git-common-dir | sed 's,/\.git$,,')
+   TOP=$(cd "$(git rev-parse --show-toplevel)" && pwd -P)
+   COMMON=$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)
    [[ "$TOP" == "$COMMON" ]] || { echo "/apex-merge must run from the main worktree" >&2; exit 1; }
    ```
-   Main worktree must be clean (`git status --porcelain` empty). If dirty: AskUserQuestion (`commit-first` | `stash-first` | `abort`; dismiss = abort). `git stash` is explicit user opt-in and bypasses the block-destructive hook only for this prompt.
+   Main worktree must be clean. The `.apex-worktrees/` directory created by `apex create-session` is untracked-by-design; filter that single line before the emptiness check so a fresh apex layout is not flagged dirty:
+   ```bash
+   [[ -z "$(git status --porcelain | grep -v '^?? \.apex-worktrees/$')" ]] \
+     || AskUserQuestion(`commit-first` | `stash-first` | `abort`; dismiss = abort)
+   ```
+   `git stash` is explicit user opt-in and bypasses the block-destructive hook only for this prompt.
 
    **Mint run + manifest** (arms SessionEnd sweep + the Step 7 reflector):
    ```bash
@@ -56,7 +61,7 @@ TaskCreate "7. Self-reflect"
    - BASE = `jq -r .base_branch "$MANIFEST"` (default `main` if absent).
    - BUMP_HINT = `jq -r '.bump_hint // empty' "$MANIFEST"`.
    - HAS_COMMITS = `git log "$BASE..$B" --oneline` (non-empty -> queue for merge; empty -> queue for cleanup only).
-   Write the discovery summary to `.claude-tmp/apex-merge-active/<run>-discovery.json` (`<run>` minted at Step 1). When `--branch <name>` is set, filter to that single branch. Append a one-line outcome to `<run>-summary.md` (e.g., `step-2: discovered N branches (M needs-merge, K cleanup-only)`).
+   Write the discovery summary to `.claude-tmp/apex-merge-active/<run>-discovery.json` (`<run>` minted at Step 1). When `--branch <name>` is set, filter to that single branch. For single-branch clean-merge runs (branches.length==1 AND that branch has no conflicts at Step 4) omit per-entry `worktree_path` + manifest absolute paths from the artifact - the Step 6 summary already names the branch, so those fields are pure overhead. Append a one-line outcome to `<run>-summary.md` (e.g., `step-2: discovered N branches (M needs-merge, K cleanup-only)`).
 
 3. **Update main** - inline. `git fetch origin`. Refuse non-FF pull:
    ```bash
@@ -69,7 +74,7 @@ TaskCreate "7. Self-reflect"
    - `git merge --no-ff "$B" -m "Merge $B: <subject from git log -1 --pretty=%s $B>"`
    - On conflict: print conflicted paths; for each spawn `agents/apex-merge-resolver.md` (Sonnet, foreground) with the full-context bundle (conflicted body, base-side diff, apex-side diff, apex hypothesis, base-side commit messages, apex commit log). Resolver returns proposed body; orchestrator shows diff via AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = `reject-edit-manually`). On accept: write file, `git add P`. On reject: surface to user for manual edit, wait, then `git add P`. On abort: `git merge --abort`, skip this branch's cleanup, continue with next.
    - All conflicts resolved -> `git merge --continue`.
-   Per-branch result recorded in `<run>-merge-result.json` (status: `merged` | `skipped-conflict-abort` | `nothing-to-merge`). Append `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort>)` per branch to `<run>-summary.md` so the Step 7 reflector sees per-branch friction without re-reading the result JSON.
+   Per-branch result recorded in `<run>-merge-result.json` (`status`: `merged` | `skipped-conflict-abort` | `nothing-to-merge`; `pushed`: `true` | `false` | `not-attempted` - populated by Step 6 after `git push`). Append `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort>)` per branch to `<run>-summary.md` so the Step 7 reflector sees per-branch friction without re-reading the result JSON.
 
 5. **Cleanup merged branches** - inline. For each branch with status `merged` OR `nothing-to-merge`:
    - `git branch -D "$B"`
@@ -78,19 +83,20 @@ TaskCreate "7. Self-reflect"
    Branches with status `skipped-conflict-abort` keep their worktree + branch (try again next /apex-merge). Append `step-5: cleaned Q worktrees, kept P (conflict-abort)` to `<run>-summary.md`.
 
 6. **Final push + summary** - inline.
-   - **Batched VERSION bump**: read each merged session's `bump_hint`. Highest tier wins (`minor` > `patch`); if any session hints `minor`, run `bash skills/apex/scripts/bump-version.sh --kind minor`; else if any hints `patch`, `--kind patch`; else skip. Commit the bump as `apex-merge: VERSION <old> -> <new> (<N> sessions)`.
-   - `git push origin "$(git symbolic-ref --short HEAD)"`.
-   - Print summary: `merged N branches, K conflicts auto-resolved, M conflicts manual, P branches skipped (conflict-abort), cleaned Q worktrees, VERSION <old> -> <new>`.
+   - **Batched VERSION bump**: read each merged session's `bump_hint`. Highest tier wins (`minor` > `patch`); if any session hints `minor`, run `bash skills/apex/scripts/bump-version.sh --kind minor`; else if any hints `patch`, `--kind patch`; else skip. Log the per-hint distribution explicitly (e.g., `bump-resolution: minor=2 patch=1 none=0 -> minor`) so multi-branch runs do not collapse the decision into branch-count. Commit the bump as `apex-merge: VERSION <old> -> <new> (<N> sessions)`.
+   - `git push origin "$(git symbolic-ref --short HEAD)"`. Update `<run>-merge-result.json` per entry: set `pushed: true` on push success, `pushed: false` on push failure, `pushed: "not-attempted"` if push was skipped (e.g., no remote).
+   - Print summary: `merged N branches, K conflicts auto-resolved, M conflicts manual, P branches skipped (conflict-abort), cleaned Q worktrees, VERSION <old> -> <new>, bump-resolution: <distribution>, pushed: <yes|no|skipped>`.
    - Append the same summary line as `step-6: <summary>` to `<run>-summary.md`.
 
-7. **Self-reflect** - spawn `agents/reflector.md` (Sonnet, foreground) with `phase=apex-merge`, then sweep this run's artifacts. Spawn-prompt template (substitute `<run>`):
+7. **Self-reflect** - if the orchestrator routed around any shipped script or skipped any documented step during steps 1-6 (precheck bug workaround, manual conflict-resolution divergence, etc.), write a free-form `<run>-orchestrator-proposals.md` capturing each deviation as a `- gap: ...` / `- improvement: ...` pair BEFORE spawning the reflector. The reflector reads this as a second input alongside summary + result JSON and rolls each entry into its gaps/improvements lines, so mid-run tooling failures are no longer lost to the human-prompt path. Skip the artifact entirely on clean runs. Then spawn `agents/reflector.md` (Sonnet, foreground) with `phase=apex-merge`, then sweep this run's artifacts. Spawn-prompt template (substitute `<run>`):
 
    ```
    You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and
    follow the `apex-merge step 7` row of the invocation table. No reflect-traces.sh
    heuristic block exists for this phase; inputs are this run's summary trace plus
-   `<run>-discovery.json` + `<run>-merge-result.json` (whichever exist) plus
-   `git log -1 --pretty=%B` for the integration commit (when one landed).
+   `<run>-discovery.json` + `<run>-merge-result.json` + (when present)
+   `<run>-orchestrator-proposals.md` plus `git log -1 --pretty=%B` for the
+   integration commit (when one landed).
 
    Token:    <run>             # 8-hex; used in place of {session}
    Phase:    apex-merge
