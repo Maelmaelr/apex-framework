@@ -90,7 +90,13 @@ import json, sys
 path, branch, base, status, detail = sys.argv[1:6]
 with open(path, encoding="utf-8") as f:
     data = json.load(f)
-data.append({"branch": branch, "base": base, "status": status, "detail": detail})
+entry = {"branch": branch, "base": base, "status": status}
+# Omit empty detail per SKILL.md step 4 contract (mirrors Step 2 omit-empty
+# discipline; reflector 32455372: clean-merge entries emitted "detail": ""
+# as downstream parse noise without information value).
+if detail:
+    entry["detail"] = detail
+data.append(entry)
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
 PY

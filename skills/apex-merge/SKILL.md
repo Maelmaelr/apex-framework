@@ -32,14 +32,14 @@ TaskCreate "7. Self-reflect"
    COMMON=$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)
    [[ "$TOP" == "$COMMON" ]] || { echo "/apex-merge must run from the main worktree" >&2; exit 1; }
    ```
-   Main worktree may be dirty. The `.apex-worktrees/` directory created by `apex create-session` is untracked-by-design; filter that single line before measuring. Anything else is auto-committed inline before proceeding - the user's policy is "just commit, don't ask" (run 03d9a286), so /apex-merge MUST NOT block on AskUserQuestion at precheck. Discard / stash-first are no longer offered; run `git restore` / `git stash` manually before /apex-merge if either is the intent. First, unstage any `.apex-worktrees/*` paths that a prior `git add .` accidentally recorded as mode-160000 gitlinks (reflector ba0afe92: gitlink residue forced an extra cleanup commit before the VERSION bump):
+   Main worktree may be dirty. The `.apex-worktrees/` directory created by `apex create-session` is untracked-by-design; filter that single line before measuring. Anything else is auto-committed inline before proceeding - the user's policy is "just commit, don't ask" (run 03d9a286), so /apex-merge MUST NOT block on AskUserQuestion at precheck. Discard / stash-first are no longer offered; run `git restore` / `git stash` manually before /apex-merge if either is the intent. First, unstage any `.apex-worktrees/*` paths that a prior `git add .` accidentally recorded as mode-160000 gitlinks (reflector ba0afe92 + 32455372 recurrence: gitlink residue forced an extra cleanup commit before the VERSION bump). The follow-on `git add -A` MUST carry the `':!.apex-worktrees'` pathspec exclude - without it, `git add -A` re-walks the working tree and re-stages the same gitlinks the `git rm --cached` just unstaged, reverting the unstage in a single commit:
    ```bash
    if [[ -n "$(git ls-files .apex-worktrees 2>/dev/null)" ]]; then
      git rm --cached -r .apex-worktrees 2>/dev/null || true
    fi
    DIRTY_COUNT=$(git status --porcelain | grep -v '^?? \.apex-worktrees/$' | wc -l | tr -d ' ')
    if [[ "$DIRTY_COUNT" -gt 0 ]]; then
-     git add -A
+     git add -A -- ':!.apex-worktrees'
      git commit -m "apex-merge: auto-commit dirty main before integration ($DIRTY_COUNT files)"
    fi
    ```
@@ -84,7 +84,7 @@ TaskCreate "7. Self-reflect"
    - `git merge --no-ff "$B" -m "Merge $B: <subject from git log -1 --pretty=%s $B>"`
    - On conflict: print conflicted paths; for each spawn `agents/apex-merge-resolver.md` (Sonnet, foreground) with the full-context bundle (conflicted body, base-side diff, apex-side diff, apex hypothesis, base-side commit messages, apex commit log). Resolver returns proposed body; orchestrator shows diff via AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = `reject-edit-manually`). On accept: write file, `git add P`. On reject: surface to user for manual edit, wait, then `git add P`. On abort: `git merge --abort`, skip this branch's cleanup, continue with next.
    - All conflicts resolved -> `git merge --continue`.
-   Per-branch result recorded in `<run>-merge-result.json` (`status`: `merged` | `skipped-conflict-abort` | `nothing-to-merge`; `pushed`: `true` | `false` | `not-attempted` - populated by Step 6 after `git push`). Append `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort>)` per branch to `<run>-summary.md` so the Step 7 reflector sees per-branch friction without re-reading the result JSON.
+   Per-branch result recorded in `<run>-merge-result.json` (`status`: `merged` | `skipped-conflict-abort` | `nothing-to-merge`; `pushed`: `true` | `false` | `not-attempted` - populated by Step 6 after `git push`). Mirror the Step 2 omit-empty discipline: when `detail` is an empty string (clean merge with no conflict-path payload), omit the field from the entry rather than emit `"detail": ""` - downstream parse noise without information value, reflector 32455372. Append `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort>)` per branch to `<run>-summary.md` so the Step 7 reflector sees per-branch friction without re-reading the result JSON.
 
 5. **Cleanup merged branches** - inline. For each branch with status `merged` OR `nothing-to-merge`, run in THIS order (git refuses to delete a branch while a worktree still references it, so worktree removal must precede branch deletion - reflector ba0afe92):
    - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty` flag was passed by caller).

@@ -90,6 +90,32 @@ if d.get('cc_session_id') == sid:
   return 1
 }
 
+sweep_orphan_worktrees() {
+  # Sweep .apex-worktrees/<token>/ dirs missing their matching
+  # .claude-tmp/apex-active/<token>.json manifest - the crash-orphan case
+  # (manifest already wiped or never written, but worktree directory survived).
+  # Without this, the next /apex create-session re-encounters the orphan and
+  # blocks on user interaction; with the sweep, SessionEnd cleans it for free
+  # on any subsequent CC session end (reflector b623b673: orphan worktree
+  # 41eac60c required manual cleanup at step-2 create-session.sh).
+  local wt_root="$MAIN_ROOT/.apex-worktrees"
+  [[ -d "$wt_root" ]] || return 0
+  local wt token manifest
+  shopt -s nullglob
+  for wt in "$wt_root"/*/; do
+    token=$(basename "$wt")
+    # 8-hex token guard: refuse to touch non-apex dirs that may have leaked in.
+    [[ "$token" =~ ^[0-9a-f]{8}$ ]] || continue
+    manifest="${wt}.claude-tmp/apex-active/${token}.json"
+    [[ -f "$manifest" ]] && continue
+    # Orphan: cleanup-session.sh would skip without a manifest. Remove inline.
+    git -C "$MAIN_ROOT" worktree remove --force "$wt" 2>/dev/null || true
+    git -C "$MAIN_ROOT" worktree prune 2>/dev/null || true
+    git -C "$MAIN_ROOT" branch -D "apex/$token" 2>/dev/null || true
+  done
+  shopt -u nullglob
+}
+
 run_cleanup() {
   # Forwards cleanup-session.sh's stdout (the main-worktree path on every
   # branch where it resolves) to our own stdout so manual-mode callers (apex
@@ -139,7 +165,9 @@ else
     TARGET_ACTIVE="${MATCHED#*	}"
     run_cleanup "$SESSION" "$TARGET_ACTIVE"
   fi
-  # No matching manifest -> non-/apex CC session; nothing to clean.
+  # Either branch above: also sweep orphan worktrees (manifest-less dirs from
+  # crashed /apex sessions). Cheap + idempotent; runs every SessionEnd.
+  sweep_orphan_worktrees
 fi
 
 exit 0
