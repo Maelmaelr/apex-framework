@@ -25,6 +25,16 @@ For each finding, pick the **smallest** op-class that satisfies it (per the SKIL
 
 A finding with `target_files: []` (e.g., a tech-watch never-run / stale finding) must NOT produce any op - it is report-only; surface in Step 6 only.
 
+## Mirror-pair invariant
+
+The apex framework documents one mandatory mirror pair (per `skills/apex/SKILL.md`):
+
+- `apex-core.md` (full behavioral contract) <-> `apex-core-overview.md` (light-read skeleton + skip matrix)
+
+When any op in the plan targets one half of the pair, auto-pair the same `kind` against the other half and emit it as a second op in the same `ops` array (same `rationale`, suffixed `mirror-pair:`). The LLM may drop the auto-paired op only with an explicit per-op `rationale` prefixed `mirror-drop:` justifying scoped divergence (e.g., `mirror-drop: change is overview-only formatting; contract surface unaffected`); silent drops are not permitted. The pre-fix prototype was run 611349f4 -> follow-up run 2bfc8904 (a one-line addition to apex-core-overview.md that should have shipped atomically with the apex-core.md edit).
+
+Future mirror pairs plug in by extending the list above. Do NOT generalize prematurely to a registry / detector while the list is one entry - one extra bullet is cheaper than a new mechanism (Principle 3).
+
 ## Plan shape
 
 ```
