@@ -2,12 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "manifest.schema.json",
   "title": "{session}.json (session manifest)",
-  "description": "Created by step 2 (create-session.sh). cc_session_id is the Claude Code session id captured at step 2 (entry-flow). pid is the OS process id of the live claude main process (resolved by find-claude-pid.sh - walks up the process tree until comm basename == claude). See apex-core.md Conventions / Session manifest schema.",
+  "description": "Created by step 2 (create-session.sh). cc_session_id is the Claude Code session id captured at step 2 (entry-flow). pid is the OS process id of the live claude main process (resolved by find-claude-pid.sh - walks up the process tree until comm basename == claude). worktree_path / branch / base_branch are populated only when APEX_WORKTREE=1 was set at step 2 (Phase 2 opt-in worktree mode); pre-migration manifests omit them and validate identically. bump_hint is populated by step 12 (worktree-mode only) and consumed by /apex-merge step 6 for the batched VERSION bump. See apex-core.md Conventions / Session manifest schema.",
   "type": "object",
   "required": ["session", "pid", "cc_session_id"],
   "properties": {
     "session": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "8-char lowercase hex" },
     "pid": { "type": "integer", "minimum": 1, "description": "OS pid of the live claude main process owning the session. Resolved at create-session.sh time via find-claude-pid.sh. NEVER set to a transient subshell pid - that would mark the session stale to sibling /apex." },
-    "cc_session_id": { "type": "string", "description": "Claude Code session id captured at step 2; never overwritten" }
+    "cc_session_id": { "type": "string", "description": "Claude Code session id captured at step 2; never overwritten" },
+    "worktree_path": { "type": "string", "description": "Absolute path to this session's git worktree under <repo>/.apex-worktrees/<session>/. Present iff APEX_WORKTREE=1 at step 2. cleanup-session.sh forks the worktree-aware branch when this key is present; /apex-merge enumerates worktrees via this path." },
+    "branch": { "type": "string", "pattern": "^apex/[0-9a-f]{8}$", "description": "apex/<session> branch name created at step 2 in worktree mode. Same lifecycle as worktree_path: present iff APEX_WORKTREE=1." },
+    "base_branch": { "type": "string", "description": "The branch HEAD was on when step 2 created the worktree. /apex-merge step 4 merges apex/<session> back onto this branch (default fall-back: main). Present iff APEX_WORKTREE=1." },
+    "bump_hint": { "type": "string", "enum": ["patch", "minor"], "description": "VERSION bump tier classified by step 12 (worktree mode). /apex-merge step 6 reads every merged session's hint, picks the highest tier across the batch, and runs bump-version.sh ONCE on the final integration commit. Absent in pre-migration sessions (step 12 still bumps directly). minor > patch; major is user-set only." },
+    "effective_baseline_sha": { "type": "string", "description": "Optional. Written ONLY when step 8 detects a mid-run baseline supersede (a sibling /apex committed during this run). When present, every downstream step (9-12 + every subagent spawn) reads this in place of baseline.head_sha. Absent = baseline never superseded." }
   }
 }

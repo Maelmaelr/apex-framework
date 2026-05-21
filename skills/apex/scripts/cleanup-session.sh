@@ -157,13 +157,17 @@ fi
 # and SessionEnd legitimately uses --post-success for its OWN session).
 # Refuse + warn; the truly-dead-orphan path is sweep-stale-runs.sh, which
 # is PID-based and does not pass --caller-cc-session. When --caller-cc-session
-# is absent, the script best-effort auto-resolves the caller's cc_session_id
-# via get-cc-session-id.sh (env-then-jsonl resolver) so every cleanup call is
-# protected by default. Reflector 0208a2d7: concurrent-sibling cleanup-session
-# deleted this session's full artifact set (manifest+hypothesis+traces+
-# dispatch-summary) before step 13/15 consumers ran; the cc_session_id guard
-# closes that race without forcing every callsite to thread --caller-cc-session.
-if [[ -z "$CALLER_CC_SESSION" ]]; then
+# is absent AND --post-success is set, the script best-effort auto-resolves
+# the caller's cc_session_id via get-cc-session-id.sh (env-then-jsonl resolver)
+# so own-session cleanups are protected by default. Foreign paths (step-2
+# cleanup-stale-and-proceed: --foreign without --post-success) intentionally
+# skip the auto-resolve so they CAN clean a prior-CC stale manifest - the
+# live-PID guard remains their protection. Reflector 0208a2d7: concurrent-
+# sibling cleanup-session deleted this session's full artifact set
+# (manifest+hypothesis+traces+dispatch-summary) before step 13/15 consumers
+# ran; the cc_session_id guard closes that race for the own-session path
+# without breaking stale-cleanup.
+if [[ -z "$CALLER_CC_SESSION" && $POST_SUCCESS -eq 1 ]]; then
   if [[ -x "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh" ]]; then
     CALLER_CC_SESSION=$(bash "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh" 2>/dev/null || true)
   fi
@@ -180,6 +184,60 @@ except Exception:
 " "$MF_CC" 2>/dev/null || true)
     if [[ -n "$manifest_cc" && "$manifest_cc" != "$CALLER_CC_SESSION" ]]; then
       warn "refusing cleanup: session $SESSION belongs to cc_session_id=$manifest_cc, caller is cc_session_id=$CALLER_CC_SESSION (sibling-wipe guard); manifest preserved"
+      exit 0
+    fi
+  fi
+fi
+
+# Worktree-aware cleanup (Phase 2 opt-in; spec: tmp/worktree-migration-spec.md
+# "SessionEnd changes"). When the manifest carries a worktree_path key, this
+# session lives in its own git worktree and the entire session subtree
+# (manifest + every {session}-* artifact + traces + baseline + hypothesis)
+# is collocated there. Instead of per-artifact rm-and-glob, the cleanup
+# decision is at branch level:
+#   - clean working tree + no commits past base_branch -> git worktree
+#     remove --force + git branch -D (empty session: no integration work)
+#   - clean + commits past base                        -> keep everything,
+#     warn (awaiting /apex-merge integration)
+#   - dirty working tree                                -> keep everything,
+#     warn (user owns the dirty state)
+# Pre-migration manifests without worktree_path fall through to the legacy
+# rm_target + glob-sweep path below.
+MF_PATH="$APEX_ACTIVE/${SESSION}.json"
+if [[ -f "$MF_PATH" ]]; then
+  WT_FIELDS=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open(sys.argv[1], encoding='utf-8'))
+except Exception:
+    sys.exit(0)
+print(d.get('worktree_path', ''))
+print(d.get('branch', ''))
+print(d.get('base_branch', 'main'))
+" "$MF_PATH" 2>/dev/null || true)
+  WT_PATH=$(echo "$WT_FIELDS" | sed -n '1p')
+  WT_BRANCH=$(echo "$WT_FIELDS" | sed -n '2p')
+  WT_BASE=$(echo "$WT_FIELDS" | sed -n '3p')
+  [[ -z "$WT_BASE" ]] && WT_BASE="main"
+  if [[ -n "$WT_PATH" && -d "$WT_PATH" ]]; then
+    DIRTY="$(cd "$WT_PATH" && git status --porcelain 2>/dev/null || true)"
+    COMMITS_PAST_BASE="$(cd "$WT_PATH" && git log "${WT_BASE}..${WT_BRANCH}" --oneline 2>/dev/null || true)"
+    if [[ -z "$DIRTY" && -z "$COMMITS_PAST_BASE" ]]; then
+      MAIN_TOP="$(cd "$WT_PATH" && git rev-parse --git-common-dir 2>/dev/null | sed 's,/\.git$,,' || echo "")"
+      MAIN_TOP_RES="$(cd "$MAIN_TOP" 2>/dev/null && pwd -P || echo "$MAIN_TOP")"
+      if [[ -n "$MAIN_TOP_RES" ]]; then
+        (cd "$MAIN_TOP_RES" && git worktree remove "$WT_PATH" --force 2>/dev/null) || warn "git worktree remove failed for $WT_PATH"
+        (cd "$MAIN_TOP_RES" && git branch -D "$WT_BRANCH" 2>/dev/null) || warn "git branch -D failed for $WT_BRANCH"
+      else
+        warn "could not resolve main worktree from $WT_PATH; skipping worktree remove"
+      fi
+      exit 0
+    elif [[ -z "$DIRTY" ]]; then
+      n_commits="$(echo "$COMMITS_PAST_BASE" | grep -c . || true)"
+      warn "session $SESSION: branch $WT_BRANCH has $n_commits commits past $WT_BASE in $WT_PATH; run /apex-merge to integrate"
+      exit 0
+    else
+      warn "session $SESSION: worktree $WT_PATH has uncommitted changes; resolve manually"
       exit 0
     fi
   fi

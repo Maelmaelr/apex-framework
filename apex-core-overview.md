@@ -31,6 +31,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - exit 10 (overlap):
      - stale-only: auto-cleanup-and-proceed (session-end-hook.sh <stale> --foreign per stale; re-run create-session.sh)
      - active: AskUserQuestion (abort | proceed-alongside | cleanup-stale-and-proceed)
+   - worktree mode (Phase 2 opt-in, env APEX_WORKTREE=1): also creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. Subsequent steps run inside the worktree. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree).
 
 3. Trivial pre-flight: inline
    - trivial = single-file edit, no new public symbol, named target file, ANY ambiguity = non-trivial

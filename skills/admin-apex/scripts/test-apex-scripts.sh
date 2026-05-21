@@ -314,8 +314,12 @@ cleanup_session_post_success_fixture() {
   mkdir -p .claude-tmp/apex-active
   printf '{"session":"deafbead","pid":%d,"cc_session_id":"X"}\n' "$$" \
     > .claude-tmp/apex-active/deafbead.json
+  # --caller-cc-session matches the fixture manifest's cc_session_id so the
+  # sibling-wipe guard recognizes this as the own-session cleanup path
+  # (rather than auto-resolving to the live CC session that runs the test
+  # harness, which would refuse cleanup as a cross-CC reap).
   bash "$REPO_ROOT/skills/apex/scripts/cleanup-session.sh" \
-    --session deafbead --post-success
+    --session deafbead --post-success --caller-cc-session X
   [[ -e .claude-tmp/apex-active/deafbead.json ]] && return 1
   return 0
 }
