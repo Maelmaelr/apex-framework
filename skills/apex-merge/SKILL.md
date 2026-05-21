@@ -5,9 +5,7 @@ description: Integrate apex/<session> worktree branches back into their recorded
 
 # /apex-merge
 
-Integration phase for the worktree-isolation model (apex Phase 2 opt-in). One apex/<session> branch per /apex session with `APEX_WORKTREE=1`; this skill folds them back. Manual trigger - no auto-fire from SessionEnd.
-
-Pre-migration sessions (no `worktree_path` in manifest, no `apex/*` branch) are invisible to this skill - their git-stage-files.sh path remains the integration mechanism.
+Integration phase for the worktree-isolation model. One `apex/<session>` branch per /apex session; this skill folds them back. Manual trigger - no auto-fire from SessionEnd.
 
 ## Step 0: queue tasks
 
@@ -70,7 +68,6 @@ TaskCreate "6. Final push + summary"
 
 ## Out of scope
 
-- pre-migration sessions (no `worktree_path` manifest) - their commits land via skills/apex/scripts/git-stage-files.sh on every /apex run.
 - merging across non-apex/* branches - the user pre-renames anything they want preserved.
 - multi-base coordination - each branch lands on its own recorded base independently; cross-base conflicts surface as merge conflicts on the second branch.
 

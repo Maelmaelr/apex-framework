@@ -31,7 +31,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - exit 10 (overlap):
      - stale-only: auto-cleanup-and-proceed (session-end-hook.sh <stale> --foreign per stale; re-run create-session.sh)
      - active: AskUserQuestion (abort | proceed-alongside | cleanup-stale-and-proceed)
-   - worktree mode (Phase 2 opt-in, env APEX_WORKTREE=1): also creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. Subsequent steps run inside the worktree. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree).
+   - create-session.sh additionally creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. All subsequent steps run inside the worktree (isolated .claude-tmp/apex-active/, isolated index, isolated working tree). Nested-worktree / detached-HEAD / non-git-repo guards refuse to mint. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree).
 
 3. Trivial pre-flight: inline
    - trivial = single-file edit, no new public symbol, named target file, ANY ambiguity = non-trivial
@@ -108,11 +108,11 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - standard: parallel(documentation.md, learn.md)
     - economy: documentation.md only (learn skipped)
 
-12. VERSION bump + git sync: agents/git-sync.md (Haiku; spawn-prompt carries session + baseline.head_sha + version_path; subagents do NOT inherit working memory)
-    - read <project-root>/VERSION (vX.Y.Z); missing = silent skip the bump (still commit/push)
-    - agent classifies diff -> minor | patch (never major; major is user-set)
-    - bump-version.sh increments matching segment + resets patch=0 on minor
-    - git-stage-files.sh owns the whole commit: own-manifest allowlist (allowed_files + files_touched + dirty VERSION) INTERSECT dirty, minus pre-dirty/dotenv/check-ignore guards, built in a private GIT_INDEX_FILE via commit-tree on the live tip + compare-and-swap update-ref (bounded retry) + plain push; fail-closed with no manifest source or no jq to parse it
+12. VERSION bump + git sync: **inline** (orchestrator owns; no subagent hop)
+    - classify diff -> minor | patch (never major; user-set only)
+    - persist classified tier as `bump_hint` into manifest; /apex-merge step 6 picks the highest tier across the batch and bumps VERSION ONCE on the final integration commit
+    - `git add -A; git commit -m "$MESSAGE"; git push -u origin apex/<session>` (worktree isolation makes shared-working-tree contamination impossible; no allowlist / private-index / CAS-retry needed)
+    - empty diff = noop (valid); push failure non-blocking (/apex-merge retries)
 
 13. Self-reflect: reflect-traces.sh + reflector.md (**background** in non-trivial paths)
     - reads traces in-place from .claude-tmp/apex-active/{session}-traces/
@@ -126,7 +126,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - wipes session dir except {session}-hypothesis.json (do not clean concurrent session files)
 
 15. Inline summary: inline
-    - reads {session}-hypothesis.json + per-goal status map from step 8.3 + step 12 git-sync outcome
+    - reads {session}-hypothesis.json + per-goal status map from step 8.3 + step 12 commit outcome
     - **fully deterministic** (no LLM hop, no git audit pass): emits EXACTLY title (`# apex summary - session {session}`) + Original request + Hypothesis vs reality (one line) + Per-goal status (N/M goals passed; one short line per goal) + Mid-run notes (MANUAL residuals only, else omitted) + Result (git actions only: version, commit, push)
     - removes hypothesis on success
 ```

@@ -219,10 +219,10 @@ done
 if [[ -n "$SESSION_ARG" ]]; then
   # Manual mode: positional arg is the apex {session} token. The caller's
   # APEX_ACTIVE resolution applies (manual callers are own-session mid-abort
-  # paths that already cd'd into the worktree under APEX_WORKTREE=1). No
-  # cc_session_id passed: manual callers either have the live CC (own-session
-  # mid-abort -> cleanup-session auto-resolves under --post-success) or are
-  # the --foreign cleanup-stale path (which intentionally skips the cc guard).
+  # paths that already cd'd into the worktree). No cc_session_id passed:
+  # manual callers either have the live CC (own-session mid-abort ->
+  # cleanup-session auto-resolves under --post-success) or are the --foreign
+  # cleanup-stale path (which intentionally skips the cc guard).
   run_cleanup "$SESSION_ARG" "$FOREIGN" "$APEX_ACTIVE" ""
 else
   # SessionEnd hook mode: derive (session, apex-active-dir, cc_session_id)

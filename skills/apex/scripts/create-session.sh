@@ -152,22 +152,34 @@ while IFS=$'\t' read -r session_tok pid; do
     stale_tokens+=("$session_tok")
   fi
 done < <(python3 - "$APEX_ACTIVE" <<'PY'
-import json, os, re, sys
+import json, os, re, sys, glob
 active = sys.argv[1]
 pat = re.compile(r"^[0-9a-f]{8}\.json$")
-if not os.path.isdir(active):
-    sys.exit(0)
-for name in sorted(os.listdir(active)):
-    if not pat.match(name):
-        continue
-    try:
-        with open(os.path.join(active, name), encoding="utf-8") as f:
-            d = json.load(f)
-    except Exception:
-        continue
-    sess = d.get("session", "")
-    if sess:
-        print(f"{sess}\t{d.get('pid', '')}")
+seen = set()
+def scan(dirpath):
+    if not os.path.isdir(dirpath):
+        return
+    for name in sorted(os.listdir(dirpath)):
+        if not pat.match(name):
+            continue
+        try:
+            with open(os.path.join(dirpath, name), encoding="utf-8") as f:
+                d = json.load(f)
+        except Exception:
+            continue
+        sess = d.get("session", "")
+        if sess and sess not in seen:
+            seen.add(sess)
+            print(f"{sess}\t{d.get('pid', '')}")
+# Scan 1: main worktree's apex-active (catches any pre-Phase-4 leftover; new
+# sessions never write here post-Phase-4 but stale orphans may still exist).
+scan(active)
+# Scan 2: every worktree-resident apex-active dir under .apex-worktrees/*.
+# Post-Phase-4 sessions live here; without this scan the overlap detector is
+# blind to live siblings and the "proceed alongside / cleanup-stale" prompt
+# never fires for worktree-mode collisions.
+for wt_active in sorted(glob.glob(".apex-worktrees/*/.claude-tmp/apex-active")):
+    scan(wt_active)
 PY
 )
 
@@ -239,68 +251,64 @@ if [[ -z "$CLAUDE_PID" || ! "$CLAUDE_PID" =~ ^[0-9]+$ ]]; then
   CLAUDE_PID="$PPID"
 fi
 
-# Phase 2 worktree mode: APEX_WORKTREE=1 opt-in (spec: tmp/worktree-migration-spec.md
-# "/apex step 2 changes"). Creates <main-worktree>/.apex-worktrees/<session> on a
-# fresh apex/<session> branch off current HEAD, cd's into it, persists
-# worktree_path/branch/base_branch in the manifest. The rest of step 2 (manifest
-# write below) and all subsequent /apex steps then operate inside the worktree.
-# APEX_WORKTREE unset/0 -> pre-migration behavior preserved exactly (manifest in
-# main worktree, no branch creation).
-WORKTREE_PATH=""
-BRANCH=""
-BASE_BRANCH=""
-if [[ "${APEX_WORKTREE:-0}" == "1" ]]; then
-  _WT_TOP="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
-  _WT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null | sed 's,/\.git$,,' || echo "")"
-  _WT_COMMON_RES="$(cd "$_WT_COMMON" 2>/dev/null && pwd -P || echo "$_WT_COMMON")"
-  _WT_TOP_RES="$(cd "$_WT_TOP" 2>/dev/null && pwd -P || echo "$_WT_TOP")"
-  if [[ -z "$_WT_TOP_RES" || -z "$_WT_COMMON_RES" ]]; then
-    echo "create-session.sh: APEX_WORKTREE=1 requires a git repo; refusing to mint worktree" >&2
-    exit 1
-  fi
-  # Nested-worktree guard: refuse if cwd is already a non-main (secondary)
-  # worktree (e.g., another apex/<session> worktree). The user must cd to the
-  # main worktree first; nesting apex worktrees produces unowned branch graphs.
-  if [[ "$_WT_TOP_RES" != "$_WT_COMMON_RES" ]]; then
-    echo "create-session.sh: APEX_WORKTREE=1 refuses to start from a secondary worktree (cwd=$_WT_TOP_RES, main=$_WT_COMMON_RES); cd to the main worktree and retry" >&2
-    exit 1
-  fi
-  BASE_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
-  if [[ -z "$BASE_BRANCH" ]]; then
-    echo "create-session.sh: APEX_WORKTREE=1 requires HEAD on a branch (detached HEAD detected); checkout a branch first" >&2
-    exit 1
-  fi
-  WORKTREE_PATH="$_WT_COMMON_RES/.apex-worktrees/$SESSION"
-  BRANCH="apex/$SESSION"
-  if [[ -e "$WORKTREE_PATH" ]]; then
-    echo "create-session.sh: worktree dir already exists at $WORKTREE_PATH; run 'git worktree remove $WORKTREE_PATH --force' first" >&2
-    exit 1
-  fi
-  if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
-    echo "create-session.sh: branch $BRANCH already exists; run 'git branch -D $BRANCH' first" >&2
-    exit 1
-  fi
-  if ! git worktree add -b "$BRANCH" "$WORKTREE_PATH" HEAD >/dev/null 2>&1; then
-    echo "create-session.sh: git worktree add failed for $WORKTREE_PATH on branch $BRANCH" >&2
-    exit 1
-  fi
-  cd "$WORKTREE_PATH"
-  APEX_ACTIVE=".claude-tmp/apex-active"
-  mkdir -p "$APEX_ACTIVE"
-  MANIFEST="$APEX_ACTIVE/$SESSION.json"
+# Worktree creation (unconditional post-Phase-4): creates
+# <main-worktree>/.apex-worktrees/<session> on a fresh apex/<session> branch
+# off current HEAD, cd's into it, persists worktree_path/branch/base_branch
+# in the manifest. The rest of step 2 (manifest write below) and all
+# subsequent /apex steps operate inside the worktree. Integration is owned
+# by /apex-merge (skills/apex-merge/SKILL.md).
+_WT_TOP="$(git rev-parse --show-toplevel 2>/dev/null || echo "")"
+_WT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null | sed 's,/\.git$,,' || echo "")"
+_WT_COMMON_RES="$(cd "$_WT_COMMON" 2>/dev/null && pwd -P || echo "$_WT_COMMON")"
+_WT_TOP_RES="$(cd "$_WT_TOP" 2>/dev/null && pwd -P || echo "$_WT_TOP")"
+if [[ -z "$_WT_TOP_RES" || -z "$_WT_COMMON_RES" ]]; then
+  echo "create-session.sh: requires a git repo; refusing to mint worktree" >&2
+  exit 1
 fi
+# Nested-worktree guard: refuse if cwd is already a non-main (secondary)
+# worktree (e.g., another apex/<session> worktree). The user must cd to the
+# main worktree first; nesting apex worktrees produces unowned branch graphs.
+if [[ "$_WT_TOP_RES" != "$_WT_COMMON_RES" ]]; then
+  echo "create-session.sh: refuses to start from a secondary worktree (cwd=$_WT_TOP_RES, main=$_WT_COMMON_RES); cd to the main worktree and retry" >&2
+  exit 1
+fi
+BASE_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
+if [[ -z "$BASE_BRANCH" ]]; then
+  echo "create-session.sh: requires HEAD on a branch (detached HEAD detected); checkout a branch first" >&2
+  exit 1
+fi
+WORKTREE_PATH="$_WT_COMMON_RES/.apex-worktrees/$SESSION"
+BRANCH="apex/$SESSION"
+if [[ -e "$WORKTREE_PATH" ]]; then
+  echo "create-session.sh: worktree dir already exists at $WORKTREE_PATH; run 'git worktree remove $WORKTREE_PATH --force' first" >&2
+  exit 1
+fi
+if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+  echo "create-session.sh: branch $BRANCH already exists; run 'git branch -D $BRANCH' first" >&2
+  exit 1
+fi
+if ! git worktree add -b "$BRANCH" "$WORKTREE_PATH" HEAD >/dev/null 2>&1; then
+  echo "create-session.sh: git worktree add failed for $WORKTREE_PATH on branch $BRANCH" >&2
+  exit 1
+fi
+cd "$WORKTREE_PATH"
+APEX_ACTIVE=".claude-tmp/apex-active"
+mkdir -p "$APEX_ACTIVE"
+MANIFEST="$APEX_ACTIVE/$SESSION.json"
 
-# Manifest write: 3 required fields always; the 3 worktree fields are populated
-# only when APEX_WORKTREE=1 above. Python (not printf) so values pass through
-# json.dumps and survive any future quoting weirdness in BASE_BRANCH.
+# Manifest write: 6 required fields. Python (not printf) so values pass
+# through json.dumps and survive any future quoting weirdness in BASE_BRANCH.
 python3 - "$MANIFEST" "$SESSION" "$CLAUDE_PID" "$CC_SESSION_ID" "$WORKTREE_PATH" "$BRANCH" "$BASE_BRANCH" <<'PY'
 import json, sys
 path, sess, pid, cc, wt, br, base = sys.argv[1:8]
-m = {"session": sess, "pid": int(pid), "cc_session_id": cc}
-if wt:
-    m["worktree_path"] = wt
-    m["branch"] = br
-    m["base_branch"] = base
+m = {
+    "session": sess,
+    "pid": int(pid),
+    "cc_session_id": cc,
+    "worktree_path": wt,
+    "branch": br,
+    "base_branch": base,
+}
 with open(path, "w", encoding="utf-8") as f:
     f.write(json.dumps(m) + "\n")
 PY
