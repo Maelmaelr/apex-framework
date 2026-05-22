@@ -15,6 +15,7 @@ TaskCreate "2. Discover apex/* branches"
 TaskCreate "3. Update main"
 TaskCreate "4. Merge loop"
 TaskCreate "4.5 Replay worktree side-effects"
+TaskCreate "4.6 Lint/build cleanup post-merge"
 TaskCreate "5. Cleanup merged branches"
 TaskCreate "6. Final push + summary"
 TaskCreate "7. Self-reflect"
@@ -92,6 +93,14 @@ TaskCreate "7. Self-reflect"
    bash skills/apex-merge/scripts/replay-side-effects.sh "$RUN"
    ```
    Script reads every merged branch's worktree side-effects log, dedupes by verbatim cmd (whitespace-normalized), writes `<run>-side-effects-dedup.json`, and prints the unique cmd list to stdout. Empty list = silent skip (no AskUserQuestion, append `step-4.5: no side-effects to replay` to `<run>-summary.md`). Non-empty list -> AskUserQuestion (header: "Replay N side-effects?"; options: `run-all` | `skip-all`; dismiss = `skip-all`). The prompt MUST include the full deduped command list verbatim so the user sees what will run. On `run-all`: invoke each command sequentially from the main worktree root (`cd "$MAIN_TOP"`), one Bash call per command, with first-failure-stop; record outcome (`{cmd, exit_code, stderr_tail}`) into `<run>-side-effects-replay.json`. A non-zero exit surfaces the failing command to the user inline and halts the replay (do NOT continue; the user resolves manually then re-runs `/apex-merge`). On `skip-all`: write an empty replay file with `{skipped: true}`. Append `step-4.5: replayed K/N (skipped=M)` to `<run>-summary.md` (where N=unique deduped, K=ran successfully, M=skipped). Per the destructive-operation rule in CLAUDE.md, the AskUserQuestion is mandatory - never auto-run.
+
+4.6. **Lint/build cleanup post-merge** - inline, runs ONLY when step 4 resolved 1+ conflicts. Merge resolution stitches code from two branches at the file level, which can leave unused imports / unreferenced symbols / lint regressions that neither base nor apex side carried alone; run `apex-fix` once on the main worktree to surface and auto-fix them. Clean-merge-only runs (zero resolver hops) skip - the union of two clean diffs cannot introduce a lint regression neither side had. Run from the main worktree (precheck Step 1 already enforces cwd; do NOT cd into any session worktree - those are about to be removed in Step 5):
+   ```bash
+   RESOLVED_CONFLICTS=$(jq -r '.[] | select(.status=="merged") | (.detail // "")' \
+     "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-merge-result.json" 2>/dev/null \
+     | grep -c 'resolver=' || true)
+   ```
+   `RESOLVED_CONFLICTS == 0` -> silent skip; append `step-4.6: skipped (no conflicts to fix)` to `<run>-summary.md`. `RESOLVED_CONFLICTS >= 1` -> invoke the `apex-fix` skill via the Skill tool (`Skill(skill="apex-fix")`). apex-fix mints its own synthetic session, runs `verify-build.sh`, dispatches executor fix-attempts capped at 3, and either exits clean or surfaces remaining errors via stderr dump. Clean exit -> append `step-4.6: apex-fix clean (resolved_conflicts=N)`. Non-zero exit (cap-3 reached or unresolvable) -> AskUserQuestion (header: "apex-fix failed post-merge"; options: `proceed-anyway` | `abort-merge-run`; dismiss = `proceed-anyway`). `abort-merge-run` halts before Step 5 (worktrees + branches preserved for user investigation; the SessionEnd hook does NOT sweep `<run>` artifacts on this branch so the discovery / merge-result / summary trail survives). `proceed-anyway` continues to Step 5 with the lint debt visible in `<run>-summary.md` (`step-4.6: apex-fix fail (resolved_conflicts=N, cap-reached)`).
 
 5. **Cleanup merged branches** - inline. For each branch with status `merged` OR `nothing-to-merge`, run in THIS order (git refuses to delete a branch while a worktree still references it, so worktree removal must precede branch deletion - reflector ba0afe92):
    - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty` flag was passed by caller).
