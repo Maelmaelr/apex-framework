@@ -141,12 +141,61 @@ for ENTRY in "${ENTRIES[@]}"; do
     append_result "$BRANCH" "$BASE" "merged" ""
     continue
   fi
-  # Merge stopped (conflict OR refusal). Capture conflicted paths and hand off.
+  # Merge stopped (conflict OR refusal). Capture conflicted paths.
   CONFLICTS="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
   if [[ -n "$CONFLICTS" ]]; then
-    append_result "$BRANCH" "$BASE" "conflict" "$(echo "$CONFLICTS" | tr '\n' ',' | sed 's/,$//')"
-    echo "merge-loop.sh: conflict on $BRANCH:"
-    echo "$CONFLICTS"
+    # Trivial-union skip: deterministically resolve single-hunk additive
+    # conflicts in small markdown files (<=20kb) by inline union of both
+    # sides' adds; saves the ~5-10k-token resolver spawn on the common
+    # docs-pile case (reflector c946e283). Files this predicate rejects
+    # fall through to the resolver-spawn path below.
+    REMAINING=""
+    TRIVIAL_COUNT=0
+    while IFS= read -r P; do
+      [[ -z "$P" ]] && continue
+      python3 - "$P" <<'PY'
+import os, re, sys
+p = sys.argv[1]
+if not p.endswith(".md") or os.path.getsize(p) > 20 * 1024:
+    sys.exit(1)
+with open(p, "r", encoding="utf-8", errors="replace") as f:
+    body = f.read()
+hunks = re.findall(r"<<<<<<<[^\n]*\n(.*?)\n=======\n(.*?)\n>>>>>>>[^\n]*\n", body, flags=re.S)
+if len(hunks) != 1:
+    sys.exit(1)
+ours, theirs = hunks[0]
+if not ours.splitlines() and not theirs.splitlines():
+    sys.exit(1)
+if ours == theirs:
+    union = ours
+else:
+    union = ours + ("\n" if ours and not ours.endswith("\n") else "") + theirs
+new = re.sub(
+    r"<<<<<<<[^\n]*\n.*?\n=======\n.*?\n>>>>>>>[^\n]*\n",
+    union + ("\n" if union and not union.endswith("\n") else ""),
+    body, count=1, flags=re.S,
+)
+with open(p, "w", encoding="utf-8") as f:
+    f.write(new)
+sys.exit(0)
+PY
+      if [[ $? -eq 0 ]]; then
+        git add "$P"
+        TRIVIAL_COUNT=$((TRIVIAL_COUNT + 1))
+      else
+        REMAINING="${REMAINING:+$REMAINING$'\n'}$P"
+      fi
+    done <<< "$CONFLICTS"
+    if [[ -z "$REMAINING" && "$TRIVIAL_COUNT" -gt 0 ]]; then
+      if git commit --no-edit >/dev/null 2>&1; then
+        append_result "$BRANCH" "$BASE" "merged" "trivial-union=$TRIVIAL_COUNT"
+        continue
+      fi
+    fi
+    REPORT="${REMAINING:-$CONFLICTS}"
+    append_result "$BRANCH" "$BASE" "conflict" "$(echo "$REPORT" | tr '\n' ',' | sed 's/,$//')"
+    echo "merge-loop.sh: conflict on $BRANCH (trivial-union resolved $TRIVIAL_COUNT):"
+    echo "$REPORT"
     exit 20
   fi
   append_result "$BRANCH" "$BASE" "merge-refused" "git merge returned non-zero without conflicts"

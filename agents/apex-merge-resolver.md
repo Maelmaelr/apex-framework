@@ -35,15 +35,15 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
    - **functional conflict** - the two sides changed the same logic in incompatible ways. Use `apex_hypothesis` + `base_commit_messages` to pick the surviving behavior; when both intents are legitimate and orthogonal, attempt a synthesis (the apex change applied on top of the base change in source order). When the synthesis is non-obvious, return `status: "needs-human"` with a one-line rationale; do NOT guess.
    - **delete-vs-modify** - one side deleted a region the other modified. Defer to whichever side's intent the corresponding diff body / commit messages explicitly supports; ambiguous -> `needs-human`.
 
-3. Apply the per-hunk decisions into a clean file body (markers removed; surrounding context preserved verbatim). Validate that the proposed body parses for the file extension when a cheap parser exists in the spawn environment (`python3 -m py_compile` for `.py`; `node --check` for `.js` / `.mjs`; `tsc --noEmit` is too expensive - skip). Parse failure -> `status: "needs-human"`, do NOT return a broken body.
+3. Compute the per-hunk replacement block (the lines that should replace each `<<<<<<<` ... `>>>>>>>` block, markers removed). Return them via `per_hunk_decisions[].resolved_block`; the orchestrator splices each block into the conflicted file at the corresponding marker positions. Leave `proposed_body: null` by default - it is opt-in fallback for multi-hunk synthesis that re-arranges lines across hunks and cannot be expressed per-hunk. When `proposed_body` IS set, validate it parses for the file extension when a cheap parser exists in the spawn environment (`python3 -m py_compile` for `.py`; `node --check` for `.js` / `.mjs`; `tsc --noEmit` is too expensive - skip). Parse failure -> `status: "needs-human"`, do NOT return a broken body.
 
 4. Return JSON exactly:
    ```
    {
      "status": "resolved" | "needs-human" | "malformed",
-     "proposed_body": "<full file body OR null>",
+     "proposed_body": "<full file body when multi-hunk synthesis needed OR null>",
      "per_hunk_decisions": [
-       {"hunk_index": 0, "kind": "disjoint-additions|same-intent|functional-conflict|delete-vs-modify", "outcome": "merged|apex-wins|base-wins|synthesis|needs-human", "rationale": "<one line>"}
+       {"hunk_index": 0, "kind": "disjoint-additions|same-intent|functional-conflict|delete-vs-modify", "outcome": "merged|apex-wins|base-wins|synthesis|needs-human", "rationale": "<one line>", "resolved_block": "<replacement text for this hunk, markers removed>"}
      ],
      "notes": "<one short line OR empty>"
    }
@@ -51,7 +51,8 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 
 ## Behaviors
 
-- **Never edit any file**. Output is data only - the orchestrator at /apex-merge step 4 writes the proposed body and runs `git add` after AskUserQuestion approval.
+- **Never edit any file**. Output is data only - the orchestrator at /apex-merge step 4 splices the per-hunk `resolved_block` entries (or writes `proposed_body` when set) and runs `git add` after AskUserQuestion approval.
+- **Per-hunk return default (token budget)**. Single-hunk files: always leave `proposed_body: null` and return only `per_hunk_decisions[0].resolved_block`. Re-emitting the full file body cost ~40k tokens for a 5-line conflict in a 621-line file (reflector c946e283); per-hunk return cuts ~95% of resolver tokens on the common single-block case. Do not re-Read the conflicted file - `conflict_body` carries everything you need; treating it as a primary source (not a hint) prevents the re-read tax that triggered this budget rule.
 - **Single call per spawn**. The /apex-merge orchestrator spawns once per conflicted file; multi-conflict merges produce one resolver call per path.
 - **Conservative bias**. When confidence is low (both sides plausibly correct + no commit-message signal disambiguating), return `needs-human` rather than guessing. The downstream AskUserQuestion gives the human three options anyway; a wrong auto-resolution that LOOKS plausible is worse than an explicit hand-off.
 - **No working-memory inheritance**. Every input is in the spawn prompt; do not assume access to the merging session's hypothesis or commit log unless they were passed.
