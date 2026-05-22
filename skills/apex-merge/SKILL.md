@@ -14,6 +14,7 @@ TaskCreate "1. Precheck"
 TaskCreate "2. Discover apex/* branches"
 TaskCreate "3. Update main"
 TaskCreate "4. Merge loop"
+TaskCreate "4.5 Replay worktree side-effects"
 TaskCreate "5. Cleanup merged branches"
 TaskCreate "6. Final push + summary"
 TaskCreate "7. Self-reflect"
@@ -85,6 +86,12 @@ TaskCreate "7. Self-reflect"
    - On conflict: print conflicted paths; for each spawn `agents/apex-merge-resolver.md` (Sonnet, foreground) with the full-context bundle (conflicted body, base-side diff, apex-side diff, apex hypothesis, base-side commit messages, apex commit log). Resolver returns proposed body; orchestrator shows diff via AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = `reject-edit-manually`). On accept: write file, `git add P`. On reject: surface to user for manual edit, wait, then `git add P`. On abort: `git merge --abort`, skip this branch's cleanup, continue with next.
    - All conflicts resolved -> `git merge --continue`.
    Per-branch result recorded in `<run>-merge-result.json` (`status`: `merged` | `skipped-conflict-abort` | `nothing-to-merge`; `pushed`: `true` | `false` | `not-attempted` - populated by Step 6 after `git push`). Mirror the Step 2 omit-empty discipline: when `detail` is an empty string (clean merge with no conflict-path payload), omit the field from the entry rather than emit `"detail": ""` - downstream parse noise without information value, reflector 32455372. Append `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort>)` per branch to `<run>-summary.md` so the Step 7 reflector sees per-branch friction without re-reading the result JSON.
+
+4.5. **Replay worktree side-effects** - inline, runs ONLY when step 4 merged 1+ branches cleanly (status `merged` exists in `<run>-merge-result.json`). Each apex worktree's executor logged its state-mutating commands to `.claude-tmp/apex-active/{session}-side-effects.jsonl` (migrations, seeders, codegen producing untracked output, etc.); main's working state was not touched by those runs, so they must replay here before step 5 removes the worktrees. Read this step's contract entirely before running it - it executes shell commands on the main worktree.
+   ```bash
+   bash skills/apex-merge/scripts/replay-side-effects.sh "$RUN"
+   ```
+   Script reads every merged branch's worktree side-effects log, dedupes by verbatim cmd (whitespace-normalized), writes `<run>-side-effects-dedup.json`, and prints the unique cmd list to stdout. Empty list = silent skip (no AskUserQuestion, append `step-4.5: no side-effects to replay` to `<run>-summary.md`). Non-empty list -> AskUserQuestion (header: "Replay N side-effects?"; options: `run-all` | `skip-all`; dismiss = `skip-all`). The prompt MUST include the full deduped command list verbatim so the user sees what will run. On `run-all`: invoke each command sequentially from the main worktree root (`cd "$MAIN_TOP"`), one Bash call per command, with first-failure-stop; record outcome (`{cmd, exit_code, stderr_tail}`) into `<run>-side-effects-replay.json`. A non-zero exit surfaces the failing command to the user inline and halts the replay (do NOT continue; the user resolves manually then re-runs `/apex-merge`). On `skip-all`: write an empty replay file with `{skipped: true}`. Append `step-4.5: replayed K/N (skipped=M)` to `<run>-summary.md` (where N=unique deduped, K=ran successfully, M=skipped). Per the destructive-operation rule in CLAUDE.md, the AskUserQuestion is mandatory - never auto-run.
 
 5. **Cleanup merged branches** - inline. For each branch with status `merged` OR `nothing-to-merge`, run in THIS order (git refuses to delete a branch while a worktree still references it, so worktree removal must precede branch deletion - reflector ba0afe92):
    - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty` flag was passed by caller).
