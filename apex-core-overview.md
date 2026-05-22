@@ -97,7 +97,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - on cap exhaustion: AskUserQuestion (abort | proceed-with-errors)
 
 10.5 Review (sub-step; runs ONLY on step 10 exit 0): review.md -> reviewer.md (Sonnet, foreground)
-    - deterministic gate: tier==standard AND len(touched INTERSECT allowed_files)>=3 AND (complexity_hint==high OR any goal matches /\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i)
+    - deterministic gate: tier==standard AND len(touched INTERSECT allowed_files)>=3 AND (complexity_hint==high OR any goal matches /\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i OR deletions across allowed_files >= 200 lines)
     - reviewer scans diff INTERSECT allowed_files against CLAUDE.md rules (pattern, over-engineering, security-at-boundaries, i18n, cognitive-complexity); cap 5 findings
     - returns {action: pass|fix-needed|escalate} validated against review-result.schema.json
     - fix-needed: executor.md cap-1 (Sonnet) -> re-spawn reviewer with attempt=2; persistent fix-needed -> escalate

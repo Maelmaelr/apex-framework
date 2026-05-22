@@ -14,6 +14,14 @@
 #   - dirty working tree
 #     -> keep everything, warn (user owns the dirty state)
 #
+# Worktree-removal sweeps all inner artifacts atomically: manifest, traces,
+# hypothesis, dispatch-summary, AND the executor side-effects log at
+# <worktree>/.claude-tmp/apex-active/<session>-side-effects.jsonl (logged by
+# step 8 state-mutating commands; replayed by apex-merge step 4.5 BEFORE the
+# branch's worktree is removed at apex-merge step 5). No separate cleanup
+# rule needed for side-effects.jsonl - the worktree-remove path covers it
+# (reflector 742e1387).
+#
 # Args:
 #   --session <token>       required, 8-char lowercase hex
 #   --apex-active-dir <abs> optional, absolute path to .claude-tmp/apex-active/

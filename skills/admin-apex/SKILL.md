@@ -69,7 +69,7 @@ Soft-skips (skip 5-8 only; task 9 still runs to capture private-tracked-root del
 - `clusters: []` (clean)
 - every cluster decision is `keep`/`defer`
 
-Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | apply | defer`; dismiss = `keep`). Fast-path: a single cluster of `kind=user-driven` (concern was supplied this run) defaults to `apply` without prompt - the user already expressed intent at task 1. At least one `apply` -> proceed to task 5. All `keep`/`defer` -> soft-skip to task 9.
+Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | apply | defer`; dismiss = `keep`). Fast-path: a single cluster of `kind=user-driven` (concern was supplied this run) defaults to `apply` without prompt - the user already expressed intent at task 1. **Empty-items short-circuit**: when that user-driven cluster has `items: []` (informational concern - no concrete file picked), default to `defer` instead of `apply` so task 5's placeholder-edit pipeline does NOT fire on a target the planner cannot redirect (reflector 7b5a0441: user-driven cluster with items=[] still ran the full cluster pipeline). At least one `apply` -> proceed to task 5. All `keep`/`defer` -> soft-skip to task 9.
 
 ## Task 5 / 6: Evolve
 

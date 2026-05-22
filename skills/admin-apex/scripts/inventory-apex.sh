@@ -12,6 +12,7 @@
 #   agents/*.md                  -> agents[]
 #   skills/apex/scripts/*.{sh,py}       -> scripts[]
 #   skills/admin-apex/scripts/*.{sh,py} -> scripts[]
+#   skills/apex-merge/scripts/*.{sh,py} -> scripts[]
 #   skills/apex/schemas/*.json       -> schemas[]
 #   skills/admin-apex/schemas/*.json -> schemas[]
 #   settings.json                -> hooks[]
@@ -191,6 +192,7 @@ inventory = {
     "scripts": (
         collect_scripts(os.path.join(repo, "skills/apex/scripts/*"))
         + collect_scripts(os.path.join(repo, "skills/admin-apex/scripts/*"))
+        + collect_scripts(os.path.join(repo, "skills/apex-merge/scripts/*"))
     ),
     "schemas": (
         collect_schemas(os.path.join(repo, "skills/apex/schemas/*.json"))
