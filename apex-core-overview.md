@@ -28,10 +28,9 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - bias for step 4: expect goals[] decomposition (single goal for fix-bug-in-file-Y prompts; N enumerated goals for audit / multi-task prompts)
 
 2. Create session: create-session.sh
-   - exit 10 (overlap):
-     - stale-only: auto-cleanup-and-proceed (session-end-hook.sh <stale> --foreign per stale; re-run create-session.sh)
-     - active: AskUserQuestion (abort | proceed-alongside | cleanup-stale-and-proceed)
-   - create-session.sh additionally creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. All subsequent steps run inside the worktree (isolated .claude-tmp/apex-active/, isolated index, isolated working tree). Per-project dep bootstrap (node_modules / .venv / target / etc.) is the project's responsibility, not the framework's; step-10 verify-build is the silent failure point when deps are missing (see apex-core.md Conventions / Worktree dependency bootstrap). Nested-worktree / detached-HEAD / non-git-repo guards refuse to mint. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree).
+   - exit 0: {session} token + worktree minted + manifest written.
+   - exit 1: unrecoverable error (bad args, nested-worktree, detached HEAD, etc.); surface stderr and abort.
+   - create-session.sh creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. All subsequent steps run inside the worktree (isolated .claude-tmp/apex-active/, isolated index, isolated working tree). Per-worktree isolation removes the sibling-session conflict surface entirely - no concurrent-apex overlap detection / scope-overlap classification is needed at session mint. Per-project dep bootstrap (node_modules / .venv / target / etc.) is the project's responsibility, not the framework's; step-10 verify-build is the silent failure point when deps are missing (see apex-core.md Conventions / Worktree dependency bootstrap). Nested-worktree / detached-HEAD / non-git-repo guards refuse to mint. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree).
 
 3. Trivial pre-flight: inline
    - trivial = single-file edit, no new public symbol, named target file, ANY ambiguity = non-trivial
@@ -71,7 +70,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - same prompt + scope -> same tier, every run
 
 8. Execute: execute.md -> executor.md (per task)
-   - 8.0 init: apex-baseline.sh (captures head_sha + pre_dirty for step 12 exclusion); apex-conflict-check.sh (cross-session scope overlap)
+   - 8.0 init: apex-baseline.sh (captures head_sha + pre_dirty for step 12 exclusion)
    - pre-flight wc -l on scope; >400 LOC -> queue split task ahead of edits
    - 8.2 goals-driven split: len(goals)==1 -> 1 task (full scope); len(goals)>1 -> N tasks, one goal per spawn prompt; per-task allowed_files narrowed to main-scope subset matching goal nouns; validate-disjoint-scopes.py enforces disjoint when 2+
    - 8.2 scope-size hard split (B1): per-task allowed_files > 8 -> chunk-scope.py -n 2 partition (directory-sibling-preserving, pairwise-disjoint); goal text duplicates; first executor wins, second sees already-satisfied
@@ -139,9 +138,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 Any orchestrator exit bypassing step 14 runs `session-end-hook.sh {session}` inline. Triggers:
 
 - AskUserQuestion-abort at step 1 (no manifest yet -> skip session-end-hook)
-- AskUserQuestion-abort at step 2 active-detected (no manifest written for this session -> skip)
 - Step 6 cascade-empty (abort, or proceed-with-discovered-or-prompt-paths but zero validated)
-- Step 8 conflict-check-abort
 - Step 10 verify cap-3 exhaustion (if user opts to abort)
 - Any unexpected error path
 

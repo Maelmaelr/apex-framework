@@ -1,6 +1,6 @@
 ---
 name: execute
-description: Step 8 dispatch. Captures baseline, runs cross-session conflict check, queues split tasks for >400 LOC files, decides per-task scope (default 1; splits into 2+ for clearly independent areas), spawns executor.md per task with explicit working-memory propagation. Sonnet executors under economy; main-session model under standard.
+description: Step 8 dispatch. Captures baseline, queues split tasks for >400 LOC files, decides per-task scope (default 1; splits into 2+ for clearly independent areas), spawns executor.md per task with explicit working-memory propagation. Sonnet executors under economy; main-session model under standard.
 ---
 
 # execute (step 8)
@@ -14,11 +14,6 @@ Spec: `apex-core.md` step 8.
   bash skills/apex/scripts/apex-baseline.sh
   ```
   Writes `.claude-tmp/apex-active/{session}-baseline.json`: `{head_sha: <git rev-parse HEAD>, pre_dirty: [<repo-relative paths>]}`. Consumed by steps 9 / 11 / 12 / 13. Step 12 excludes `pre_dirty` from staging so user-pre-existing WIP is never bundled into the apex commit.
-- Concurrent-apex conflict check:
-  ```
-  bash skills/apex/scripts/apex-conflict-check.sh
-  ```
-  Reads `pre_dirty` from baseline; for each, scan `.claude-tmp/apex-active/*-main-scope.json` excluding our own `{session}` token. On overlap (a pre-dirty file appears in another active apex session's `allowed_files`): AskUserQuestion (`abort` | `proceed-anyway`; dismiss/cancel = abort). On `proceed-anyway`, the apex edit lands on top of the user WIP; the merged file stays dirty post-apex (excluded from step 12) for the user to review and commit.
 
 ## 8.1 Pre-flight wc-l split queue
 

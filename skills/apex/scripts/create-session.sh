@@ -1,46 +1,30 @@
 #!/usr/bin/env bash
-# Step 2: create session manifest with concurrency check.
+# Step 2: create session manifest + per-session worktree.
 # Spec: apex-core.md step 2 + Conventions / Session manifest schema.
 #
 # Behavior:
-#   1. Scan .claude-tmp/apex-active/*.json (manifest filename pattern: 8-hex.json).
-#      Active = manifest exists AND PID alive AND ps comm matches "claude".
-#      Stale  = manifest exists but PID dead OR comm mismatch (PID-rollover guard).
-#   2. On overlap (any active OR stale found): exit 10 with stderr listing detected
-#      state. Orchestrator branches per skills/apex/SKILL.md Step 2: stale-only -> auto
-#      cleanup-stale-and-proceed (no prompt; PID dead = no concurrent file overlap);
-#      active-detected -> AskUserQuestion (abort | proceed-alongside | cleanup-stale-and-proceed),
-#      options filtered to detected state.
-#   3. On no overlap: generate {session} via openssl rand -hex 4, write manifest:
-#        {session, pid: <claude-pid>, cc_session_id}
-#      pid is the claude main process pid, resolved via find-claude-pid.sh
-#      (walks up the process tree until comm basename == "claude"). $PPID is
-#      NOT used: when this script is invoked as `bash create-session.sh ...`,
-#      $PPID is the transient zsh subshell that Claude Code's Bash tool
-#      spawned, not claude itself; that zsh exits as soon as the Bash tool
-#      call returns, leaving manifest.pid pointing at a dead pid and causing
-#      sibling /apex's create-session.sh to mis-classify the live session as
-#      stale and auto-cleanup-stale-and-proceed wipe its manifest.
+#   1. Generate {session} via openssl rand -hex 4.
+#   2. Capture base_branch, create git worktree at <main>/.apex-worktrees/<session>/
+#      on branch apex/<session> off HEAD, cd into it.
+#   3. Write manifest {session, pid: <claude-pid>, cc_session_id, worktree_path,
+#      branch, base_branch}. pid is the claude main process pid, resolved via
+#      find-claude-pid.sh (walks up the process tree until comm basename ==
+#      "claude"). $PPID is NOT used: when this script is invoked as
+#      `bash create-session.sh ...`, $PPID is the transient zsh subshell that
+#      Claude Code's Bash tool spawned, not claude itself.
 #   4. Echo {session} to stdout for orchestrator capture.
+#
+# Per-worktree isolation: each apex session lives in its own working tree +
+# index + branch. No concurrent-session conflict surface exists between
+# worktrees, so no sibling overlap detection or scope-overlap classification
+# is needed.
 #
 # Args:
 #   --cc-session-id <id>  (required) - Claude Code session id passed by orchestrator.
-#   --alongside           (optional) - skip the overlap exit; mint a fresh manifest
-#                                       even when active or stale siblings are
-#                                       present. Used by SKILL Step 2's
-#                                       proceed-alongside branch (reflector a06efb91:
-#                                       orchestrator had to manually generate
-#                                       token+manifest because no flag existed).
 #
 # Exit codes:
 #   0  - manifest written, {session} on stdout
-#   10 - overlap detected (orchestrator decides)
 #   1  - unrecoverable error (bad args, openssl missing, etc.)
-#
-# Stderr on exit 10 (one line per token; orchestrator parses):
-#   overlap_detected
-#   active: <tok1> [<tok2> ...]   (omitted when no active)
-#   stale:  <tok1> [<tok2> ...]   (omitted when no stale)
 
 set -euo pipefail
 
@@ -80,16 +64,11 @@ fi
 APEX_ACTIVE=".claude-tmp/apex-active"
 
 CC_SESSION_ID=""
-ALONGSIDE=0
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --cc-session-id)
       CC_SESSION_ID="${2:-}"
       shift 2
-      ;;
-    --alongside)
-      ALONGSIDE=1
-      shift
       ;;
     *)
       echo "create-session.sh: unknown arg: $1" >&2
@@ -135,116 +114,9 @@ if [[ -x "$SCRIPT_DIR_PRE_SCAN/discovery-cache.sh" ]]; then
   bash "$SCRIPT_DIR_PRE_SCAN/discovery-cache.sh" prune 2>/dev/null || true
 fi
 
-active_tokens=()
-stale_tokens=()
-
-# Single python pass extracts {session, pid} pairs from all 8-hex.json manifests
-# (skips parse-failed and session-less records silently, matching prior behavior).
-# Bash classifies each pair as active|stale via PID-alive + comm-match.
-while IFS=$'\t' read -r session_tok pid; do
-  [[ -z "$session_tok" ]] && continue
-  if [[ -z "$pid" || ! "$pid" =~ ^[0-9]+$ ]]; then
-    stale_tokens+=("$session_tok")
-    continue
-  fi
-  # PID-rollover guard: alive PID is necessary but not sufficient; require
-  # ps comm to match "claude" so a recycled PID (some other process) is stale.
-  if kill -0 "$pid" 2>/dev/null; then
-    # On macOS BSD ps, comm can be a full path; basename normalises both forms.
-    comm_base="$(basename "$(ps -o comm= -p "$pid" 2>/dev/null || true)" 2>/dev/null || true)"
-    if [[ "$comm_base" == "claude" ]]; then
-      active_tokens+=("$session_tok")
-    else
-      stale_tokens+=("$session_tok")
-    fi
-  else
-    stale_tokens+=("$session_tok")
-  fi
-done < <(python3 - "$APEX_ACTIVE" <<'PY'
-import json, os, re, sys, glob
-active = sys.argv[1]
-pat = re.compile(r"^[0-9a-f]{8}\.json$")
-seen = set()
-def scan(dirpath):
-    if not os.path.isdir(dirpath):
-        return
-    for name in sorted(os.listdir(dirpath)):
-        if not pat.match(name):
-            continue
-        try:
-            with open(os.path.join(dirpath, name), encoding="utf-8") as f:
-                d = json.load(f)
-        except Exception:
-            continue
-        sess = d.get("session", "")
-        if sess and sess not in seen:
-            seen.add(sess)
-            print(f"{sess}\t{d.get('pid', '')}")
-# Scan 1: main worktree's apex-active (catches any pre-Phase-4 leftover; new
-# sessions never write here post-Phase-4 but stale orphans may still exist).
-scan(active)
-# Scan 2: every worktree-resident apex-active dir under .apex-worktrees/*.
-# Post-Phase-4 sessions live here; without this scan the overlap detector is
-# blind to live siblings and the "proceed alongside / cleanup-stale" prompt
-# never fires for worktree-mode collisions.
-for wt_active in sorted(glob.glob(".apex-worktrees/*/.claude-tmp/apex-active")):
-    scan(wt_active)
-PY
-)
-
-# Orphan-CC-session downgrade (reflector fd09e42c): a manifest from a prior CC
-# session can register as active because the long-lived claude PID is shared
-# across CC sessions and survives a CC restart - PID-alive + comm-match alone
-# returns persistent overlap false-positives every apex run after a CC restart
-# (the cited cluster: prior-CC manifests 7e0abf6a + b01eecec kept triggering
-# overlap detection every subsequent apex run). When an active token's manifest
-# carries a cc_session_id that differs from ours AND no sibling artifact under
-# its {session}-* prefix has been touched in the last hour (a live apex run
-# continuously writes traces / dispatch artifacts; an orphan is silent), demote
-# from active to stale so the orchestrator's auto-cleanup-stale-and-proceed
-# path applies. Keeps PID liveness as the cheap first filter; the cc_session_id
-# + activity check is the second filter that distinguishes co-running sibling
-# from prior-CC orphan.
-if [[ ${#active_tokens[@]} -gt 0 ]]; then
-  active_tokens_filtered=()
-  for tok in "${active_tokens[@]}"; do
-    manifest_path="$APEX_ACTIVE/$tok.json"
-    manifest_cc="$(python3 -c "
-import json, sys
-try:
-    print(json.load(open(sys.argv[1])).get('cc_session_id', ''))
-except Exception:
-    pass
-" "$manifest_path" 2>/dev/null || true)"
-    if [[ -n "$manifest_cc" && "$manifest_cc" != "$CC_SESSION_ID" ]]; then
-      newest_sibling="$(find "$APEX_ACTIVE" -name "${tok}-*" -mmin -60 -print -quit 2>/dev/null || true)"
-      if [[ -z "$newest_sibling" ]]; then
-        stale_tokens+=("$tok")
-        continue
-      fi
-    fi
-    active_tokens_filtered+=("$tok")
-  done
-  active_tokens=("${active_tokens_filtered[@]}")
-fi
-
-if [[ ${#active_tokens[@]} -gt 0 || ${#stale_tokens[@]} -gt 0 ]]; then
-  if [[ $ALONGSIDE -eq 1 ]]; then
-    # Caller explicitly opted in to running alongside detected siblings;
-    # skip the exit-10 prompt and fall through to mint a fresh manifest.
-    :
-  else
-    {
-      echo "overlap_detected"
-      [[ ${#active_tokens[@]} -gt 0 ]] && echo "active: ${active_tokens[*]}"
-      [[ ${#stale_tokens[@]} -gt 0 ]] && echo "stale: ${stale_tokens[*]}"
-    } >&2
-    exit 10
-  fi
-fi
-
-# No overlap: issue token, write manifest via printf (3-field record with shape-validated
-# inputs), validate via the shared producer-validate helper, echo token to stdout.
+# Per-worktree isolation: no sibling-overlap scan needed (each apex session
+# owns an isolated working tree + index + branch + apex-active dir).
+# Issue token, mint worktree below, write manifest, echo token to stdout.
 SESSION="$(openssl rand -hex 4)"
 MANIFEST="$APEX_ACTIVE/$SESSION.json"
 
@@ -256,7 +128,7 @@ MANIFEST="$APEX_ACTIVE/$SESSION.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_PID="$(bash "$SCRIPT_DIR/find-claude-pid.sh" 2>/dev/null)"
 if [[ -z "$CLAUDE_PID" || ! "$CLAUDE_PID" =~ ^[0-9]+$ ]]; then
-  echo "create-session.sh: find-claude-pid.sh found no claude ancestor; falling back to \$PPID=$PPID (manifest may be classified stale by sibling /apex)" >&2
+  echo "create-session.sh: find-claude-pid.sh found no claude ancestor; falling back to \$PPID=$PPID (non-standard launcher; manifest.pid may not survive the run)" >&2
   CLAUDE_PID="$PPID"
 fi
 

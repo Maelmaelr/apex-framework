@@ -172,8 +172,6 @@ for p in sys.argv[1:]:
 # 1. Each script rejects missing/bad {session} arg.
 run_fixture "apex-baseline.sh missing-arg" 1 \
   bash "$REPO_ROOT/skills/apex/scripts/apex-baseline.sh"
-run_fixture "apex-conflict-check.sh missing-arg" 2 \
-  bash "$REPO_ROOT/skills/apex/scripts/apex-conflict-check.sh"
 run_fixture "bump-version.sh missing-arg" 1 \
   bash "$REPO_ROOT/skills/apex/scripts/bump-version.sh"
 run_fixture "bump-version.sh bad-kind" 1 \
@@ -344,11 +342,9 @@ cleanup_session_post_success_fixture() {
 }
 run_fixture "cleanup-session.sh worktree-clean" 0 cleanup_session_post_success_fixture
 
-# 4j. session-end-hook.sh manual mode (--foreign no-op): dispatches
-#     cleanup-session.sh against the supplied token. In the worktree-only
-#     model --foreign is meaningless (kept as a parsed no-op for back-compat);
-#     the cleanup decision is purely worktree state.
-session_end_foreign_clean_fixture() {
+# 4j. session-end-hook.sh manual mode: dispatches cleanup-session.sh against
+#     the supplied token. The cleanup decision is purely worktree state.
+session_end_manual_clean_fixture() {
   git init -q -b main . >/dev/null
   printf '.claude-tmp/\n.apex-worktrees/\n' > .gitignore
   git -c user.email=t@t -c user.name=t add .gitignore >/dev/null
@@ -362,12 +358,12 @@ session_end_foreign_clean_fixture() {
   printf 'hyp\n' > "$wt/.claude-tmp/apex-active/$token-hypothesis.json"
   # Manual mode: cd into the worktree so cleanup-session.sh's APEX_ACTIVE
   # resolution lands on the worktree-resident apex-active dir.
-  ( cd "$wt" && bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh" "$token" --foreign )
+  ( cd "$wt" && bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh" "$token" )
   [[ -d "$wt" ]] && return 1
   git show-ref --verify --quiet "refs/heads/apex/$token" && return 1
   return 0
 }
-run_fixture "apex session-end-hook.sh manual --foreign" 0 session_end_foreign_clean_fixture
+run_fixture "apex session-end-hook.sh manual" 0 session_end_manual_clean_fixture
 
 # 4k. block-destructive-hook.sh: `-c X=Y` and `-C path` prefix-flags before `reset --hard` must deny (reflectors ac85c725 + 5b218a81: regex hardening landed without coverage).
 block_destructive_reset_prefix_fixture() {

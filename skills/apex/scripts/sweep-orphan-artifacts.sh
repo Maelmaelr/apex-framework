@@ -27,11 +27,11 @@
 #     (those are owned by the active run; cleanup-{run,session}.sh handles them).
 #   - Does NOT touch artifacts younger than --age-hours (defends against
 #     in-flight producers that have not yet written their manifest).
-#   - Does NOT wipe a co-running sibling's live artifacts: the manifest-absent
-#     branch re-checks {token}.json on disk just before deletion (TOCTOU
-#     close; reflector 1af83649). Callers sweeping while --alongside siblings
-#     are declared MUST keep --age-hours above the longest expected session
-#     wallclock so a sibling whose manifest is transiently absent is age-spared.
+#   - Does NOT wipe a co-running run's live artifacts: the manifest-absent
+#     branch re-checks {token}.json on disk just before deletion (TOCTOU close;
+#     reflector 1af83649). This guard still matters for admin-apex-active
+#     where concurrent CC sessions can interleave; apex hot-path is worktree-
+#     resident so the surface is narrow but the guard is cheap.
 #
 # Args:
 #   --dir <path>           (required) - .claude-tmp/apex-active OR
@@ -126,11 +126,11 @@ for name in names:
     age = now - int(st.st_mtime)
     if threshold > 0 and age < threshold:
         continue
-    # Just-in-time manifest re-check: a co-running sibling (--alongside) may
-    # write its {token}.json between listdir() above and this point. Without
-    # this re-stat a concurrent sibling sweep wiped a live session's artifacts
-    # mid-flow (reflector 1af83649). Re-check on disk closes the TOCTOU window
-    # so a live sibling that just armed its manifest is never swept.
+    # Just-in-time manifest re-check: a co-running run may write its
+    # {token}.json between listdir() above and this point. Without this
+    # re-stat a concurrent sweep wiped a live run's artifacts mid-flow
+    # (reflector 1af83649). Re-check on disk closes the TOCTOU window so a
+    # live run that just armed its manifest is never swept.
     if os.path.exists(os.path.join(d, tok + ".json")):
         continue
     print(full)

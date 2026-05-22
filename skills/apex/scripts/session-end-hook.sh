@@ -16,13 +16,9 @@
 #        - Derive apex {session} token, run cleanup-session.sh against the
 #          worktree-resident apex-active directory
 #   2. Manual mode (positional arg = apex {session} token):
-#        - Trusted own-session caller (mid-/apex abort: step 1 / 2 / 6
-#          cascade-empty / 8 conflict-check / 10 verify cap-3 / unexpected
-#          error). Target the supplied token directly.
-#        - --foreign flag is accepted for back-compat (step 2
-#          cleanup-stale-and-proceed) but is a no-op in worktree-only mode:
-#          cleanup-session.sh forks on worktree state, not on cleanup-trust
-#          (no PID guard / cc_session_id sibling-wipe guard remains).
+#        - Trusted own-session caller (mid-/apex abort: step 1 / 6
+#          cascade-empty / 10 verify cap-3 / unexpected error). Target the
+#          supplied token directly.
 #
 # Runs on success completion AND on abort / crash. Idempotent.
 # Exit code: 0 always (treat as pass for SessionEnd hook contract).
@@ -137,12 +133,10 @@ run_cleanup() {
   fi
 }
 
-# Parse args. Positional = manual mode session token; --foreign accepted as
-# no-op for back-compat with step 2 stale-cleanup callers.
+# Parse args. Positional = manual mode session token.
 SESSION_ARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --foreign) shift ;;
     --)        shift ;;
     *)
       if [[ -z "$SESSION_ARG" ]]; then

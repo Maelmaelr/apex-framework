@@ -12,26 +12,12 @@
 #
 # Pointer miss is a tri-state, not a binary:
 #   1. Pointer hits -> orchestrator path: enforce that scope.
-#   2. Pointer misses AND no active main-scope.json anywhere -> entry-flow /
-#      non-/apex session: pass through.
-#   3. Pointer misses AND >=1 active main-scope.json exist -> ambiguous between
-#      "subagent leak from an apex orchestrator on THIS claude process" and
-#      "non-apex session running concurrently with sibling apex orchestrators
-#      in other claude processes (same project cwd, different terminals)".
-#      Resolved by walking the process tree to the calling claude pid and
-#      matching against each apex manifest's recorded pid. Match -> enforce
-#      that orchestrator's scope; no match -> pass through (sibling claude
-#      processes have no authority over this one's edits).
-#
-# Stale-PID-reuse guard (subagent fallback only):
-#   PID match alone is unsafe when an apex orchestrator crashed without
-#   cleanup and the OS reused its PID for a fresh non-apex claude. Without
-#   the guard, the new session's subagent edits get denied by the leaked
-#   manifest. We compare the calling claude's lstart (process start time)
-#   against the manifest file's mtime: a manifest written BEFORE the
-#   calling claude started cannot belong to it (PID reuse) and is skipped.
-#   Lstart-resolution failures fall through to the prior PID-only behavior
-#   (still better than blanket-deny).
+#   2. Pointer misses AND no active main-scope.json in this worktree's
+#      apex-active -> entry-flow / non-/apex session: pass through.
+#   3. Pointer misses AND >=1 active main-scope.json exists -> subagent leak
+#      from this worktree's apex orchestrator. Per-worktree isolation guarantees
+#      at most one orchestrator per apex-active dir, so enforce the single
+#      main-scope without PID disambiguation.
 #
 # Standard safety paths (closed set, always allowed):
 #   - .claude-tmp/
@@ -131,79 +117,14 @@ if [[ -d "$APEX_ACTIVE" ]]; then
   done
 fi
 
-# Pointer miss with active main-scope(s). Walk the process tree to the calling
-# claude pid; only enforce scopes whose apex manifest claims THIS claude process
-# (subagent-of-this-orchestrator). Sibling apex sessions running in other claude
-# processes have no authority over this process's edits.
+# Pointer miss with active main-scope: subagent leak from this worktree's
+# orchestrator. Per-worktree isolation means there is at most one main-scope
+# in this apex-active dir, so enforce it directly (no PID walk).
 if [[ -z "$POINTER" ]]; then
   shopt -s nullglob
   ACTIVE_SCOPES=("$APEX_ACTIVE"/*-main-scope.json)
   shopt -u nullglob
   if [[ ${#ACTIVE_SCOPES[@]} -eq 0 ]]; then
-    echo "$ALLOW"
-    exit 0
-  fi
-
-  HOOK_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
-  CALLING_PID=$(bash "$HOOK_DIR/find-claude-pid.sh" 2>/dev/null || true)
-  if [[ -z "$CALLING_PID" ]]; then
-    # Process-tree walk failed to find a claude ancestor (non-standard
-    # launcher). Cannot prove subagent leak; pass through rather than
-    # blanket-deny on sibling-session scopes unrelated to this process.
-    echo "$ALLOW"
-    exit 0
-  fi
-
-  # Calling claude's process start time (epoch). Used as the lower bound for
-  # manifest mtime: any manifest predating this start cannot belong to the
-  # current OS process at this PID (PID reuse). Empty on resolution failure;
-  # downstream falls back to PID-only matching.
-  CALLING_PID_LSTART_EPOCH=$(python3 -c "
-import datetime, subprocess, sys
-try:
-    out = subprocess.check_output(['ps', '-o', 'lstart=', '-p', sys.argv[1]], text=True).strip()
-    if not out:
-        sys.exit(0)
-    t = datetime.datetime.strptime(out, '%a %b %d %H:%M:%S %Y')
-    print(int(t.timestamp()))
-except Exception:
-    pass
-" "$CALLING_PID" 2>/dev/null)
-
-  MATCHED_SCOPES=()
-  for SCOPE in "${ACTIVE_SCOPES[@]}"; do
-    SCOPE_BASE=$(basename "$SCOPE")
-    SESSION_TOKEN="${SCOPE_BASE%-main-scope.json}"
-    MANIFEST="$APEX_ACTIVE/$SESSION_TOKEN.json"
-    [[ -f "$MANIFEST" ]] || continue
-    MANIFEST_PID=$(python3 -c "
-import json, sys
-try:
-    print(json.load(open(sys.argv[1])).get('pid', ''))
-except Exception:
-    print('')
-" "$MANIFEST" 2>/dev/null)
-    [[ -z "$MANIFEST_PID" ]] && continue
-    if [[ "$MANIFEST_PID" == "$CALLING_PID" ]]; then
-      # Stale-PID-reuse guard: skip manifests that predate the calling claude.
-      # Manifest mtime is set at create-session.sh write time and never updated;
-      # if it is older than the calling claude's lstart, the manifest belongs
-      # to a previous (now-dead) process at the same PID.
-      if [[ -n "$CALLING_PID_LSTART_EPOCH" ]]; then
-        MANIFEST_MTIME=$(stat -f %m "$MANIFEST" 2>/dev/null || stat -c %Y "$MANIFEST" 2>/dev/null || echo "")
-        if [[ -n "$MANIFEST_MTIME" && "$MANIFEST_MTIME" -lt "$CALLING_PID_LSTART_EPOCH" ]]; then
-          continue
-        fi
-      fi
-      MATCHED_SCOPES+=("$SCOPE")
-    fi
-  done
-
-  if [[ ${#MATCHED_SCOPES[@]} -eq 0 ]]; then
-    # No apex manifest claims this claude process. Caller is not running under
-    # an apex orchestrator (or under one whose manifest has not yet been
-    # written). Sibling apex sessions in other claude processes do not gate
-    # this one.
     echo "$ALLOW"
     exit 0
   fi
@@ -227,13 +148,13 @@ for sc in sys.argv[2:]:
             if fnmatch.fnmatch(target, allowed) or fnmatch.fnmatch(target_abs, allowed_abs):
                 print('yes'); sys.exit(0)
 print('no')
-" "$TARGET" "${MATCHED_SCOPES[@]}" 2>/dev/null || echo "error")
+" "$TARGET" "${ACTIVE_SCOPES[@]}" 2>/dev/null || echo "error")
     [[ "$ALLOWED" == "yes" ]] && continue
     if [[ "$ALLOWED" == "error" ]]; then
-      deny "Scope check (subagent fallback): could not read matched main-scope files for orchestrator pid=$CALLING_PID. Investigate apex session state."
+      deny "Scope check (subagent fallback): could not read main-scope files in $APEX_ACTIVE. Investigate apex session state."
       exit 0
     fi
-    deny "Scope violation (subagent fallback): $TARGET not in apex main-scope allowed_files of orchestrator pid=$CALLING_PID. Spawned subagent must respect parent session scope."
+    deny "Scope violation (subagent fallback): $TARGET not in apex main-scope allowed_files. Spawned subagent must respect parent session scope."
     exit 0
   done
   echo "$ALLOW"

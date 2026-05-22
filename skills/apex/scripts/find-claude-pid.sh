@@ -9,11 +9,8 @@
 #   subprocess (Claude Code's Bash tool spawns a transient zsh subshell which
 #   then runs `bash`; $PPID inside the bash script == zsh pid, NOT claude pid).
 #   The transient zsh dies as soon as the Bash tool call returns, leaving any
-#   manifest `pid` field set to a dead pid.
-#   Sibling /apex's create-session.sh classifies that as STALE (PID dead) and
-#   auto-runs cleanup-stale-and-proceed, wiping the live session's manifest.
-#   This helper resolves the actual claude pid so manifest.pid stays alive for
-#   the lifetime of the apex run.
+#   manifest `pid` field set to a dead pid. This helper resolves the actual
+#   claude pid so manifest.pid stays alive for the lifetime of the apex run.
 #
 # Output:
 #   - On hit: prints the claude pid to stdout, exits 0.

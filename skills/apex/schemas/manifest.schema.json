@@ -7,7 +7,7 @@
   "required": ["session", "pid", "cc_session_id", "worktree_path", "branch", "base_branch"],
   "properties": {
     "session": { "type": "string", "pattern": "^[0-9a-f]{8}$", "description": "8-char lowercase hex" },
-    "pid": { "type": "integer", "minimum": 1, "description": "OS pid of the live claude main process owning the session. Resolved at create-session.sh time via find-claude-pid.sh. NEVER set to a transient subshell pid - that would mark the session stale to sibling /apex." },
+    "pid": { "type": "integer", "minimum": 1, "description": "OS pid of the live claude main process owning the session. Resolved at create-session.sh time via find-claude-pid.sh. NEVER set to a transient subshell pid - the worktree-resident manifest must stay valid for the lifetime of the apex run." },
     "cc_session_id": { "type": "string", "description": "Claude Code session id captured at step 2; never overwritten" },
     "worktree_path": { "type": "string", "description": "Absolute path to this session's git worktree under <repo>/.apex-worktrees/<session>/. cleanup-session.sh reads this to fork the worktree-remove branch; /apex-merge enumerates worktrees via this path." },
     "branch": { "type": "string", "pattern": "^apex/[0-9a-f]{8}$", "description": "apex/<session> branch name created at step 2." },
