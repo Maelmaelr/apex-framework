@@ -10,6 +10,8 @@ Spec: `apex-core.md` step 11.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
+**Worktree CWD discipline**: subagents inherit the orchestrator's cwd at spawn but the orchestrator can drift. Before any Read / Edit / Write, run `pwd -P` and confirm it matches the apex session's worktree (`.apex-worktrees/<session>/` for worktree-isolation runs) - if it does not, `cd` to the worktree-absolute path the orchestrator passed in the spawn prompt (`worktree_path` is mandatory in the spawn-prompt contract). Edits applied from the main-worktree cwd land in main, not the apex branch, forcing the orchestrator to copy them across post-return (reflector 000272cb: documentation agent CWD drift patched by orchestrator copy to apex worktree).
+
 ## Inputs
 
 - `git diff {baseline.head_sha}` for context. `head_sha` from `.claude-tmp/apex-active/{session}-baseline.json`. Baseline-pinned so the diff is stable regardless of step 12's commit timing (independent of the inline `git add+commit+push` chain).
