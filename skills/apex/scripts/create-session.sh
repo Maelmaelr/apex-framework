@@ -177,6 +177,43 @@ APEX_ACTIVE=".claude-tmp/apex-active"
 mkdir -p "$APEX_ACTIVE"
 MANIFEST="$APEX_ACTIVE/$SESSION.json"
 
+# Worktree dep bootstrap (Layer 1): symlink gitignored cache dirs + .env files
+# from the main worktree. `git worktree add` only checks out tracked files;
+# node_modules / .venv / target / .next / .gradle / .nuxt / .turbo / .env* are
+# absent, so step-10 verify-build fails on missing deps and burns fix-loop
+# tokens on a "you didn't pnpm install" problem. Cost = zero; transparent.
+# .env symlink is the documented exception to the global "never read .env"
+# rule (per apex-core.md Conventions) - symlinking via `ln -s` is not reading.
+# Closed list at root only - monorepos with app-level node_modules use the
+# Layer 2 hook below.
+for _cache in node_modules .venv venv target .gradle .next .nuxt .turbo; do
+  if [[ -e "$_WT_COMMON_RES/$_cache" && ! -e "$_cache" ]]; then
+    ln -s "$_WT_COMMON_RES/$_cache" "$_cache" 2>/dev/null || true
+  fi
+done
+shopt -s nullglob
+for _envf in "$_WT_COMMON_RES"/.env "$_WT_COMMON_RES"/.env.*; do
+  [[ -f "$_envf" ]] || continue
+  _envbn="$(basename "$_envf")"
+  [[ -e "$_envbn" ]] && continue
+  ln -s "$_envf" "$_envbn" 2>/dev/null || true
+done
+shopt -u nullglob
+
+# Worktree dep bootstrap (Layer 2): optional project bootstrap hook. Projects
+# that need codegen / install / DB seed beyond a cache symlink wire
+# `docs/apex-bootstrap.sh` (preferred) or `.apex/bootstrap.sh`. Invoked from
+# the worktree root with no args; non-zero exit is non-fatal (logged to
+# stderr) so a missing language toolchain does not block session mint -
+# step-10 verify-build surfaces the real failure with full context.
+for _hook in docs/apex-bootstrap.sh .apex/bootstrap.sh; do
+  if [[ -f "$_hook" ]]; then
+    echo "create-session.sh: running project bootstrap hook $_hook" >&2
+    bash "$_hook" >&2 || echo "create-session.sh: bootstrap hook $_hook exited non-zero (continuing)" >&2
+    break
+  fi
+done
+
 # Manifest write: 6 required fields. Python (not printf) so values pass
 # through json.dumps and survive any future quoting weirdness in BASE_BRANCH.
 python3 - "$MANIFEST" "$SESSION" "$CLAUDE_PID" "$CC_SESSION_ID" "$WORKTREE_PATH" "$BRANCH" "$BASE_BRANCH" <<'PY'

@@ -272,6 +272,24 @@ case "$PROJECT_TYPE" in
     # npm needs `--` to forward args; pnpm/yarn/bun pass them directly.
     [[ "$PM" == "npm" ]] && LINT_FIX_ARGS="-- --fix" || LINT_FIX_ARGS="--fix"
 
+    # Worktree dep bootstrap (Layer 3 defensive): node_modules missing means
+    # create-session.sh's Layer 1 symlink found no main-worktree node_modules
+    # to link, or a non-/apex caller is verifying a fresh clone. Install once
+    # with the PM's frozen-lockfile equivalent so a real "lockfile drift"
+    # error surfaces instead of being masked as "module not found". Failures
+    # feed the normal lint/build first-fail-stop; the executor sees the same
+    # transcript a developer would.
+    if [[ ! -d node_modules ]]; then
+      case "$PM" in
+        npm)  INSTALL_CMD="npm ci" ;;
+        pnpm) INSTALL_CMD="pnpm install --frozen-lockfile" ;;
+        yarn) INSTALL_CMD="yarn install --frozen-lockfile" ;;
+        bun)  INSTALL_CMD="bun install --frozen-lockfile" ;;
+      esac
+      echo "verify-build.sh: node_modules missing; running $INSTALL_CMD" >&2
+      bash -c "$INSTALL_CMD" >/dev/null 2>&1 || echo "verify-build.sh: $INSTALL_CMD failed (continuing; lint/build will surface the real error)" >&2
+    fi
+
     load_npm_scripts
     ran_anything=0
     # Order matters: lint -> typecheck -> build.
