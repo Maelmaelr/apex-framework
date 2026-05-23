@@ -43,6 +43,17 @@ deny() { echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permi
 
 is_safety_path() {
   local target="$1"
+  # Cross-worktree leak guard (worktree migration): a target containing
+  # .apex-worktrees/<X>/.claude-tmp/ belongs to session <X>'s linked worktree,
+  # not the caller's own worktree-relative .claude-tmp/. Without this guard,
+  # a subagent in worktree A could pass-through and write into worktree B's
+  # apex-active/ via the generic .claude-tmp/ rule below. Force such paths
+  # through the allowed_files check instead of the safety fast-path; the
+  # caller's main-scope will not list another worktree's apex-active, so the
+  # leak is denied. Legit writes to the caller's own worktree use the plain
+  # relative .claude-tmp/... path and never trigger this branch.
+  [[ "$target" == *"/.apex-worktrees/"*"/.claude-tmp/"* ]] && return 1
+  [[ "$target" == ".apex-worktrees/"*"/.claude-tmp/"* ]] && return 1
   [[ "$target" == *".claude-tmp/"* ]] && return 0
   [[ "$target" == ".claude-tmp/"* ]] && return 0
   [[ "$target" == "$HOME/.claude/tmp/"* ]] && return 0

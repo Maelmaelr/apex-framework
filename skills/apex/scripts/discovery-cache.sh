@@ -38,7 +38,23 @@ HEAD_DIVERGE_LIMIT=10
 
 set -euo pipefail
 
-REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
+# Anchor the cache to the MAIN worktree (not a linked apex worktree). When
+# /apex runs inside a linked worktree, cleanup-session.sh tears the worktree
+# down on completion; a cache under that worktree's .claude-tmp/ would die
+# with it, defeating the 7-day TTL. git rev-parse --git-common-dir resolves
+# to the main repo's .git (absolute in linked worktrees, ".git" in main).
+# CLAUDE_PROJECT_DIR fallback covers the rare case the script runs outside
+# any git checkout (e.g., a smoke test); pwd is the last resort.
+GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || true)"
+REPO_ROOT=""
+if [[ -n "$GIT_COMMON" ]]; then
+  if [[ "$GIT_COMMON" == ".git" ]]; then
+    REPO_ROOT="$(pwd -P)"
+  else
+    REPO_ROOT="$(cd "${GIT_COMMON%/.git}" 2>/dev/null && pwd -P || echo "")"
+  fi
+fi
+[[ -z "$REPO_ROOT" ]] && REPO_ROOT="${CLAUDE_PROJECT_DIR:-$(pwd)}"
 CACHE_DIR="$REPO_ROOT/.claude-tmp/apex-discovery-cache"
 
 normalize_prompt() {

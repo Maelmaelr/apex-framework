@@ -16,11 +16,15 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 
 ## Output
 
-Append novel patterns under `flock`:
+Append novel patterns under `flock`. Resolve the target to the MAIN worktree (not the linked apex worktree this agent runs in) so `cleanup-session.sh`'s `git worktree remove --force` does not wipe the file before `/apex-lessons` extract consumes it:
 
 ```
-bash skills/apex/scripts/append-with-lock.sh .claude-tmp/lessons-tmp.md
+MAIN=$(git rev-parse --git-common-dir 2>/dev/null | sed 's,/\.git$,,')
+[[ -z "$MAIN" || "$MAIN" == ".git" ]] && MAIN=$(pwd)
+bash skills/apex/scripts/append-with-lock.sh "$MAIN/.claude-tmp/lessons-tmp.md"
 ```
+
+In the main worktree `git rev-parse --git-common-dir` returns `.git` (fallback to `pwd`); in a linked worktree it returns the absolute path to the main repo's `.git`. Either way the file lives on the main worktree and survives session cleanup.
 
 Curation into the project lessons-index is owned by `/apex-lessons`.
 
