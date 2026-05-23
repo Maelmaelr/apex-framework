@@ -317,11 +317,8 @@ find_claude_pid_fixture() {
 run_fixture "find-claude-pid.sh smoke" 0 find_claude_pid_fixture
 
 # 4i. cleanup-session.sh (worktree mode): clean tree + no commits past
-#     base_branch -> git worktree remove --force + git branch -D. The legacy
-#     PID guard / cc_session_id sibling-wipe guard / --post-success bypass
-#     are retired; --post-success / --caller-cc-session are silently accepted
-#     no-ops for back-compat with old callers.
-cleanup_session_post_success_fixture() {
+#     base_branch -> git worktree remove --force + git branch -D.
+cleanup_session_clean_fixture() {
   git init -q -b main . >/dev/null
   printf '.claude-tmp/\n.apex-worktrees/\n' > .gitignore
   git -c user.email=t@t -c user.name=t add .gitignore >/dev/null
@@ -334,13 +331,12 @@ cleanup_session_post_success_fixture() {
     > "$wt/.claude-tmp/apex-active/$token.json"
   bash "$REPO_ROOT/skills/apex/scripts/cleanup-session.sh" \
     --session "$token" \
-    --apex-active-dir "$PWD/$wt/.claude-tmp/apex-active" \
-    --post-success --caller-cc-session X
+    --apex-active-dir "$PWD/$wt/.claude-tmp/apex-active"
   [[ -d "$wt" ]] && return 1
   git show-ref --verify --quiet "refs/heads/apex/$token" && return 1
   return 0
 }
-run_fixture "cleanup-session.sh worktree-clean" 0 cleanup_session_post_success_fixture
+run_fixture "cleanup-session.sh worktree-clean" 0 cleanup_session_clean_fixture
 
 # 4j. session-end-hook.sh manual mode: dispatches cleanup-session.sh against
 #     the supplied token. The cleanup decision is purely worktree state.

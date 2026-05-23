@@ -14,10 +14,10 @@
 #   1. Pointer hits -> orchestrator path: enforce that scope.
 #   2. Pointer misses AND no active main-scope.json in this worktree's
 #      apex-active -> entry-flow / non-/apex session: pass through.
-#   3. Pointer misses AND >=1 active main-scope.json exists -> subagent leak
-#      from this worktree's apex orchestrator. Per-worktree isolation guarantees
-#      at most one orchestrator per apex-active dir, so enforce the single
-#      main-scope without PID disambiguation.
+#   3. Pointer misses AND the single active main-scope.json exists -> subagent
+#      leak from this worktree's apex orchestrator. Per-worktree isolation
+#      guarantees exactly one orchestrator (and so exactly one main-scope) per
+#      apex-active dir; enforce it directly.
 #
 # Standard safety paths (closed set, always allowed):
 #   - .claude-tmp/
@@ -129,8 +129,8 @@ if [[ -d "$APEX_ACTIVE" ]]; then
 fi
 
 # Pointer miss with active main-scope: subagent leak from this worktree's
-# orchestrator. Per-worktree isolation means there is at most one main-scope
-# in this apex-active dir, so enforce it directly (no PID walk).
+# orchestrator. Per-worktree isolation guarantees exactly one main-scope file
+# in this apex-active dir; resolve it directly.
 if [[ -z "$POINTER" ]]; then
   shopt -s nullglob
   ACTIVE_SCOPES=("$APEX_ACTIVE"/*-main-scope.json)
@@ -139,6 +139,7 @@ if [[ -z "$POINTER" ]]; then
     echo "$ALLOW"
     exit 0
   fi
+  ACTIVE_SCOPE="${ACTIVE_SCOPES[0]}"
 
   for TARGET in "${TARGETS[@]}"; do
     is_safety_path "$TARGET" && continue
@@ -146,23 +147,22 @@ if [[ -z "$POINTER" ]]; then
 import json, os, sys, fnmatch
 target = sys.argv[1]
 target_abs = os.path.abspath(target)
-for sc in sys.argv[2:]:
-    try:
-        files = json.load(open(sc, encoding='utf-8')).get('allowed_files', [])
-    except Exception:
-        continue
-    for allowed in files:
-        allowed_abs = os.path.abspath(os.path.expanduser(allowed))
-        if target == allowed or target_abs == allowed_abs:
+try:
+    files = json.load(open(sys.argv[2], encoding='utf-8')).get('allowed_files', [])
+except Exception:
+    print('error'); sys.exit(0)
+for allowed in files:
+    allowed_abs = os.path.abspath(os.path.expanduser(allowed))
+    if target == allowed or target_abs == allowed_abs:
+        print('yes'); sys.exit(0)
+    if '*' in allowed or '?' in allowed:
+        if fnmatch.fnmatch(target, allowed) or fnmatch.fnmatch(target_abs, allowed_abs):
             print('yes'); sys.exit(0)
-        if '*' in allowed or '?' in allowed:
-            if fnmatch.fnmatch(target, allowed) or fnmatch.fnmatch(target_abs, allowed_abs):
-                print('yes'); sys.exit(0)
 print('no')
-" "$TARGET" "${ACTIVE_SCOPES[@]}" 2>/dev/null || echo "error")
+" "$TARGET" "$ACTIVE_SCOPE" 2>/dev/null || echo "error")
     [[ "$ALLOWED" == "yes" ]] && continue
     if [[ "$ALLOWED" == "error" ]]; then
-      deny "Scope check (subagent fallback): could not read main-scope files in $APEX_ACTIVE. Investigate apex session state."
+      deny "Scope check (subagent fallback): could not read main-scope file $ACTIVE_SCOPE. Investigate apex session state."
       exit 0
     fi
     deny "Scope violation (subagent fallback): $TARGET not in apex main-scope allowed_files. Spawned subagent must respect parent session scope."

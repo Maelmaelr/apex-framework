@@ -2,16 +2,18 @@
 # apex-baseline.sh -- capture working-tree baseline for an apex session.
 # Spec: apex-core.md step 8.0 (init).
 #
-# Single producer per session at step 8.0. Writes head_sha + pre_dirty for use
-# by step 9 (polish), step 11 (tail diff), step 12 (git stage filter), and
-# step 13 (reflector diff context).
+# Single producer per session at step 8.0. Writes head_sha for use by steps 9
+# (polish), 11 (tail diff), 12 (git stage filter), and 13 (reflector diff
+# context). Each consumer derives modified files via `git diff --name-only
+# {head_sha}` against the worktree's HEAD - no pre_dirty bookkeeping needed
+# (a worktree's working tree is clean at session mint by construction).
 #
 # Args (positional):
 #   $1  -- {session} 8-hex token (required)
 #
 # Side effects:
 #   - mkdir -p .claude-tmp/apex-active
-#   - write .claude-tmp/apex-active/{session}-baseline.json containing head_sha + pre_dirty
+#   - write .claude-tmp/apex-active/{session}-baseline.json containing head_sha
 #
 # Exit codes:
 #   0  -- baseline written
@@ -37,19 +39,17 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 GIT_HEAD=$(git rev-parse HEAD)
-PRE_DIRTY=$( (git diff --name-only HEAD; git ls-files --others --exclude-standard) | sort -u )
 
 APEX_ACTIVE=".claude-tmp/apex-active"
 mkdir -p "$APEX_ACTIVE"
 BASELINE="$APEX_ACTIVE/$SESSION-baseline.json"
 
-PRE_DIRTY="$PRE_DIRTY" PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$BASELINE" "$GIT_HEAD" <<'PY'
-import sys, os, json
+PYTHONPATH="$HOME/.claude/skills/apex/scripts" python3 - "$BASELINE" "$GIT_HEAD" <<'PY'
+import sys, json
 from _validate import producer_validate, ValidationError
 
 baseline_path, git_head = sys.argv[1:3]
-pre_dirty = [p for p in os.environ.get("PRE_DIRTY", "").splitlines() if p]
-data = {"head_sha": git_head, "pre_dirty": pre_dirty}
+data = {"head_sha": git_head}
 try:
     producer_validate(data, "baseline")
 except ValidationError as e:

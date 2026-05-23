@@ -13,7 +13,7 @@ Spec: `apex-core.md` step 8.
   ```
   bash skills/apex/scripts/apex-baseline.sh
   ```
-  Writes `.claude-tmp/apex-active/{session}-baseline.json`: `{head_sha: <git rev-parse HEAD>, pre_dirty: [<repo-relative paths>]}`. Consumed by steps 9 / 11 / 12 / 13. Step 12 excludes `pre_dirty` from staging so user-pre-existing WIP is never bundled into the apex commit.
+  Writes `.claude-tmp/apex-active/{session}-baseline.json`: `{head_sha: <git rev-parse HEAD>}`. Consumed by steps 9 / 11 / 12 / 13 (each derives modified files via `git diff --name-only {head_sha}` against the worktree HEAD - the worktree's working tree is clean at session mint by construction).
 
 ## 8.1 Pre-flight wc-l split queue
 

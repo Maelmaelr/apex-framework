@@ -97,19 +97,10 @@ fi
 
 mkdir -p "$APEX_ACTIVE"
 
-# Orphan-artifact sweep (defense against {session}-* siblings without a
-# {session}.json manifest - e.g., a prior CC crash that aborted before the
-# manifest was written, or a partial cleanup that missed siblings). Best-effort;
-# never blocks session creation. Only artifacts older than 24h are touched, so
-# in-flight producers writing siblings before their manifest are not raced.
-SCRIPT_DIR_PRE_SCAN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [[ -x "$SCRIPT_DIR_PRE_SCAN/sweep-orphan-artifacts.sh" ]]; then
-  bash "$SCRIPT_DIR_PRE_SCAN/sweep-orphan-artifacts.sh" --dir "$APEX_ACTIVE" --age-hours 24 2>/dev/null || true
-fi
-
 # Discovery-cache global eviction (TTL_DAYS-based). Without this, entries only
 # evict per-key on `check` reads of the same prompt; the cache dir grows
 # unbounded when prompts are not re-issued. Best-effort; never blocks.
+SCRIPT_DIR_PRE_SCAN="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [[ -x "$SCRIPT_DIR_PRE_SCAN/discovery-cache.sh" ]]; then
   bash "$SCRIPT_DIR_PRE_SCAN/discovery-cache.sh" prune 2>/dev/null || true
 fi
@@ -120,11 +111,12 @@ fi
 SESSION="$(openssl rand -hex 4)"
 MANIFEST="$APEX_ACTIVE/$SESSION.json"
 
-# Resolve claude pid via tree walk (see header doc). Fall back to $PPID only if
-# the walk fails - $PPID is the transient zsh subshell when this script runs
-# under `bash` invocation, but it is the best signal we have if claude is not
-# in the ancestry (defensive fallback; will mis-classify as stale on next
-# sibling check, surfacing the install issue rather than silently corrupting).
+# Resolve claude pid via tree walk (see header doc). Recorded in the manifest
+# for admin-apex's stale-run sweep (sweep-stale-runs.sh classifies a sibling
+# manifest as orphaned when its recorded pid is dead OR no longer comm==claude).
+# Fall back to $PPID only if the walk fails - $PPID is the transient zsh
+# subshell when this script runs under `bash` invocation, but it is the best
+# signal available when claude is not in the ancestry (non-standard launcher).
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_PID="$(bash "$SCRIPT_DIR/find-claude-pid.sh" 2>/dev/null)"
 if [[ -z "$CLAUDE_PID" || ! "$CLAUDE_PID" =~ ^[0-9]+$ ]]; then

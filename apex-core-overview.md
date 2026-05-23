@@ -14,7 +14,7 @@ Legend: `inline` = main-orchestrator inline prompt | `skill` = `~/.claude/skills
 | economy  | step 7     | step 8 executors = sonnet; step 9 polish skipped; step 11 learn skipped. All other steps run.     |
 | standard | step 7     | step 8 executors = main session model; full tail.                                                 |
 
-Step 13 reflector is **background** in non-trivial paths; reflector owns post-reflect `cleanup-session.sh --post-success`. Step 14 only runs on trivial path. Step 15 inline summary is fully deterministic (no LLM hop, no git audit pass).
+Step 13 reflector is **background** in non-trivial paths; reflector owns post-reflect `cleanup-session.sh`. Step 14 only runs on trivial path. Step 15 inline summary is fully deterministic (no LLM hop, no git audit pass).
 
 ---
 
@@ -70,7 +70,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - same prompt + scope -> same tier, every run
 
 8. Execute: execute.md -> executor.md (per task)
-   - 8.0 init: apex-baseline.sh (captures head_sha + pre_dirty for step 12 exclusion)
+   - 8.0 init: apex-baseline.sh (captures head_sha; modified files derived per-consumer via `git diff --name-only {head_sha}`)
    - pre-flight wc -l on scope; >400 LOC -> queue split task ahead of edits
    - 8.2 goals-driven split: len(goals)==1 -> 1 task (full scope); len(goals)>1 -> N tasks, one goal per spawn prompt; per-task allowed_files narrowed to main-scope subset matching goal nouns; validate-disjoint-scopes.py enforces disjoint when 2+
    - 8.2 scope-size hard split (B1): per-task allowed_files > 8 -> chunk-scope.py -n 2 partition (directory-sibling-preserving, pairwise-disjoint); goal text duplicates; first executor wins, second sees already-satisfied
@@ -119,7 +119,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - appends to ~/.claude/tmp/apex-workflow-improvements.md
     - non-convergence detection: appends {ts, session, hash=sha1(prompt), scope_count, touched_count, files_touched} to ~/.claude/tmp/apex-prompt-history.log; on hash collision with different files_touched, surfaces non-convergence: line in improvements:
     - oversized-dispatch flag (E1): read {session}-traces/execute/dispatch-summary.json; for each return with tool_calls_made > 50, surface oversized-dispatch: line under improvements: (cap 3, top-3 by tool_calls_made)
-    - **owns post-reflect cleanup**: as final action runs `bash scripts/cleanup-session.sh --session {session} --post-success` (idempotent; bypasses live-PID guard for trusted own-session caller)
+    - **owns post-reflect cleanup**: as final action runs `bash scripts/cleanup-session.sh --session {session}` (idempotent)
 
 14. Cleanup session (trivial-only): cleanup-session.sh
     - **runs only on trivial path** (where step 13 was skipped); non-trivial paths get cleanup from the backgrounded reflector at step 13

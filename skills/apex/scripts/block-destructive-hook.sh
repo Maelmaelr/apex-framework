@@ -65,9 +65,12 @@ if [[ "$COMMAND" =~ git[[:space:]]+stash[[:space:]]+pop ]]; then
 fi
 
 # git stash creation (push/save/bare/create/store) -- apex agents must NEVER stash.
-# A bare `git stash` (alias for `git stash push`) in a shared worktree silently
-# captures EVERY agent's uncommitted work into a stash ref; under parallel
-# executors this looks like catastrophic work loss for siblings. Read-only
+# Per-apex-session worktrees eliminate cross-session sibling overlap, but inside
+# ONE worktree the orchestrator + concurrent subagents (executor, discoverer,
+# screener, reviewer, polish, learn, documentation) share a single working tree.
+# A bare `git stash` (alias for `git stash push`) from any one of them silently
+# captures EVERY co-resident agent's uncommitted edits into a single stash ref,
+# which presents as catastrophic work loss for parallel siblings. Read-only
 # (list/show) and non-destructive recovery (apply/branch) stay allowed; `pop`
 # has its own block above. Sub-command split mirrors CHECKOUT_BYPASS so a
 # commit message or echo string containing "git stash" does not false-positive.
@@ -92,7 +95,7 @@ for s in subcmds:
 " 2>/dev/null || echo "")
 
 if [[ "$STASH_CREATE" == "yes" ]]; then
-  deny "GUARDRAIL: git stash (push/save/bare) is never allowed for apex agents -- in a shared worktree it silently captures every agent's uncommitted work into a stash ref and looks like work loss to parallel siblings. Commit your work instead, or ask the user via AskUserQuestion."
+  deny "GUARDRAIL: git stash (push/save/bare) is never allowed for apex agents -- co-resident subagents inside one worktree share a single working tree, and a stash captures every agent's uncommitted work into a single ref that looks like work loss to parallel siblings. Commit your work instead, or ask the user via AskUserQuestion."
   exit 0
 fi
 

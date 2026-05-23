@@ -28,11 +28,6 @@
 #                           (override; otherwise APEX_ACTIVE_DIR env >
 #                           $CLAUDE_PROJECT_DIR/.claude-tmp/apex-active >
 #                           $PWD/.claude-tmp/apex-active).
-#   --post-success | --caller-cc-session <id>
-#                           accepted but ignored (no-ops in worktree-only mode -
-#                           the worktree IS the isolation; the legacy PID guard
-#                           + cc_session_id sibling-wipe guard from the shared-
-#                           apex-active era no longer apply).
 #
 # Exit code: always 0 (idempotent contract; warnings to stderr).
 #
@@ -56,8 +51,6 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --session)            SESSION="${2:-}"; shift 2 ;;
     --apex-active-dir)    APEX_ACTIVE_OVERRIDE="${2:-}"; shift 2 ;;
-    --post-success)       shift ;;
-    --caller-cc-session)  shift 2 ;;
     *)
       echo "cleanup-session.sh: unknown arg: $1" >&2
       exit 0

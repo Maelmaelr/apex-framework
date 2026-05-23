@@ -121,13 +121,12 @@ After the structured block (or SKIPPED-no-inputs sentinel) is appended, the apex
 ```
 bash $HOME/.claude/skills/apex/scripts/cleanup-session.sh \
   --session "${SESSION}" \
-  --post-success \
   --apex-active-dir "${PROJECT_ROOT}/.claude-tmp/apex-active"
 ```
 
 `PROJECT_ROOT` is the absolute project root passed in this reflector's spawn-prompt (the orchestrator's `$PWD` at apex step 13). Background subagent CWD inheritance is unreliable - a bare `bash cleanup-session.sh --session ...` would resolve `.claude-tmp/apex-active` against the subagent's possibly-wrong CWD and silently no-op (rm -rf returns 0 on a missing path). Reflector e0f5b897: session 0cdd8999's manifest + 4 siblings lingered in `/Users/mael/Dev/flowctory/.claude-tmp/apex-active` because the background reflector ran cleanup from the wrong CWD. The explicit `--apex-active-dir` flag is the single source of truth; do NOT rely on `$CLAUDE_PROJECT_DIR` (not consistently set in subagent envs).
 
-`--post-success` bypasses the live-PID guard (the orchestrator's claude pid is recorded in the manifest and is still alive at this point - the guard's defensive purpose against sibling classifier bugs does not apply on the own-session post-reflect path). Idempotent; partial failures land as stderr warnings (silent per the failure-mode rule below).
+Idempotent; partial failures land as stderr warnings (silent per the failure-mode rule below).
 
 Skipped under SKIPPED-no-inputs (no manifest -> nothing to clean reliably; SessionEnd-hook is the fallback). Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge) skip this entirely - their orchestrators run cleanup themselves at task 11 / Step 10 / Step 7 follow-ups.
 
