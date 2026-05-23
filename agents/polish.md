@@ -16,12 +16,12 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 
 - `session` - 8-char hex token (for trace path schema if a trace is written).
 - `main_scope_path` - path to `{session}-main-scope.json` (read for `allowed_files`).
-- `baseline_head_sha` - git rev from `{session}-baseline.json` (used for `git diff --name-only`).
+- `diff_anchor` - git commit-ish used as the diff anchor. /apex caller resolves it as `git merge-base <manifest.base_branch> HEAD` (the apex/<session> branch's fork point - stable across the session lifecycle since the worktree branched off at session mint); apex-fix caller passes the pre-fix HEAD sha captured at Step 0.
 - `lessons_hits` - step 5 lessons hits (advisory; staleness signals only).
 
 ## Procedure
 
-1. **Compute touched-by-apex set**: `(git diff --name-only {baseline_head_sha}; git ls-files --others --exclude-standard) | sort -u`.
+1. **Compute touched-by-apex set**: `(git diff --name-only {diff_anchor}; git ls-files --others --exclude-standard) | sort -u`.
 
 2. **Intersect with `allowed_files`** from `main_scope_path`. Pre-existing user-dirty files outside scope are NOT polished (still committed as-is at step 12).
 

@@ -1,6 +1,6 @@
 ---
 name: execute
-description: Step 8 dispatch. Captures baseline, queues split tasks for >400 LOC files, decides per-task scope (default 1; splits into 2+ for clearly independent areas), spawns executor.md per task with explicit working-memory propagation. Sonnet executors under economy; main-session model under standard.
+description: Step 8 dispatch. Resolves diff_anchor from manifest, queues split tasks for >400 LOC files, decides per-task scope (default 1; splits into 2+ for clearly independent areas), spawns executor.md per task with explicit working-memory propagation. Sonnet executors under economy; main-session model under standard.
 ---
 
 # execute (step 8)
@@ -9,11 +9,12 @@ Spec: `apex-core.md` step 8.
 
 ## 8.0 Init
 
-- Capture working-tree baseline:
+- Resolve the per-session `diff_anchor` from the manifest's `base_branch`:
   ```
-  bash skills/apex/scripts/apex-baseline.sh
+  BASE_BRANCH=$(jq -r .base_branch .claude-tmp/apex-active/{session}.json)
+  DIFF_ANCHOR=$(git merge-base "$BASE_BRANCH" HEAD)
   ```
-  Writes `.claude-tmp/apex-active/{session}-baseline.json`: `{head_sha: <git rev-parse HEAD>}`. Consumed by steps 9 / 11 / 12 / 13 (each derives modified files via `git diff --name-only {head_sha}` against the worktree HEAD - the worktree's working tree is clean at session mint by construction).
+  This is the apex/<session> fork point - stable from session mint through step 15 because the worktree branched off `base_branch` at mint and HEAD does not advance until step 12's commit. Propagated explicitly in every downstream spawn-prompt (steps 9 / 10.5 / 11 / 13); steps 12 / verify-tests.sh compute it inline from the manifest. The worktree's working tree is clean at session mint by construction, so no `pre_dirty` exclusion is needed at step 12 staging.
 
 ## 8.1 Pre-flight wc-l split queue
 
@@ -64,11 +65,11 @@ Per task:
   {"goal": "<echoed label>", "status": "implemented|already-satisfied|failed|split-needed|no-spawn",
    "notes": "<one-line>", "tool_calls_made": <self-report>, "files_touched": ["<self-report>"],
    "tool_uses": <Agent result>, "total_tokens": <Agent result>, "duration_ms": <Agent result>,
-   "git_files_touched": ["<git diff --name-only {baseline.head_sha} ∩ task scope>"]}
+   "git_files_touched": ["<git diff --name-only {diff_anchor} ∩ task scope>"]}
   ```
   Omitting `tool_uses` / `total_tokens` / `duration_ms` silently disables step-13 reflector's oversized-dispatch + token-ceiling trips on exactly the low-friction runs where no fix-loop forces the data to surface (recurring 9-session compliance gap: 76dc994d/5ec98cfc/500d3e85/94bc1b7f/51b2f54a/525e97be/b512525e/a10cfe1e/093978c0). Self-report alone is gameable: reflector fa269898 saw self-report 71 `tool_calls_made` vs actual 134 `tool_uses` / 256k `total_tokens` (~2x); 145df100 / da97c3c1 saw self-reported `files_touched` under-report the git diff. Reflector keys its trip on the actuals + `git_files_touched`, never on `tool_calls_made` / `files_touched` alone. **ASSERT post-append**: when `status != "no-spawn"`, both `tool_uses` AND `total_tokens` MUST be > 0; a 0 / null / absent value means the Agent return object was not read, NOT that the executor used zero - STOP and re-extract from the Agent tool result before continuing (do not write a placeholder; do not advance to step 13 with the placeholder in place). Recurring 7-session continuation gap post the 9-session original: 169315a7/5f9bdc44/494203ff/7e72ac14/23c32b7e/7e0abf6a/fd09e42c, each surfaced the same `tool_uses=None tokens=None` shape in dispatch-summary entries with non-zero `tool_calls_made` - the spec was descriptive, not prescriptive, and the gap persisted.
 - **No-spawn sentinel (E1.1)**: when the orchestrator legitimately bypasses dispatch for a goal (e.g., economy-tier inline judgement that the goal is already satisfied without an executor read pass; or a high-confidence single-Edit slice the orchestrator owns directly), append ONE sentinel entry per skipped goal to the same `dispatch-summary.json`: `{goal, status: "no-spawn", notes: "<one-line reason>", tool_calls_made: 0, files_touched: []}`. Distinct from `already-satisfied` (which is the executor's verdict after a read pass). Without this sentinel the file is absent for the whole step and reflector / apex-improve cannot tell "intentional skip" from "orchestrator forgot to dispatch" (reflector cluster ee81f7b0 + 3d01b930 + fe233cc4: dispatch-summary.json absent on zero-call success paths). The dispatch-only constraint below still forbids inline `Edit` / `Write` / `MultiEdit` / `NotebookEdit` of scope files at step 8 - sentinel covers the legitimate read-only judgement path, not slice writes.
-- **Split-needed redispatch (C1 follow-up)**: on `status: split-needed`, the orchestrator re-spawns ONE follow-up executor with `goal = residual_goal` and `allowed_files = residual_files` (cap 1 redispatch per goal). The follow-up spawn carries **delta-only context** - dispatch-1's `what_i_did` + the `git diff --name-only {baseline.head_sha}` of files it already changed + the residual notes - NOT a fresh re-propagation of the full scope; the executor then reads only the `residual_files` it has not already touched, so an already-large dispatch-1 (sensed >~150k tokens) does not pay a second full-scope read (reflector d5f0cc89). If the follow-up also returns `split-needed`, mark the goal `failed` for step 15 with notes `"split-needed twice; residual: <residual_goal>"`. Per-redispatch return is also appended to dispatch-summary.json.
+- **Split-needed redispatch (C1 follow-up)**: on `status: split-needed`, the orchestrator re-spawns ONE follow-up executor with `goal = residual_goal` and `allowed_files = residual_files` (cap 1 redispatch per goal). The follow-up spawn carries **delta-only context** - dispatch-1's `what_i_did` + the `git diff --name-only {diff_anchor}` of files it already changed + the residual notes - NOT a fresh re-propagation of the full scope; the executor then reads only the `residual_files` it has not already touched, so an already-large dispatch-1 (sensed >~150k tokens) does not pay a second full-scope read (reflector d5f0cc89). If the follow-up also returns `split-needed`, mark the goal `failed` for step 15 with notes `"split-needed twice; residual: <residual_goal>"`. Per-redispatch return is also appended to dispatch-summary.json.
 - On failure or split decision, the executor writes a structured trace before returning (see `agents/executor.md`).
 
 ## Dispatch-only constraint
@@ -79,9 +80,9 @@ Under `report-only` mode no executor is dispatched at all (step 1 contract); the
 
 ## Output
 
-- `{session}-baseline.json` (from 8.0)
+- `diff_anchor` resolved in orchestrator working memory (from 8.0; propagated to every downstream agent spawn)
 - Per-task trace files (only on failure or split)
-- Modified scope files (touched-by-executor set; consumed by step 9 polish via `git diff` against `baseline.head_sha`)
+- Modified scope files (touched-by-executor set; consumed by step 9 polish via `git diff` against `{diff_anchor}`)
 
 ## What this skill does NOT do
 

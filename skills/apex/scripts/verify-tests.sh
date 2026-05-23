@@ -3,8 +3,9 @@
 # Spec: apex-core.md step 10; invoked by verify-build.sh when --with-tests is set.
 #
 # Auto-detect contract:
-#   - If no session baseline at .claude-tmp/apex-active/{session}-baseline.json,
-#     skip silently (stderr note); exit 0.
+#   - If no session manifest at .claude-tmp/apex-active/{session}.json (or
+#     manifest carries no base_branch / merge-base fails), skip silently
+#     (stderr note); exit 0.
 #   - If no test runner declared in the project, skip silently; exit 0.
 #   - If modified-files set yields zero derived test files, skip silently; exit 0.
 #   - Else run runner on derived set; first-fail-stop semantics, errors written
@@ -49,21 +50,25 @@ ERRORS_FILE="$APEX_ACTIVE/${SESSION}-verify-errors.txt"
 TMP_OUT=$(mktemp)
 trap 'rm -f "$TMP_OUT"' EXIT
 
-# Modified-files set. Empty stdout AND non-zero exit means "no baseline; skip".
-# Sibling /apex sessions write to the same working tree, so a raw `git diff
-# baseline.head_sha` pulls their WIP into our test-derivation set (false-positive
-# fix-loop on tests this session never authored). When this session has a
-# main-scope on disk, intersect the diff with `allowed_files` so only THIS
-# session's changes drive test selection. Pre-discovery (no main-scope yet) and
-# trivial path (no scope written) keep the unfiltered behavior.
+# Modified-files set. Empty stdout AND non-zero exit means "no diff anchor; skip".
+# Anchor is derived from the session manifest's base_branch via
+# `git merge-base $base_branch HEAD` (the apex/<session> worktree's fork point;
+# stable since the worktree branched off at session mint). Worktree isolation
+# means no sibling /apex session writes to this working tree.
+# When this session has a main-scope on disk, intersect the diff with
+# `allowed_files` so only THIS session's changes drive test selection.
+# Pre-discovery (no main-scope) and trivial path keep the unfiltered behavior.
 get_modified_files() {
-  local baseline="$APEX_ACTIVE/${SESSION}-baseline.json"
-  [[ -f "$baseline" ]] || return 1
-  local head_sha
-  head_sha=$(python3 -c "import json; print(json.load(open('$baseline')).get('head_sha',''))" 2>/dev/null) || return 1
-  [[ -n "$head_sha" ]] || return 1
+  local manifest="$APEX_ACTIVE/${SESSION}.json"
+  [[ -f "$manifest" ]] || return 1
+  local base_branch
+  base_branch=$(python3 -c "import json; print(json.load(open('$manifest')).get('base_branch',''))" 2>/dev/null) || return 1
+  [[ -n "$base_branch" ]] || return 1
+  local anchor
+  anchor=$(git merge-base "$base_branch" HEAD 2>/dev/null) || return 1
+  [[ -n "$anchor" ]] || return 1
   local raw
-  raw=$({ git diff --name-only "$head_sha" -- . 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+  raw=$({ git diff --name-only "$anchor" -- . 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
   local scope="$APEX_ACTIVE/${SESSION}-main-scope.json"
   if [[ -f "$scope" ]]; then
     printf '%s\n' "$raw" | python3 -c "
@@ -103,7 +108,7 @@ skip() {
   exit 0
 }
 
-MODIFIED=$(get_modified_files) || skip "no session baseline"
+MODIFIED=$(get_modified_files) || skip "no session manifest / base_branch"
 [[ -n "$MODIFIED" ]] || skip "no modified files"
 
 case "$PROJECT_TYPE" in

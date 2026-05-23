@@ -70,7 +70,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - same prompt + scope -> same tier, every run
 
 8. Execute: execute.md -> executor.md (per task)
-   - 8.0 init: apex-baseline.sh (captures head_sha; modified files derived per-consumer via `git diff --name-only {head_sha}`)
+   - 8.0 init: orchestrator resolves diff_anchor via `git merge-base $base_branch HEAD` (base_branch from manifest); modified files derived per-consumer via `git diff --name-only {diff_anchor}`. No producer file.
    - pre-flight wc -l on scope; >400 LOC -> queue split task ahead of edits
    - 8.2 goals-driven split: len(goals)==1 -> 1 task (full scope); len(goals)>1 -> N tasks, one goal per spawn prompt; per-task allowed_files narrowed to main-scope subset matching goal nouns; validate-disjoint-scopes.py enforces disjoint when 2+
    - 8.2 scope-size hard split (B1): per-task allowed_files > 8 -> chunk-scope.py -n 2 partition (directory-sibling-preserving, pairwise-disjoint); goal text duplicates; first executor wins, second sees already-satisfied
@@ -84,7 +84,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - executor model: sonnet if economy, main session model if standard
    - dispatch-only: orchestrator MUST NOT inline Edit/Write/MultiEdit/NotebookEdit slice files at step 8
 
-9. Polish: agents/polish.md (Sonnet; spawn-prompt carries scope path + baseline.head_sha + lessons hits; subagents do NOT inherit working memory)
+9. Polish: agents/polish.md (Sonnet; spawn-prompt carries scope path + diff_anchor + lessons hits; subagents do NOT inherit working memory)
    - **skipped on economy tier** (small scope = small surface; verify catches functional issues)
    - touched INTERSECT scope
    - staleness / inconsistency / unused check
@@ -92,7 +92,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 
 10. Verify: verify-build.sh --with-tests (apex hot path; apex-fix omits the flag)
     - lint + typecheck + build (project-aware, first-fail-stop)
-    - --with-tests delegates to verify-tests.sh after build: derives modified files from session baseline, runs project test runner on related-only set (auto-skip when no baseline / no test runner / zero related)
+    - --with-tests delegates to verify-tests.sh after build: derives modified files from manifest base_branch via merge-base, runs project test runner on related-only set (auto-skip when no manifest / no test runner / zero related)
     - if errors: executor.md (always Sonnet for fix-loop, regardless of step 8's tier; cap 3)
     - on cap exhaustion: AskUserQuestion (abort | proceed-with-errors)
 

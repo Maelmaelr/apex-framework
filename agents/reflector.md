@@ -43,7 +43,7 @@ Apex phase:
 - Latest `## {session} - heuristics - {ts}` block in `~/.claude/tmp/apex-workflow-improvements.md` (parse `novel_traces:` line for focus paths). Written immediately before this spawn by `bash skills/apex/scripts/reflect-traces.sh`.
 - All trace files under `.claude-tmp/apex-active/{session}-traces/**/*.md` (read in-place; no snapshot).
 - `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (best-effort; absent under trivial path or when step 8 produced no executor returns). JSON array of `{goal, status, notes, tool_calls_made, files_touched, tool_uses, total_tokens, duration_ms, ...}`; `tool_uses` / `total_tokens` / `duration_ms` and a git-reconciled `files_touched` are orchestrator-recorded actual telemetry (step 8.3 E1), the rest are executor self-report. Consumed by the oversized-dispatch flag below.
-- `git diff --stat {baseline.head_sha}` + `git ls-files --others --exclude-standard` (baseline pinned for the same race-avoidance reason as `learn.md` / `documentation.md`).
+- `git diff --stat {diff_anchor}` + `git ls-files --others --exclude-standard`. `diff_anchor` is passed verbatim in the spawn prompt (apex orchestrator resolves it as `git merge-base <manifest.base_branch> HEAD`, the apex/<session> branch's fork point - stable since the worktree branched off at session mint).
 
 Admin-apex / lessons-analyze / lessons-extract / apex-merge: see the invocation table. No heuristic preamble (those phases bypass `reflect-traces.sh`); inputs are JSON artifacts (where present) plus the per-task / per-step summary trace.
 
@@ -92,7 +92,7 @@ If only ONE of the two inputs is missing, still emit the structured block - hypo
 Canonical contract (when, collision condition, output line format, history-log path): `apex-core.md` step 13. Implementation specifics:
 
 1. `prompt_hash` = sha1 of normalized `original_prompt` from `{session}-hypothesis.json` (recipe: `skills/apex/scripts/discovery-cache.sh:normalize_prompt`).
-2. `scope_count` from `{session}-main-scope.json` `allowed_files.length`; when that artifact is absent fall back to `{session}-discovery-skip.json` `inlined_paths.length`; record `0` only when neither artifact exists - never read it from the sparse manifest, which carries no `allowed_files` key (reflector 2f253b91: the log recorded `scope_count=0` because only the manifest was consulted). `touched_count` from `git diff --name-only {baseline.head_sha}` line count; `files_touched` from the same output (sorted, comma-joined, truncated at 240 chars).
+2. `scope_count` from `{session}-main-scope.json` `allowed_files.length`; when that artifact is absent fall back to `{session}-discovery-skip.json` `inlined_paths.length`; record `0` only when neither artifact exists - never read it from the sparse manifest, which carries no `allowed_files` key (reflector 2f253b91: the log recorded `scope_count=0` because only the manifest was consulted). `touched_count` from `git diff --name-only {diff_anchor}` line count; `files_touched` from the same output (sorted, comma-joined, truncated at 240 chars).
 3. Collision filter: prior entry in `~/.claude/tmp/apex-prompt-history.log` with `hash == prompt_hash` AND `session != {session}` -> emit the `non-convergence:` `improvements:` line. No prior match -> no extra line.
 4. Append this run's record to the log regardless:
    ```

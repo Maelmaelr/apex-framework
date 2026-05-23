@@ -120,9 +120,9 @@ check_py   skills/apex/scripts/*.py
 check_schemas skills/apex/schemas/*.json skills/admin-apex/schemas/*.json
 
 # Fixture tests for v2 scripts that have orchestrator-visible exit-code
-# contracts (apex-baseline, apex-conflict-check, cleanup-session, session-end,
-# reflect-traces, find-claude-pid). One assertion per script covers the
-# critical exit code path the orchestrator reads.
+# contracts (apex-conflict-check, cleanup-session, session-end, reflect-traces,
+# find-claude-pid). One assertion per script covers the critical exit code path
+# the orchestrator reads.
 check_fixtures() {
   local label="$1"
   local expected="$2"
@@ -170,8 +170,6 @@ for p in sys.argv[1:]:
 }
 
 # 1. Each script rejects missing/bad {session} arg.
-run_fixture "apex-baseline.sh missing-arg" 1 \
-  bash "$REPO_ROOT/skills/apex/scripts/apex-baseline.sh"
 run_fixture "bump-version.sh missing-arg" 1 \
   bash "$REPO_ROOT/skills/apex/scripts/bump-version.sh"
 run_fixture "bump-version.sh bad-kind" 1 \
@@ -397,13 +395,13 @@ run_fixture "reflect-traces.sh invalid-token" 0 \
 run_fixture "verify-tests.sh missing-args" 2 \
   bash "$REPO_ROOT/skills/apex/scripts/verify-tests.sh"
 
-# 9. verify-tests.sh: valid args but no session baseline -> skip cleanly (exit 0).
-#    The script's auto-detect contract: no baseline = silent skip, never an error.
-verify_tests_no_baseline_fixture() {
+# 9. verify-tests.sh: valid args but no session manifest -> skip cleanly (exit 0).
+#    The script's auto-detect contract: no manifest / no base_branch = silent skip.
+verify_tests_no_manifest_fixture() {
   bash "$REPO_ROOT/skills/apex/scripts/verify-tests.sh" \
     --session deadbeef --project-type node
 }
-run_fixture "verify-tests.sh no-baseline-skip" 0 verify_tests_no_baseline_fixture
+run_fixture "verify-tests.sh no-manifest-skip" 0 verify_tests_no_manifest_fixture
 
 # 10. verify-build.sh --with-tests end-to-end at empty cwd: no manifest detected
 #     by verify-build.sh -> exit 0 before reaching the tests phase. Confirms the

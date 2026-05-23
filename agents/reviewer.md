@@ -14,16 +14,16 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 
 - `session` - 8-char hex token (for trace path).
 - `main_scope_path` - path to `{session}-main-scope.json` (read for `allowed_files`).
-- `baseline_head_sha` - git rev from `{session}-baseline.json` `head_sha` (used for `git diff`). Worktree isolation makes the baseline fixed at step 2 with no mid-run supersede path.
+- `diff_anchor` - git commit-ish used as the diff anchor. /apex orchestrator resolves it as `git merge-base <manifest.base_branch> HEAD` (the apex/<session> branch's fork point - stable since the worktree branched off at session mint, no mid-run supersede path).
 - `project_root` - absolute repo root.
 - `attempt` - 1 (initial) or 2 (post-fix re-review). Threaded through to trace path.
 - `prior_findings_path` - optional, present only on `attempt=2`: path to prior `{session}-traces/review/result-1.json` so the agent can confirm prior findings are now resolved.
 
 ## Procedure
 
-1. **Compute review surface**: `git diff {baseline_head_sha}..HEAD --name-only` UNION `git ls-files --others --exclude-standard`, INTERSECTED with `allowed_files`. Empty intersection -> return `{findings: [], action: "pass", notes: "empty review surface"}`.
+1. **Compute review surface**: `git diff {diff_anchor}..HEAD --name-only` UNION `git ls-files --others --exclude-standard`, INTERSECTED with `allowed_files`. Empty intersection -> return `{findings: [], action: "pass", notes: "empty review surface"}`.
 
-2. **Read the diff body** for each in-scope file: `git diff {baseline_head_sha}..HEAD -- <path>` (untracked files: full content). Cap individual file diff at 400 lines; truncate with marker if exceeded.
+2. **Read the diff body** for each in-scope file: `git diff {diff_anchor}..HEAD -- <path>` (untracked files: full content). Cap individual file diff at 400 lines; truncate with marker if exceeded.
 
 3. **Scan against the CLAUDE.md rule set** (apply BOTH global `$HOME/.claude/CLAUDE.md` AND `<project-root>/CLAUDE.md` when present; project rules override on conflict):
    - **Pattern-following**: code introduces a new abstraction, helper, or naming convention that diverges from an existing one in the same package. Cite the existing-example path:line and the divergent new path:line.

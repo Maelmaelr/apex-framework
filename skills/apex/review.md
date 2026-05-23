@@ -1,6 +1,6 @@
 ---
 name: review
-description: Step 10.5 review sub-step. Gated code-review pass over baseline..HEAD INTERSECT allowed_files; checks CLAUDE.md rules (pattern, over-engineering, security-at-boundaries, i18n, complexity). Spawns agents/reviewer.md (Sonnet, foreground). Runs ONLY under standard tier when diff is non-trivial and complexity-hinted.
+description: Step 10.5 review sub-step. Gated code-review pass over diff_anchor..HEAD INTERSECT allowed_files; checks CLAUDE.md rules (pattern, over-engineering, security-at-boundaries, i18n, complexity). Spawns agents/reviewer.md (Sonnet, foreground). Runs ONLY under standard tier when diff is non-trivial and complexity-hinted.
 ---
 
 # review (step 10.5)
@@ -13,7 +13,7 @@ Fires ONLY when ALL hold:
 
 1. tier == "standard" (read from `{session}-tier.json`). Economy tier always skips (mirrors step 9 polish-skip rule; tiny scope rarely produces CLAUDE.md-rule violations worth the hop).
 2. step 10 verify exited 0 (a broken build is not the reviewer's concern; step 10's fix-loop owns that).
-3. `len(touched_files) >= 3` where touched = `(git diff --name-only {baseline.head_sha}; git ls-files --others --exclude-standard) | sort -u` INTERSECTED with `allowed_files`. Small diffs (1-2 files) skip - the cost-vs-coverage trade does not justify the hop.
+3. `len(touched_files) >= 3` where touched = `(git diff --name-only {diff_anchor}; git ls-files --others --exclude-standard) | sort -u` INTERSECTED with `allowed_files`. Small diffs (1-2 files) skip - the cost-vs-coverage trade does not justify the hop.
 4. ANY of:
    - `hypothesis.complexity_hint == "high"`, OR
    - ANY `hypothesis.goals[]` matches `/\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i`.
@@ -28,7 +28,7 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 
 - `session` - 8-char hex token.
 - `main_scope_path` - `.claude-tmp/apex-active/{session}-main-scope.json`.
-- `baseline_head_sha` - read from `{session}-baseline.json` (`head_sha`); worktree isolation makes the baseline fixed at step 2 with no mid-run supersede path.
+- `diff_anchor` - orchestrator resolves it inline as `git merge-base <manifest.base_branch> HEAD` (the apex/<session> fork point; stable from session mint with no mid-run supersede path).
 - `project_root` - absolute path to repo root.
 - `attempt` - 1 on initial spawn; 2 on post-fix re-review.
 - `prior_findings_path` - present ONLY on attempt 2: `.claude-tmp/apex-active/{session}-traces/review/result-1.json`.
@@ -55,7 +55,7 @@ The executor spawn for review-fix follows `agents/executor.md` step 10 fix-loop 
 - Always Sonnet (regardless of step 8 tier).
 - No `goal` field; the findings list IS the work.
 - Cap 1 (single fix attempt; do not retry inside review-fix).
-- Spawn-prompt carries: session, main_scope_path, baseline_head_sha, findings array verbatim, `attempt-N = step10-fix-attempts + 1`.
+- Spawn-prompt carries: session, main_scope_path, diff_anchor, findings array verbatim, `attempt-N = step10-fix-attempts + 1`.
 - Executor returns the legacy one-line summary (no `{goal, status, ...}` shape; this is the step-10 fix-loop shape, not the step-8 dispatch shape).
 
 ## Re-review contract (attempt 2)

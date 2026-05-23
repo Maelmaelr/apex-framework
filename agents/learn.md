@@ -12,7 +12,7 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 
 ## Input
 
-`git diff {baseline.head_sha}` (head_sha from `.claude-tmp/apex-active/{session}-baseline.json`; pinned so the diff stays valid through step 12's commit).
+`git diff {diff_anchor}` where `diff_anchor` is passed verbatim in the spawn prompt by the caller. /apex orchestrator resolves it as `git merge-base <manifest.base_branch> HEAD` (the apex/<session> branch's fork point - stable across the session lifecycle since the worktree branched off at session mint). apex-fix orchestrator passes the pre-fix HEAD sha captured at Step 0. Either way the diff stays valid through step 12's commit.
 
 ## Output
 

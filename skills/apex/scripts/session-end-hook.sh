@@ -61,8 +61,8 @@ except Exception:
     dir="${wt}.claude-tmp/apex-active"
     [[ -d "$dir" ]] || continue
     for manifest in "$dir"/*.json; do
-      # 8-hex.json filename guard: excludes -hypothesis.json, -baseline.json,
-      # -*-scope.json, etc. by shape.
+      # 8-hex.json filename guard: excludes -hypothesis.json, -*-scope.json,
+      # etc. by shape.
       [[ "$(basename "$manifest")" =~ ^[0-9a-f]{8}\.json$ ]] || continue
       local matched
       matched=$(python3 -c "
