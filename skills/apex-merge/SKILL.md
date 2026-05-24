@@ -59,7 +59,7 @@ TaskCreate "7. Self-reflect"
 
 2. **Discover** - inline. Enumerate `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`. For each branch B:
    - SESSION = strip `apex/` prefix.
-   - WORKTREE = `git worktree list --porcelain | grep -A2 "^branch refs/heads/$B" | grep '^worktree ' | cut -d' ' -f2`.
+   - WORKTREE = `git worktree list --porcelain | awk -v b="refs/heads/$B" '/^worktree / {wt=$2} $1=="branch" && $2==b {print wt; exit}'` (porcelain emits `worktree <path>` BEFORE the matching `branch refs/heads/...` line; remembering the last-seen worktree and emitting on branch match is portable to bash 3.2 and avoids the shifted-map bug of `grep -A2`).
    - MANIFEST = `$WORKTREE/.claude-tmp/apex-active/$SESSION.json`.
    - BASE = `jq -r .base_branch "$MANIFEST"` (default `main` if absent).
    - BUMP_HINT = `jq -r '.bump_hint // empty' "$MANIFEST"`.

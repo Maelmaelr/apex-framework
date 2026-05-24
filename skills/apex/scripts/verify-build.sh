@@ -140,9 +140,9 @@ run_or_fail() {
       echo "verify-build.sh: $label FAILED (lint warnings; warn-as-error); errors -> $ERRORS_FILE" >&2
       if (( scope_annotate == 1 )); then
         if ! annotate_foreign_lint && (( IN_SCOPE_ONLY == 1 )); then
-          echo "verify-build.sh: $label foreign-only (no in-scope file implicated); --in-scope-only treats as clean" >&2
+          echo "verify-build.sh: $label foreign-only (no in-scope file implicated); --in-scope-only treats as clean, continuing to next phase" >&2
           rm -f "$ERRORS_FILE"
-          exit 0
+          return 0
         fi
       fi
       exit 1

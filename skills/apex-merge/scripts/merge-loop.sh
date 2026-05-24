@@ -84,6 +84,15 @@ fi
 mkdir -p "$ACTIVE_DIR"
 echo '[]' > "$RESULT"
 
+# Append a step-4 summary line per SKILL.md step 4 contract. Clean-merge /
+# trivial-union / merge-refused cases write here directly so the orchestrator
+# does not back-fill (reflector 492224ba). The conflict-exit-20 path stays with
+# the orchestrator - it owns the resolver decision and writes the line after
+# the AskUserQuestion outcome.
+append_summary() {
+  echo "step-4: $1 $2 (conflicts=$3 resolver=$4)" >> "$ACTIVE_DIR/$RUN-summary.md"
+}
+
 append_result() {
   python3 - "$RESULT" "$1" "$2" "$3" "$4" <<'PY'
 import json, sys
@@ -132,6 +141,7 @@ for ENTRY in "${ENTRIES[@]}"; do
   IFS=$'\t' read -r BRANCH BASE SUBJECT <<<"$ENTRY"
   if ! git checkout "$BASE" >/dev/null 2>&1; then
     append_result "$BRANCH" "$BASE" "checkout-failed" "could not check out base $BASE"
+    append_summary "$BRANCH" "checkout-failed" 0 "none"
     continue
   fi
   if [[ -z "$SUBJECT" ]]; then
@@ -139,6 +149,7 @@ for ENTRY in "${ENTRIES[@]}"; do
   fi
   if git merge --no-ff "$BRANCH" -m "Merge $BRANCH: $SUBJECT" >/dev/null 2>&1; then
     append_result "$BRANCH" "$BASE" "merged" ""
+    append_summary "$BRANCH" "merged" 0 "none"
     continue
   fi
   # Merge stopped (conflict OR refusal). Capture conflicted paths.
@@ -189,6 +200,7 @@ PY
     if [[ -z "$REMAINING" && "$TRIVIAL_COUNT" -gt 0 ]]; then
       if git commit --no-edit >/dev/null 2>&1; then
         append_result "$BRANCH" "$BASE" "merged" "trivial-union=$TRIVIAL_COUNT"
+        append_summary "$BRANCH" "merged" "$TRIVIAL_COUNT" "none"
         continue
       fi
     fi
@@ -199,6 +211,7 @@ PY
     exit 20
   fi
   append_result "$BRANCH" "$BASE" "merge-refused" "git merge returned non-zero without conflicts"
+  append_summary "$BRANCH" "merge-refused" 0 "none"
   exit 21
 done
 
