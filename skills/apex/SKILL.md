@@ -95,14 +95,10 @@ Step 13 reflector is **background** in non-trivial paths (economy + standard); t
     - Both read `git diff {diff_anchor}`. `learn` appends to `.claude-tmp/lessons-tmp.md` under `flock` (via `bash skills/apex/scripts/append-with-lock.sh`); the agent's own bar drops within-session trivia even when the gate opens.
 12. **VERSION bump + git sync** - inline (no subagent hop; orchestrator owns it). Worktree isolation means each session has its own branch + index + working tree, so plain `git add -A; git commit; git push` is correct - no allowlist / private-index / CAS-retry machinery needed. VERSION stays untouched in this worktree; `/apex-merge` step 6 picks the highest `bump_hint` across the batch and bumps VERSION ONCE on the final integration commit.
     ```
-    # Classify diff -> patch | minor (orchestrator inline; never major - user-set only).
-    # patch: bug fix / refactor / internal-only / tweak.
-    # minor: new public symbol/route/component OR breaking API change.
+    # Classify diff -> patch (bug fix / refactor / internal-only / tweak) | minor (new public symbol/route/component OR breaking API change). Never major - user-set only.
     BUMP_HINT=<patch|minor>
     # Persist hint into manifest for /apex-merge.
-    tmpf=$(mktemp) && jq --arg h "$BUMP_HINT" '. + {bump_hint: $h}' \
-      .claude-tmp/apex-active/{session}.json > "$tmpf" \
-      && mv "$tmpf" .claude-tmp/apex-active/{session}.json
+    tmpf=$(mktemp) && jq --arg h "$BUMP_HINT" '. + {bump_hint: $h}' .claude-tmp/apex-active/{session}.json > "$tmpf" && mv "$tmpf" .claude-tmp/apex-active/{session}.json
     # Draft commit MESSAGE from `git diff {diff_anchor}..HEAD` + `git status --porcelain`
     # (orchestrator inline; the working tree IS this session's scope).
     git add -A
