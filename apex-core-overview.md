@@ -46,7 +46,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - validate-json.sh hypothesis.schema.json
 
 5. Load lessons + project docs: grep-lessons.sh -> screener gate (K=25)
-   - keywords for grep-lessons.sh extracted deterministically from hypothesis.goals[] (same recipe as step 6: lowercase + tokenize + stopword drop + dedupe; cap at top 8 by document-order)
+   - keywords for grep-lessons.sh extracted deterministically from hypothesis.goals[] (same recipe as step 6: lowercase + tokenize + stopword drop + dedupe). **Narrow-first**: top 4 keys first; widen to top 8 only on 0 matches
    - **gate**: grep output <= 25 lines -> orchestrator picks kept[] inline (no Haiku hop; screener_reason = "inline-pick: ..."); grep output > 25 lines -> spawn agents/lesson-screener.md (Haiku, single call; subagents do NOT inherit working memory; raw grep output + hypothesis explicit in spawn prompt). Either path writes {session}-lesson-screened.json. update-hit.sh runs on kept line ranges.
    - orchestrator reads kept[] only; raw grep blob never enters working memory
    - project-context.md cached from step 1
@@ -90,7 +90,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - staleness / inconsistency / unused check
    - lessons context advisory
 
-10. Verify: verify-build.sh --with-tests (apex hot path; apex-fix omits the flag)
+10. Verify: verify-build.sh --with-tests --in-scope-only (apex hot path; apex-fix omits both flags)
     - lint + typecheck + build (project-aware, first-fail-stop)
     - --with-tests delegates to verify-tests.sh after build: derives modified files from manifest base_branch via merge-base, runs project test runner on related-only set (auto-skip when no manifest / no test runner / zero related)
     - if errors: executor.md (always Sonnet for fix-loop, regardless of step 8's tier; cap 3)
@@ -111,6 +111,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 12. VERSION bump + git sync: **inline** (orchestrator owns; no subagent hop)
     - classify diff -> minor | patch (never major; user-set only)
     - persist classified tier as `bump_hint` into manifest; /apex-merge step 6 picks the highest tier across the batch and bumps VERSION ONCE on the final integration commit
+    - **scope-drift pre-commit emit**: before `git add -A`, diff dirty paths against allowed_files and append one `scope-drift foreign-mutation: <path>` line per foreign-modified file to ~/.claude/tmp/git-agent-errors.log (catches tool-side auto-mutations the PreToolUse hook cannot see; commit still proceeds)
     - `git add -A; git commit -m "$MESSAGE"; git push -u origin apex/<session>` (worktree isolation makes shared-working-tree contamination impossible; no allowlist / private-index / CAS-retry needed)
     - empty diff = noop (valid); push failure non-blocking (/apex-merge retries)
 

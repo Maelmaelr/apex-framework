@@ -1,6 +1,6 @@
 ---
 name: apex-merge
-description: Integrate apex/<session> worktree branches back into their recorded base branches. Enumerates `git branch --list 'apex/*'`, reads each session manifest's base_branch + bump_hint, merges onto the recorded base, batches the VERSION bump across the run, spawns agents/apex-merge-resolver.md per conflicted file. Manual trigger only; runs from the main worktree.
+description: Integrate apex/<session> worktree branches back into their recorded base branches. Enumerates `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`, reads each session manifest's base_branch + bump_hint, merges onto the recorded base, batches the VERSION bump across the run, spawns agents/apex-merge-resolver.md per conflicted file. Manual trigger only; runs from the main worktree.
 ---
 
 # /apex-merge
@@ -57,7 +57,7 @@ TaskCreate "7. Self-reflect"
    ```
    NEVER write `cc_session_id:""` (breaks SessionEnd sweep) and NEVER use bare `$PPID` inside `bash -c` (captures transient zsh pid). Reuse `RUN` across all subsequent steps. Then append a one-line summary trace for Step 7's reflector: `step-1: precheck ok (auto-committed N dirty files on main)` if `DIRTY_COUNT > 0` else `step-1: precheck ok (main worktree clean)`, written to `$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md`.
 
-2. **Discover** - inline. Enumerate `git branch --list 'apex/*'`. For each branch B:
+2. **Discover** - inline. Enumerate `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`. For each branch B:
    - SESSION = strip `apex/` prefix.
    - WORKTREE = `git worktree list --porcelain | grep -A2 "^branch refs/heads/$B" | grep '^worktree ' | cut -d' ' -f2`.
    - MANIFEST = `$WORKTREE/.claude-tmp/apex-active/$SESSION.json`.
@@ -87,7 +87,7 @@ TaskCreate "7. Self-reflect"
    - `git merge --no-ff "$B" -m "Merge $B: <subject from git log -1 --pretty=%s $B>"`
    - On conflict: print conflicted paths. **Trivial-union skip (merge-loop.sh inline)**: additive conflicts (no overlapping deletions, disjoint line ranges, bracket/quote-balanced bodies each side, <=20kb total) are resolved by inline union of both sides' adds without spawning the resolver - saves ~5-10k tokens that an agent would spend to confirm what concatenation produces (reflectors c946e283 + 907a040c). The bracket/quote-balance check (parens, braces, brackets, single+double+backtick quotes on each half) substitutes for the prior markdown-only parse gate. merge-loop.sh stages and records `detail: trivial-union=N`. Anything the predicate rejects falls through to the resolver. Remaining conflicts spawn `agents/apex-merge-resolver.md` (Sonnet, foreground) with the full-context bundle (conflicted body, base-side + apex-side diffs, apex hypothesis, base/apex commit logs). Resolver returns per-hunk `resolved_block` entries by default (full `proposed_body` only for multi-hunk synthesis); orchestrator splices into the conflicted file, then AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = reject-edit). Per-option `description` carries a one-line diff sketch + recommendation only; full rationale lives in `<run>-merge-result.json` (reflector ed637be7). On accept: write file, `git add P`. On reject: user manual edit, then `git add P`. On abort: `git merge --abort`, skip cleanup, continue.
    - All conflicts resolved -> `git merge --continue`.
-   Per-branch result recorded in `<run>-merge-result.json` (`status`: `merged` | `skipped-conflict-abort` | `nothing-to-merge`; `pushed`: `true` | `false` | `not-attempted`, set by Step 6). Mirror Step 2's omit-empty discipline: drop `detail` when empty (reflector 32455372). Append `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort>)` per branch to `<run>-summary.md`.
+   Per-branch result recorded in `<run>-merge-result.json` (`status`: `merged` | `skipped-conflict-abort` | `nothing-to-merge`; `pushed`: `true` | `false` | `not-attempted`, set by Step 6). Mirror Step 2's omit-empty discipline: drop `detail` when empty (reflector 32455372). Append `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort|none>)` per branch to `<run>-summary.md` - emit EVERY branch including clean merges (`conflicts=0 resolver=none`) so Step 7 reflector input is self-contained and `<run>-merge-result.json` re-read is unnecessary (reflector 802557ae).
 
 4.5. **Replay worktree side-effects** - inline, runs ONLY when step 4 merged 1+ branches cleanly (status `merged` exists in `<run>-merge-result.json`). Each apex worktree's executor logged its state-mutating commands to `.claude-tmp/apex-active/{session}-side-effects.jsonl` (migrations, seeders, codegen producing untracked output, etc.); main's working state was not touched by those runs, so they must replay here before step 5 removes the worktrees. Read this step's contract entirely before running it - it executes shell commands on the main worktree.
    ```bash
@@ -118,7 +118,7 @@ TaskCreate "7. Self-reflect"
    Invoke `apex-fix` via Skill (`Skill(skill="apex-fix")`). After return (regardless of outcome), `rm -rf "$SCOPE_DIR/${FIX_SESSION}-scopes" "$SCOPE_DIR/${FIX_SESSION}-main-scope.json"`. Clean exit -> `step-4.6: apex-fix clean (resolved_conflicts=N)`. Non-zero exit -> AskUserQuestion (`proceed-anyway` | `abort-merge-run`; dismiss = `proceed-anyway`). `abort-merge-run` halts before Step 5 (worktrees + branches preserved; SessionEnd hook does NOT sweep `<run>` on this branch). `proceed-anyway` continues with `step-4.6: apex-fix fail (resolved_conflicts=N, cap-reached)` recorded.
 
 5. **Cleanup merged branches** - inline. For each branch with status `merged` OR `nothing-to-merge`, run in THIS order (worktree removal must precede branch deletion - reflector ba0afe92):
-   - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty`).
+   - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty`). **Dirty-classification fast-path** (reflectors 05ac48db + cf2e67b6): before the AskUserQuestion prompt, classify dirty payload via `git -C "$WORKTREE" status --porcelain`; when EVERY dirty line is a deletion of a path tracked on BASE HEAD (`D ` prefix on a path that `git -C "$WORKTREE" cat-file -e BASE:<path>` confirms exists on base; stale checkout safe to drop) OR matches a known auto-generated path (`apps/web/next-env.d.ts`, `next-env.d.ts` at any depth - extend by appending to the allowlist when reflectors flag new auto-gen patterns), auto-force without prompting and record `step-5: auto-force <branch> (deletions-only|auto-generated-only)`. Anything else (modifications / untracked) falls through to the standard AskUserQuestion.
    - `git worktree prune` (mandatory; drains stale admin entries so `git branch -D` succeeds).
    - `git branch -D "$B"`
    - `git push origin --delete "$B" 2>/dev/null || true` (silent on no remote)

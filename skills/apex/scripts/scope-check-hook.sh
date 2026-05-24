@@ -43,6 +43,22 @@ deny() { echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permi
 
 is_safety_path() {
   local target="$1"
+  # Same-session self-allow (reflector 42f24a1c): when CWD is inside an apex
+  # worktree (.../.apex-worktrees/<OWN>/...), an absolute-path Write into THAT
+  # same worktree's .claude-tmp/ is the caller's own session - allow it. The
+  # cross-worktree guard below still blocks paths reaching into OTHER sessions'
+  # worktrees. Without this, any step building a path string from PROJECT_ROOT
+  # (instead of relying on the relative .claude-tmp/ pass-through below) was
+  # denied a write into its own apex-active dir.
+  local own_token=""
+  if [[ "$PWD" == *"/.apex-worktrees/"* ]]; then
+    own_token="${PWD##*/.apex-worktrees/}"
+    own_token="${own_token%%/*}"
+  fi
+  if [[ -n "$own_token" ]]; then
+    [[ "$target" == *"/.apex-worktrees/${own_token}/.claude-tmp/"* ]] && return 0
+    [[ "$target" == ".apex-worktrees/${own_token}/.claude-tmp/"* ]] && return 0
+  fi
   # Cross-worktree leak guard (worktree migration): a target containing
   # .apex-worktrees/<X>/.claude-tmp/ belongs to session <X>'s linked worktree,
   # not the caller's own worktree-relative .claude-tmp/. Without this guard,

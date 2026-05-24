@@ -183,6 +183,34 @@ for _cache in node_modules .venv venv target .gradle .next .nuxt .turbo; do
     ln -s "$_WT_COMMON_RES/$_cache" "$_cache" 2>/dev/null || true
   fi
 done
+# Monorepo subpackage cache symlinks (reflectors 84d59286 / 991f2792 / c73f7ca6
+# 7-session recurrence): top-level node_modules alone is insufficient for pnpm
+# workspaces - per-subpackage node_modules + built dist/ live under packages/*,
+# apps/*, services/*. Detect a monorepo by pnpm-workspace.yaml OR a top-level
+# package.json carrying a "workspaces" field, then symlink each subpackage's
+# node_modules + dist from the main worktree. Glob keeps it monorepo-pattern-
+# agnostic (no YAML parse in bash); silent when the subpackage dir or its
+# cache is absent.
+_is_monorepo=0
+[[ -f "$_WT_COMMON_RES/pnpm-workspace.yaml" ]] && _is_monorepo=1
+if [[ $_is_monorepo -eq 0 && -f "$_WT_COMMON_RES/package.json" ]]; then
+  grep -q '"workspaces"' "$_WT_COMMON_RES/package.json" 2>/dev/null && _is_monorepo=1
+fi
+if [[ $_is_monorepo -eq 1 ]]; then
+  shopt -s nullglob
+  for _pkgdir in "$_WT_COMMON_RES"/packages/*/ "$_WT_COMMON_RES"/apps/*/ "$_WT_COMMON_RES"/services/*/; do
+    [[ -d "$_pkgdir" ]] || continue
+    _rel="${_pkgdir#$_WT_COMMON_RES/}"
+    _rel="${_rel%/}"
+    [[ -d "$_rel" ]] || mkdir -p "$_rel" 2>/dev/null || continue
+    for _sub in node_modules dist; do
+      if [[ -e "$_pkgdir$_sub" && ! -e "$_rel/$_sub" ]]; then
+        ln -s "$_pkgdir$_sub" "$_rel/$_sub" 2>/dev/null || true
+      fi
+    done
+  done
+  shopt -u nullglob
+fi
 shopt -s nullglob
 for _envf in "$_WT_COMMON_RES"/.env "$_WT_COMMON_RES"/.env.*; do
   [[ -f "$_envf" ]] || continue

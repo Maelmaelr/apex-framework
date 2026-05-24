@@ -135,6 +135,17 @@ fi
 
 # Step 1: Conditional VERSION bump.
 if [[ "$BUMP" != "none" ]]; then
+  # Idempotency guard (reflector 3f0eb405): if this RUN already produced a
+  # commit (orchestrator double-fired finalize.sh, or a partial restart re-
+  # entered after the bump landed), refuse the second bump. The canonical
+  # commit-message convention is `admin-apex $RUN: ...` (mirrored by apex-
+  # improve `apex-improve $RUN: ...`). Scan the last 20 commits for either
+  # producer-tag + this run's token; any hit means a commit for THIS run is
+  # already on HEAD - second bump would force a rollback amend cycle.
+  if git log --oneline -20 2>/dev/null | grep -qE "^[0-9a-f]+ (admin-apex|apex-improve) $RUN:"; then
+    echo "admin-apex-finalize.sh: run $RUN already has a commit in recent git log; refusing second bump (idempotency guard; if this is intentional invoke with --bump=none or re-mint $RUN)" >&2
+    exit 1
+  fi
   # Drift pre-check: working-tree VERSION must match git HEAD:VERSION before
   # bump. Catches externally-modified VERSION (e.g., hand-edit between prior
   # commit and this finalize) before _bump-version.sh advances from a wrong
