@@ -60,6 +60,7 @@ fi
 ACTIVE_DIR="$HOME/.claude/.claude-tmp/apex-merge-active"
 RESULT="$ACTIVE_DIR/$RUN-merge-result.json"
 [[ -z "$OUT" ]] && OUT="$ACTIVE_DIR/$RUN-side-effects-dedup.json"
+SUMMARY="$ACTIVE_DIR/$RUN-summary.md"
 
 if [[ ! -f "$RESULT" ]]; then
   echo "replay-side-effects.sh: merge-result not found: $RESULT" >&2
@@ -72,11 +73,11 @@ if [[ -z "$MAIN_TOP" ]]; then
   exit 2
 fi
 
-python3 - "$RESULT" "$MAIN_TOP" "$OUT" <<'PY'
+python3 - "$RESULT" "$MAIN_TOP" "$OUT" "$SUMMARY" <<'PY'
 import json, os, re, sys
 from pathlib import Path
 
-result_path, main_top, out_path = sys.argv[1], sys.argv[2], sys.argv[3]
+result_path, main_top, out_path, summary_path = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4]
 result = json.loads(Path(result_path).read_text())
 
 ws = re.compile(r"\s+")
@@ -122,6 +123,11 @@ Path(out_path).write_text(json.dumps({
     "unique_cmds": unique,
     "by_session": by_session,
 }, indent=2))
+
+# Script-owned step-4.5 empty-replay summary append (mirrors merge-loop.sh step-4 pattern; reflector 2c457ebe).
+if not unique:
+    with open(summary_path, "a", encoding="utf-8") as f:
+        f.write(f"step-4.5: no side-effects to replay (artifact: {out_path})\n")
 
 for cmd in unique:
     print(cmd)

@@ -82,7 +82,11 @@ if [[ -n "$(git status --porcelain | grep -v '^?? \.apex-worktrees/$')" ]]; then
 fi
 
 mkdir -p "$ACTIVE_DIR"
-echo '[]' > "$RESULT"
+# Append-or-init: preserve prior per-branch entries on conflict-interrupted resume
+# (re-invoking the script after a manual conflict resolution must not erase the
+# already-recorded clean-merge results; reflector 4c827a2b: orchestrator restitched
+# inline because unconditional truncation wiped sibling entries on re-entry).
+[[ -f "$RESULT" ]] || echo '[]' > "$RESULT"
 
 # Append a step-4 summary line per SKILL.md step 4 contract. Clean-merge /
 # trivial-union / merge-refused cases write here directly so the orchestrator
