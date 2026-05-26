@@ -25,6 +25,7 @@ Per section in the raw input, decide keep / drop with a free-text reason. Bias r
 - Sections whose header / body align with `original_prompt` tokens or `hypothesis.discovered_paths` -> tilt keep.
 - Generic / off-topic sections (e.g., a section about CI flakiness when the prompt is about a UI bug) -> tilt drop.
 - Anti-pattern sections relevant to the prompt domain -> always keep (high signal).
+- **Noun-overlap drop threshold**: any section whose body shows ZERO matches against the hypothesis domain noun-set (the same noun-set computed for Hypothesis-domain pre-rank above) MUST be dropped with `screener_reason: no-noun-match`. A near-miss with one weak noun (the noun appears in section body but the section's primary topic is unrelated) also drops unless the section is anti-pattern-tagged. Closes the precision gap where multi-axis lessons.md sections (one anti-pattern with 4-6 sibling topics) sail through screening for the half-relevant axis while the actual fix surface uses only one (reflector b21c063c: screener kept all 6 sections despite only 3 being directly exercised by the text-fix - kept-all-by-default is a precision floor; tightening to noun-overlap-required raises the floor without losing anti-pattern signal).
 - When in doubt, drop. The grep keyword recipe is deterministic (same `goals[]` -> same terms), so there is no orchestrator re-run path - your drop bias is the only filter, and bloat is the failure mode this gate prevents.
 
 ## Outputs

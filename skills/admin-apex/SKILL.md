@@ -53,7 +53,7 @@ Then run `bash skills/admin-apex/scripts/sweep-stale-runs.sh` (best-effort; idem
 
 ## Task 2: Inventory snapshot
 
-`bash skills/admin-apex/scripts/inventory-apex.sh --out "$HOME/.claude/.claude-tmp/admin-apex-active/{run}-inventory.json"`. Non-zero exit -> abort with explicit error (state corruption; no fallback).
+`bash skills/admin-apex/scripts/inventory-apex.sh --out "$HOME/.claude/.claude-tmp/admin-apex-active/{run}-inventory.json"`. Non-zero exit -> abort with explicit error (state corruption; no fallback). **Audit+apply fast-path skip**: when mode == `audit+apply` AND `$HOME/.claude/.claude-tmp/admin-apex-active/{run}-user-concern.md` exists and contains EXACTLY ONE deterministic path/slash-command token resolvable via audit.md's path-grep + slash-command fallback (single existing target file, no ambiguity), skip the full inventory and write a minimal stub `{run}-inventory.json` = `{"scope":"user-concern","files":[<resolved target>],"skipped":"user-concern-single-target"}` instead - evolve.md task 6 only needs the resolved target in the inventory for re-snapshot drift detection on that one file, the full repo walk is pure overhead for a single-file user-driven run (reflector 8d961553: full inventory recalculated for trivially user-driven run with pre-known target). Multi-target or ambiguous concerns fall through to the full sweep.
 
 ## Task 3: Audit drift
 
