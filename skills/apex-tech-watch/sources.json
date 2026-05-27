@@ -51,6 +51,24 @@
       "summarize_prompt": "Top 5 results from the last 30 days that describe agent architecture / orchestration patterns relevant to apex (multi-agent, scope-checking, self-reflection). Title, URL, one-line takeaway."
     },
     {
+      "id": "typescript-releases",
+      "kind": "webfetch",
+      "url": "https://github.com/microsoft/TypeScript/releases",
+      "summarize_prompt": "Extract TypeScript releases from the last 30 days: version, new compiler / type-system features (satisfies, const type params, decorators, narrowing improvements, etc.), breaking changes, deprecations. Up to 6 bullets. If no releases in the window, say 'no releases this month' on a single line. Skip RC/beta tags unless they introduce a notable new method or compiler flag."
+    },
+    {
+      "id": "nextjs-releases",
+      "kind": "webfetch",
+      "url": "https://github.com/vercel/next.js/releases",
+      "summarize_prompt": "Extract Next.js releases from the last 30 days: version, App-Router / RSC / Server-Action changes, new hooks or APIs, bundled React version, breaking changes. Up to 6 bullets. Include the React minor version each Next ships against so React-side method additions surface here too. If no releases in the window, say 'no releases this month'."
+    },
+    {
+      "id": "web-ts-stack-patterns",
+      "kind": "websearch",
+      "query": "typescript react next.js node bun best practices new patterns 2026",
+      "summarize_prompt": "Top 5 results from the last 30 days on modern TS / React / Next.js / Node-or-Bun patterns: new language features in use, idiomatic type-narrowing, server-component data fetching, runtime-perf tricks, lint/formatter shifts. For each: title, URL, one-line takeaway. Filter out marketing pages, AI-generated SEO spam, and tutorials older than 30 days reposted as 'new'."
+    },
+    {
       "id": "github-trending-weekly",
       "kind": "webfetch",
       "url": "https://github.com/trending?since=weekly",
