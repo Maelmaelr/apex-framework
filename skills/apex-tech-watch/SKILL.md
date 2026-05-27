@@ -30,7 +30,14 @@ TARGET="$HOME/.claude/tmp/tech-updates.md"
 ARCHIVE="$HOME/.claude/tmp/tech-updates-archive"
 SOURCES="$HOME/.claude/skills/apex-tech-watch/sources.json"
 TS=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+RUN=$(openssl rand -hex 4)
+RUNDIR="$HOME/.claude/.claude-tmp/apex-tech-watch-active"
+mkdir -p "$RUNDIR"
+SUMMARY="$RUNDIR/${RUN}-summary.md"
+printf '{"run":"%s","producer":"apex-tech-watch","ts":"%s"}\n' "$RUN" "$TS" > "$RUNDIR/${RUN}.json"
 ```
+
+`RUN` / `SUMMARY` / `RUNDIR` arm Step 5's reflector spawn + cleanup; manifest disqualifies SKIPPED-no-inputs (per `agents/reflector.md`).
 
 ## Step 1: 30-day rotation (BEFORE fetching)
 
@@ -100,13 +107,32 @@ The 256 KB cap is a backstop; the 30-day rotation should keep the file well unde
 
 ## Step 4: Report
 
-Print a single-line summary:
+Print a single-line summary AND append it (plus any failure lines) to `$SUMMARY` so Step 5's reflector has a trace input:
 
 ```
-apex-tech-watch: <N> source(s) fetched, <M> failure(s), <K> block(s) rotated.
+line="apex-tech-watch: <N> source(s) fetched, <M> failure(s), <K> block(s) rotated."
+printf '%s\n' "$line" | tee -a "$SUMMARY"   # on failures, tee each "  <id>: <err>" too
 ```
 
-If any source failed, append the failure list (source.id + one-line error) on subsequent lines.
+## Step 5: Self-reflect
+
+Spawn `agents/reflector.md` (Sonnet, foreground) with phase `apex-tech-watch`. Captures stale-source / rotation-policy / sources.json drift signals into `~/.claude/tmp/apex-workflow-improvements.md` for the next `/apex-improve` to consume.
+
+Spawn-prompt template (substitute `{run}` with Step 0's `RUN`):
+
+```
+You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md
+and follow the `apex-tech-watch Step 5` row of the invocation table.
+
+Token:    {run}
+Phase:    apex-tech-watch
+Manifest: $HOME/.claude/.claude-tmp/apex-tech-watch-active/{run}.json
+
+Errors -> ~/.claude/tmp/reflector-errors.log (silent failure).
+Shut down silently (no main-session output).
+```
+
+After reflector returns, sweep this run's artifacts: `rm -f "$RUNDIR/${RUN}".*` (idempotent; reflector self-silences on error so cleanup is unconditional).
 
 ## Manual + automated invocation
 

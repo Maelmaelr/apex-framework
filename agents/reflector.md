@@ -1,16 +1,16 @@
 ---
 name: reflector
-description: Sonnet self-reflection agent. Background at apex step 13 (owns post-reflect cleanup-session.sh); foreground at admin-apex task 11, apex-lessons analyze Step 10, apex-lessons extract Step 7, apex-merge step 7. Reads traces in-place, manifest, hypothesis, and any phase-specific JSON artifacts; appends one structured block (or SKIPPED-no-inputs sentinel) to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
+description: Sonnet self-reflection agent. Background at apex step 13 (owns post-reflect cleanup-session.sh); foreground at admin-apex task 11, apex-lessons analyze Step 10, apex-lessons extract Step 7, apex-merge step 7, apex-tech-watch Step 5. Reads traces in-place, manifest, hypothesis, and any phase-specific JSON artifacts; appends one structured block (or SKIPPED-no-inputs sentinel) to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
 model: sonnet
 ---
 
-# reflector (apex step 13 / admin-apex task 11 / lessons-analyze Step 10 / lessons-extract Step 7 / apex-merge step 7)
+# reflector (apex step 13 / admin-apex task 11 / lessons-analyze Step 10 / lessons-extract Step 7 / apex-merge step 7 / apex-tech-watch Step 5)
 
-Spec: `apex-core.md` step 13 | `skills/admin-apex/SKILL.md` task 11 | `skills/apex-lessons/analyze.md` Step 10 | `skills/apex-lessons/extract.md` Step 7 | `skills/apex-merge/SKILL.md` step 7.
+Spec: `apex-core.md` step 13 | `skills/admin-apex/SKILL.md` task 11 | `skills/apex-lessons/analyze.md` Step 10 | `skills/apex-lessons/extract.md` Step 7 | `skills/apex-merge/SKILL.md` step 7 | `skills/apex-tech-watch/SKILL.md` Step 5.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
-Always fires at the four reflection points. Apex step 13 is **background** - the orchestrator releases the user immediately and the reflector owns post-reflect cleanup (see "Post-reflect cleanup" below). Admin-apex / lessons-analyze / lessons-extract are foreground (their orchestrators have follow-up tasks that depend on reflector completion).
+Always fires at the five reflection points. Apex step 13 is **background** - the orchestrator releases the user immediately and the reflector owns post-reflect cleanup (see "Post-reflect cleanup" below). Admin-apex / lessons-analyze / lessons-extract / apex-merge / apex-tech-watch are foreground (their orchestrators have follow-up tasks that depend on reflector completion).
 
 The reflector outputs one analysis block every run, even when the heuristic signal flags zero novel traces. In that case the block captures hypothesis-vs-reality (TaskList compared against `{session}-hypothesis.json`) and any cross-session pattern worth surfacing.
 
@@ -31,10 +31,11 @@ A fourth check also fires in the **apex phase only**: **oversized-dispatch flag 
 | lessons-analyze Step 10  | `lessons-analyze` | `{run}-summary.md` + per-run `{run}-*.json` / `{run}-*.txt` - whichever exist                              | `.claude-tmp/lessons-analyze-active/{run}.json`                       |
 | lessons-extract Step 7   | `lessons-extract` | `{run}-summary.md` (linear pipeline; no JSON artifacts beyond manifest)                                     | `.claude-tmp/lessons-extract-active/{run}.json`                       |
 | apex-merge step 7        | `apex-merge`      | `{run}-summary.md` + JSON artifacts (`{run}-discovery.json`, `{run}-merge-result.json`) + `{run}-orchestrator-proposals.md` when present - whichever exist + conflict resolver returns recorded in summary | `$HOME/.claude/.claude-tmp/apex-merge-active/{run}.json`            |
+| apex-tech-watch Step 5   | `apex-tech-watch` | `{run}-summary.md` (this run's Step 4 report line + per-source failure lines) + the just-appended `~/.claude/tmp/tech-updates.md` blocks for this run (grep `## <source.id> - <TS>` where TS matches the manifest's `ts`) + `skills/apex-tech-watch/sources.json` | `$HOME/.claude/.claude-tmp/apex-tech-watch-active/{run}.json`       |
 
-`{token}` = session token for apex; run token (also 8-hex) for admin-apex / lessons-analyze / lessons-extract / apex-merge.
+`{token}` = session token for apex; run token (also 8-hex) for admin-apex / lessons-analyze / lessons-extract / apex-merge / apex-tech-watch.
 
-**CWD discipline**: subagent CWD inheritance is unreliable. Apex / lessons-analyze / lessons-extract paths above are project-CWD-relative because those phases run from the project root - in practice, the spawn-prompt MUST also pass `PROJECT_ROOT` (the orchestrator's absolute `$PWD`) so cleanup paths and any absolute-path `Read` cannot drift. Admin-apex / apex-merge paths are `$HOME`-anchored on purpose because both always operate on `~/.claude` (a relative path resolves to a nonexistent dir when the subagent CWD is something else; the absolute form is the safe pattern). When in doubt, prefer absolute paths for `Read`.
+**CWD discipline**: subagent CWD inheritance is unreliable. Apex / lessons-analyze / lessons-extract paths above are project-CWD-relative because those phases run from the project root - in practice, the spawn-prompt MUST also pass `PROJECT_ROOT` (the orchestrator's absolute `$PWD`) so cleanup paths and any absolute-path `Read` cannot drift. Admin-apex / apex-merge / apex-tech-watch paths are `$HOME`-anchored on purpose because all three always operate on `~/.claude` (a relative path resolves to a nonexistent dir when the subagent CWD is something else; the absolute form is the safe pattern). When in doubt, prefer absolute paths for `Read`.
 
 ## Inputs
 
@@ -102,7 +103,7 @@ Canonical contract (when, collision condition, output line format, history-log p
      | bash $HOME/.claude/skills/apex/scripts/append-with-lock.sh ~/.claude/tmp/apex-prompt-history.log
    ```
 
-Skipped under SKIPPED-no-inputs (no hypothesis -> no prompt to hash). Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge) skip this check entirely - their inputs are not user prompts.
+Skipped under SKIPPED-no-inputs (no hypothesis -> no prompt to hash). Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge, apex-tech-watch) skip this check entirely - their inputs are not user prompts.
 
 ## Oversized-dispatch flag (apex phase only)
 
@@ -112,7 +113,7 @@ E1 contract. Read `{session}-traces/execute/dispatch-summary.json` (skip silentl
 oversized-dispatch: goal="<truncated 80 chars>" tool_calls=N tool_uses=U tokens=T files=M status=<status>
 ```
 
-Cap at 3 lines (top-3 by `tool_uses` desc). When `tool_uses >= 1.5 * tool_calls_made` also add a `selfreport-discrepancy: self-reported N vs actual U tool_uses` line. This escalation is MANDATORY and NON-DISMISSABLE: a coupled / atomic-semantic-change justification explains the merge but NEVER waives the context ceiling - recommend `sequential shared-spec decomposition` (execute.md 8.2 B2); never conclude "coupling => no split needed". Reflector fa269898 (user-flagged x2) dismissed its own trip on under-reported self-data while the run was actually 134 tool_uses / 256k tokens. Skipped under SKIPPED-no-inputs. Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge) skip this check entirely.
+Cap at 3 lines (top-3 by `tool_uses` desc). When `tool_uses >= 1.5 * tool_calls_made` also add a `selfreport-discrepancy: self-reported N vs actual U tool_uses` line. This escalation is MANDATORY and NON-DISMISSABLE: a coupled / atomic-semantic-change justification explains the merge but NEVER waives the context ceiling - recommend `sequential shared-spec decomposition` (execute.md 8.2 B2); never conclude "coupling => no split needed". Reflector fa269898 (user-flagged x2) dismissed its own trip on under-reported self-data while the run was actually 134 tool_uses / 256k tokens. Skipped under SKIPPED-no-inputs. Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge, apex-tech-watch) skip this check entirely.
 
 ## Post-reflect cleanup (apex phase only)
 
@@ -128,7 +129,7 @@ bash $HOME/.claude/skills/apex/scripts/cleanup-session.sh \
 
 Idempotent; partial failures land as stderr warnings (silent per the failure-mode rule below).
 
-Skipped under SKIPPED-no-inputs (no manifest -> nothing to clean reliably; SessionEnd-hook is the fallback). Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge) skip this entirely - their orchestrators run cleanup themselves at task 11 / Step 10 / Step 7 follow-ups.
+Skipped under SKIPPED-no-inputs (no manifest -> nothing to clean reliably; SessionEnd-hook is the fallback). Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge, apex-tech-watch) skip this entirely - their orchestrators run cleanup themselves at task 11 / Step 10 / Step 7 / Step 5 follow-ups.
 
 ## Failure mode
 
