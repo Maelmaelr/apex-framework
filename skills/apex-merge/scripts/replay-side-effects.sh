@@ -118,16 +118,20 @@ for entry in result:
     if cmds:
         by_session[session] = cmds
 
-Path(out_path).write_text(json.dumps({
-    "run": os.path.basename(out_path).split("-")[0],
-    "unique_cmds": unique,
-    "by_session": by_session,
-}, indent=2))
-
-# Script-owned step-4.5 empty-replay summary append (mirrors merge-loop.sh step-4 pattern; reflector 2c457ebe).
+# Empty-replay short-circuit: when no side-effects accumulated across merged
+# sessions, skip the artifact write entirely (reflector cluster a9347908 /
+# f171bdbf / 87eeade0 / d60c2e75 / 5c21ac54: dedup.json written + read for
+# zero-information runs). Script-owned step-4.5 summary append mirrors
+# merge-loop.sh step-4 pattern (reflector 2c457ebe).
 if not unique:
     with open(summary_path, "a", encoding="utf-8") as f:
-        f.write(f"step-4.5: no side-effects to replay (artifact: {out_path})\n")
+        f.write("step-4.5: no side-effects to replay (artifact skipped)\n")
+else:
+    Path(out_path).write_text(json.dumps({
+        "run": os.path.basename(out_path).split("-")[0],
+        "unique_cmds": unique,
+        "by_session": by_session,
+    }, indent=2))
 
 for cmd in unique:
     print(cmd)

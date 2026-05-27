@@ -39,8 +39,15 @@ TaskCreate "7. Self-reflect"
    if [[ -n "$(git ls-files .apex-worktrees 2>/dev/null)" ]]; then
      git rm --cached -r .apex-worktrees 2>/dev/null || true
    fi
-   DIRTY_COUNT=$(git status --porcelain | grep -v '^?? \.apex-worktrees/$' | wc -l | tr -d ' ')
+   DIRTY_LIST=$(git status --porcelain | grep -v '^?? \.apex-worktrees/$' || true)
+   DIRTY_COUNT=$(printf '%s\n' "$DIRTY_LIST" | grep -c . || true)
    if [[ "$DIRTY_COUNT" -gt 0 ]]; then
+     # Capture the porcelain list verbatim into the summary BEFORE the commit
+     # so the auto-committed file set is auditable post-run (reflector cluster
+     # 390baaaf / 87eeade0 / d60c2e75: precheck logged only N, never the file
+     # list - committed paths became un-auditable without re-running git log).
+     printf '%s\n' "$DIRTY_LIST" \
+       > "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-precheck-auto-committed.txt"
      git add -A -- ':!.apex-worktrees'
      git commit -m "apex-merge: auto-commit dirty main before integration ($DIRTY_COUNT files)"
    fi
@@ -55,7 +62,7 @@ TaskCreate "7. Self-reflect"
    printf '{"run":"%s","cc_session_id":"%s","pid":%s,"producer":"apex-merge"}\n' \
      "$RUN" "$CC_ID" "$PID" > "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}.json"
    ```
-   NEVER write `cc_session_id:""` (breaks SessionEnd sweep) and NEVER use bare `$PPID` inside `bash -c` (captures transient zsh pid). Reuse `RUN` across all subsequent steps. Then append a one-line summary trace for Step 7's reflector: `step-1: precheck ok (auto-committed N dirty files on main)` if `DIRTY_COUNT > 0` else `step-1: precheck ok (main worktree clean)`, written to `$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md`.
+   NEVER write `cc_session_id:""` (breaks SessionEnd sweep) and NEVER use bare `$PPID` inside `bash -c` (captures transient zsh pid). Reuse `RUN` across all subsequent steps. Then append a one-line summary trace for Step 7's reflector: `step-1: precheck ok (auto-committed N dirty files on main; list -> <run>-precheck-auto-committed.txt)` if `DIRTY_COUNT > 0` else `step-1: precheck ok (main worktree clean)`, written to `$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md`. The sidecar `${RUN}-precheck-auto-committed.txt` (written above before the commit) carries the verbatim `git status --porcelain` lines so the reflector + downstream `/apex-improve` can audit what landed without re-running `git log` (reflector cluster 390baaaf / 87eeade0 / d60c2e75).
 
 2. **Discover** - inline. Enumerate `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`. For each branch B:
    - SESSION = strip `apex/` prefix.
@@ -93,7 +100,7 @@ TaskCreate "7. Self-reflect"
    ```bash
    bash skills/apex-merge/scripts/replay-side-effects.sh "$RUN"
    ```
-   Script reads every merged branch's side-effects log, dedupes by `{cmd, env_inline}` key (whitespace-normalized; `env_inline` = leading `KEY=VALUE` pairs preserved verbatim so `DB=stage pnpm migrate` and `DB=prod pnpm migrate` do NOT collapse - reflector 742e1387), writes `<run>-side-effects-dedup.json`, prints unique cmds to stdout. Empty list -> silent skip; the script itself appends `step-4.5: no side-effects to replay (artifact: <run>-side-effects-dedup.json)` to `<run>-summary.md` (mirrors merge-loop.sh step-4 script-ownership pattern, removes orchestrator knowledge of the dedup-empty case; reflectors 2b63b077 + 2c457ebe). Non-empty list -> AskUserQuestion (`run-all` | `skip-all`; dismiss = `skip-all`; prompt MUST include the full deduped command list verbatim). On `run-all`: invoke each sequentially from main worktree root, first-failure-stop; record `{cmd, exit_code, stderr_tail}` into `<run>-side-effects-replay.json`. Non-zero exit halts the replay (user resolves + re-runs `/apex-merge`). On `skip-all`: write `{skipped: true}`. Append `step-4.5: replayed K/N (skipped=M)` to `<run>-summary.md`. Per the destructive-operation rule, AskUserQuestion is mandatory - never auto-run.
+   Script reads every merged branch's side-effects log, dedupes by `{cmd, env_inline}` key (whitespace-normalized; `env_inline` = leading `KEY=VALUE` pairs preserved verbatim so `DB=stage pnpm migrate` and `DB=prod pnpm migrate` do NOT collapse - reflector 742e1387), and on non-empty `unique_cmds` writes `<run>-side-effects-dedup.json` + prints cmds to stdout. **Empty `unique_cmds` skips the artifact write entirely** (no zero-payload JSON; reflector cluster a9347908 / f171bdbf / 87eeade0 / d60c2e75 / 5c21ac54: dedup.json read+written for runs with zero side-effects across all merged sessions); the script appends `step-4.5: no side-effects to replay (artifact skipped)` to `<run>-summary.md` (mirrors merge-loop.sh step-4 script-ownership pattern, removes orchestrator knowledge of the dedup-empty case; reflectors 2b63b077 + 2c457ebe). Non-empty list -> AskUserQuestion (`run-all` | `skip-all`; dismiss = `skip-all`; prompt MUST include the full deduped command list verbatim). On `run-all`: invoke each sequentially from main worktree root, first-failure-stop; record `{cmd, exit_code, stderr_tail}` into `<run>-side-effects-replay.json`. Non-zero exit halts the replay (user resolves + re-runs `/apex-merge`). On `skip-all`: write `{skipped: true}`. Append `step-4.5: replayed K/N (skipped=M)` to `<run>-summary.md`. Per the destructive-operation rule, AskUserQuestion is mandatory - never auto-run.
 
 4.6. **Lint/build cleanup post-merge** - inline, runs ONLY when step 4 resolved 1+ conflicts (clean-merge-only runs skip; union of two clean diffs cannot introduce a lint regression neither side had). Merge resolution stitches code at the file level and can leave unused imports / unreferenced symbols / lint regressions neither side carried alone; run `apex-fix` once on main. Run from the main worktree (precheck Step 1 already enforces cwd):
    ```bash
