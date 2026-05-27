@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "manifest.schema.json",
   "title": "{session}.json (session manifest)",
-  "description": "Created by step 2 (create-session.sh). cc_session_id is the Claude Code session id captured at step 2 (entry-flow). pid is the OS process id of the live claude main process (resolved by find-claude-pid.sh - walks up the process tree until comm basename == claude). worktree_path / branch / base_branch are populated unconditionally - every session lives in its own worktree post-Phase-4. bump_hint is populated by step 12 and consumed by /apex-merge step 6 for the batched VERSION bump. See apex-core.md Conventions / Session manifest schema.",
+  "description": "Created by step 2 (create-session.sh). cc_session_id is the Claude Code session id captured at step 2 (entry-flow). pid is the OS process id of the live claude main process (resolved by find-claude-pid.sh - walks up the process tree until comm basename == claude). worktree_path / branch / base_branch are populated unconditionally - every session lives in its own worktree post-Phase-4. bump_hint is populated by step 12 as metadata for the project-side deploy skill (which owns the VERSION bump). See apex-core.md Conventions / Session manifest schema.",
   "type": "object",
   "required": ["session", "pid", "cc_session_id", "worktree_path", "branch", "base_branch"],
   "properties": {
@@ -12,6 +12,6 @@
     "worktree_path": { "type": "string", "description": "Absolute path to this session's git worktree under <repo>/.apex-worktrees/<session>/. cleanup-session.sh reads this to fork the worktree-remove branch; /apex-merge enumerates worktrees via this path." },
     "branch": { "type": "string", "pattern": "^apex/[0-9a-f]{8}$", "description": "apex/<session> branch name created at step 2." },
     "base_branch": { "type": "string", "description": "The branch HEAD was on when step 2 created the worktree. /apex-merge step 4 merges apex/<session> back onto this branch." },
-    "bump_hint": { "type": "string", "enum": ["patch", "minor"], "description": "VERSION bump tier classified by step 12. /apex-merge step 6 reads every merged session's hint, picks the highest tier across the batch, and runs bump-version.sh ONCE on the final integration commit. minor > patch; major is user-set only. Optional - absent on empty-diff sessions where step 12 emitted no commit." }
+    "bump_hint": { "type": "string", "enum": ["patch", "minor"], "description": "VERSION bump tier classified by step 12. Consumed by the project-side deploy skill (e.g. .claude/skills/deploy/ in the project repo), which reads every merged session's hint, picks the highest tier across the batch, and runs bump-version.sh ONCE on the final integration commit. minor > patch; major is user-set only. Optional - absent on empty-diff sessions where step 12 emitted no commit." }
   }
 }

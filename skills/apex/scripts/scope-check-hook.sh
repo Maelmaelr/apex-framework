@@ -25,11 +25,11 @@
 #   - /tmp/{session}-*  (any session token; the directory is shared)
 #   - project docs/**
 #   - any README* file at any depth
-#   - any VERSION file at any depth (consumed by /apex-merge step 6's batched
-#     VERSION bump on the final integration commit, and by orchestrator
-#     post-agent inline bumps in non-/apex contexts; step 12 of /apex no longer
-#     bumps VERSION - it persists `bump_hint` into the manifest; reflector
-#     00bac875 surfaced the gate denial)
+#   - any VERSION file at any depth (consumed by the project-side deploy skill
+#     on the final integration commit, and by orchestrator post-agent inline
+#     bumps in non-/apex contexts; step 12 of /apex no longer bumps VERSION -
+#     it persists `bump_hint` into the manifest; reflector 00bac875 surfaced
+#     the gate denial)
 #
 # Never includes .env* or .git/ regardless of scope contents (those are gated
 # by separate hooks / settings deny rules).

@@ -1,6 +1,6 @@
 ---
 name: apex-merge
-description: Integrate apex/<session> worktree branches back into their recorded base branches. Enumerates `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`, reads each session manifest's base_branch + bump_hint, merges onto the recorded base, batches the VERSION bump across the run, spawns agents/apex-merge-resolver.md per conflicted file. Manual trigger only; runs from the main worktree.
+description: Integrate apex/<session> worktree branches back into their recorded base branches. Enumerates `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`, reads each session manifest's base_branch, merges onto the recorded base, spawns agents/apex-merge-resolver.md per conflicted file. Manual trigger only; runs from the main worktree. VERSION bumping is owned by the project-side deploy skill, not this skill.
 ---
 
 # /apex-merge
@@ -24,7 +24,7 @@ TaskCreate "7. Self-reflect"
 ## Inputs
 
 - `--branch <name>` (optional): merge only this branch. Default: every `apex/*` local branch.
-- Each apex/<session> branch's session manifest at `.apex-worktrees/<session>/.claude-tmp/apex-active/<session>.json` (carries `base_branch`, `branch`, `worktree_path`, optional `bump_hint`).
+- Each apex/<session> branch's session manifest at `.apex-worktrees/<session>/.claude-tmp/apex-active/<session>.json` (carries `base_branch`, `branch`, `worktree_path`; `bump_hint` is optional metadata read by the project-side deploy skill, not by this skill).
 
 ## Step contracts
 
@@ -69,7 +69,6 @@ TaskCreate "7. Self-reflect"
    - WORKTREE = `git worktree list --porcelain | awk -v b="refs/heads/$B" '/^worktree / {wt=$2} $1=="branch" && $2==b {print wt; exit}'` (porcelain emits `worktree <path>` BEFORE the matching `branch refs/heads/...` line; remembering the last-seen worktree and emitting on branch match is portable to bash 3.2 and avoids the shifted-map bug of `grep -A2`).
    - MANIFEST = `$WORKTREE/.claude-tmp/apex-active/$SESSION.json`.
    - BASE = `jq -r .base_branch "$MANIFEST"` (default `main` if absent).
-   - BUMP_HINT = `jq -r '.bump_hint // empty' "$MANIFEST"`.
    - HAS_COMMITS = `git log "$BASE..$B" --oneline` (non-empty -> queue for merge; empty -> queue for cleanup only).
    Write to `$HOME/.claude/.claude-tmp/apex-merge-active/<run>-discovery.json` (same canonical location as the manifest; merge-loop.sh reads/writes the same path - reflector ba0afe92). Schema: `{branches: [{branch, base, subject, status}]}` where `status` is `"needs-merge"` (HAS_COMMITS non-empty) OR `"cleanup-only"` (empty). `merge-loop.sh` filters on `status == "needs-merge"` (string compare, NOT a boolean - reflector ba0afe92). `--branch <name>` filters to that single branch. For ALL-clean-merge runs (no entry yields conflicts at Step 4; covers both single-branch and multi-branch when none required a resolver spawn; reflector e3d3f6ba: 3-branch all-clean run carried full worktree_path + manifest payload) omit per-entry `worktree_path` + manifest paths (pure overhead). Append `step-2: discovered N branches (M needs-merge, K cleanup-only)` to `<run>-summary.md`.
 
@@ -131,10 +130,9 @@ TaskCreate "7. Self-reflect"
    - Per-branch incremental append `step-5: <branch> cleaned (worktree+local)` to `<run>-summary.md` (mirrors merge-loop.sh step-4 pattern; partial-abort still leaves a reflector-legible trail; reflector e3d3f6ba: orchestrator had to re-prune/re-classify/re-delete inline because end-of-loop append was bypassed by mid-loop abort). **Append idempotency guard**: before every step-5 line append (auto-force, cleaned, remote-pruned), `grep -qF "step-5: <branch>" <run>-summary.md` and skip the append on hit so partial-failure retry of the cleanup loop does not double-write the same per-branch line (reflector 6e33cdd2: step-5 d653cb98 auto-force line duplicated in summary indicating retry without idempotency).
    Remote-delete is batched AFTER the per-branch loop completes - run `git push origin --delete "$B" 2>/dev/null || true` per cleaned branch in one tail pass, then append `step-5: remote-pruned R/Q` once. Hoisting it out of the per-branch body means a guardrail rejection on one remote-delete cannot orphan local cleanup for sibling branches (reflector e3d3f6ba: false-positive on `git push origin --delete` aborted the loop mid-iteration, requiring inline orchestrator recovery). Branches with status `skipped-conflict-abort` keep worktree + branch. Final append `step-5: cleaned Q worktrees, kept P (conflict-abort)` to `<run>-summary.md`.
 
-6. **Final push + summary** - inline.
-   - **Batched VERSION bump**: read each merged session's `bump_hint`. Highest tier wins (`minor` > `patch`); run `bash skills/apex/scripts/bump-version.sh --kind <tier>` once, or skip if no hints. Log the per-hint distribution (e.g., `bump-resolution: minor=2 patch=1 none=0 -> minor`). Commit as `apex-merge: VERSION <old> -> <new> (<N> sessions)`.
+6. **Final push + summary** - inline. VERSION bumping is NOT this step's responsibility; the project-side deploy skill (e.g. `.claude/skills/deploy/` in the project repo) reads each merged session's `bump_hint` from the manifest and owns the bump + commit.
    - `git push origin "$(git symbolic-ref --short HEAD)"`. Update `<run>-merge-result.json` per entry: `pushed: true|false|"not-attempted"`.
-   - Print + append to `<run>-summary.md`: `step-6: merged N branches, K conflicts auto-resolved, M conflicts manual, P branches skipped, cleaned Q worktrees, VERSION <old> -> <new>, bump-resolution: <distribution>, pushed: <yes|no|skipped>`.
+   - Print + append to `<run>-summary.md`: `step-6: merged N branches, K conflicts auto-resolved, M conflicts manual, P branches skipped, cleaned Q worktrees, pushed: <yes|no|skipped>`.
 
 7. **Self-reflect** - if the orchestrator routed around any shipped script or skipped any documented step during steps 1-6, write a free-form `<run>-orchestrator-proposals.md` capturing each deviation as a `- gap: ...` / `- improvement: ...` pair BEFORE spawning the reflector (rolled into the reflector's gaps/improvements lines so mid-run tooling failures are not lost). Skip the artifact on clean runs. Then spawn `agents/reflector.md` (Sonnet, foreground) with `phase=apex-merge`, then sweep this run's artifacts. Spawn-prompt template (substitute `<run>`):
 

@@ -110,7 +110,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 
 12. Commit + persist bump_hint: **inline** (orchestrator owns; no subagent hop)
     - classify diff -> minor | patch (never major; user-set only)
-    - persist classified tier as `bump_hint` into manifest; /apex-merge step 6 reads it for the batched bump
+    - persist classified tier as `bump_hint` into manifest; the project-side deploy skill reads it to drive the batched VERSION bump (/apex-merge no longer owns the bump)
     - **scope-drift pre-commit emit**: before `git add -A`, diff dirty paths against allowed_files and append one `scope-drift foreign-mutation: <path>` line per foreign-modified file to ~/.claude/tmp/git-agent-errors.log (catches tool-side auto-mutations the PreToolUse hook cannot see; commit still proceeds)
     - `git add -A; git commit -m "$MESSAGE"; git push -u origin apex/<session>` (worktree isolation makes shared-working-tree contamination impossible; no allowlist / private-index / CAS-retry needed)
     - empty diff = noop (valid); push failure non-blocking (/apex-merge retries)
