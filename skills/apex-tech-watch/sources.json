@@ -54,7 +54,7 @@
       "id": "typescript-releases",
       "kind": "webfetch",
       "url": "https://github.com/microsoft/TypeScript/releases",
-      "summarize_prompt": "Extract TypeScript releases from the last 30 days: version, new compiler / type-system features (satisfies, const type params, decorators, narrowing improvements, etc.), breaking changes, deprecations. Up to 6 bullets. If no releases in the window, say 'no releases this month' on a single line. Skip RC/beta tags unless they introduce a notable new method or compiler flag."
+      "summarize_prompt": "Extract TypeScript releases from the last 30 days: version, new compiler / type-system features (satisfies, const type params, decorators, narrowing improvements, etc.), breaking changes, deprecations. Up to 6 bullets. Always state the tag date of the most recent release listed so a stale snapshot (a tag older than the 30-day window) is obvious. If no releases in the window, say 'no releases this month' on a single line. Skip RC/beta tags unless they introduce a notable new method or compiler flag."
     },
     {
       "id": "nextjs-releases",

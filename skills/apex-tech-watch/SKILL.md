@@ -45,7 +45,7 @@ Rotate before fetching so the target file's footprint stays bounded. Read and fo
 
 ## Step 2: Fetch + summarize each source
 
-Read `sources.json`. For each entry in the `sources` array:
+Read `sources.json`. For each entry in the `sources` array (prepend `Today is {date portion of TS}. ` to the entry's `summarize_prompt` at invocation so date-bounded windows resolve on the first pass - runtime-only, NEVER persisted back to sources.json; reflector 6290a807: changelog sources double-fetched without a date anchor):
 
 ### kind == webfetch
 

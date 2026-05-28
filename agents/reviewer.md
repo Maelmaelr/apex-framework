@@ -32,7 +32,7 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
    - **i18n-completeness**: a translation key added or modified in one locale file but not in every locale file under the messages dir. List the locale files in the dir and the locales with the key missing.
    - **Cognitive-complexity > 15**: rough heuristic count (nested conditionals, loops, early-returns, ternaries) of any function in the diff. Cite file:line + estimated count.
 
-4. **Hard cap 5 findings** (most-important-first; order them by likely user impact: security > pattern-violation > over-engineering > i18n > complexity). If you would have emitted 6+, retain the top 5 and append a sixth synthetic finding `{kind: "additional", file: "(synthetic)", line: 0, summary: "N additional issues elided; re-run /review for full report"}`.
+4. **Hard cap 5 findings** (most-important-first; order them by likely user impact: security > pattern-violation > over-engineering > i18n > complexity). Surface every issue you actually find - including low-severity and lower-confidence ones - then let this cap + the impact ordering be the downstream filter; do NOT self-censor uncertain findings upstream (this cap IS the rank-and-trim step). If you would have emitted 6+, retain the top 5 and append a sixth synthetic finding `{kind: "additional", file: "(synthetic)", line: 0, summary: "N additional issues elided; re-run /review for full report"}`.
 
 5. **Decide action**:
    - `pass`: zero findings, or all findings are advisory (kind=`pattern-following` with `severity=advisory` flag). Orchestrator proceeds to step 11.
