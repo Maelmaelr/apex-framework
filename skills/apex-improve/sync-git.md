@@ -23,8 +23,9 @@ Mirrors admin-apex SKILL.md task 9. Read `{run}-applied-ops.json` to classify th
 
 | Bump | Condition |
 |------|-----------|
-| `patch` | every applied op has `doc_only: true` |
-| `minor` | any structural-mutation kind (`split`/`rename`/`retire`/`create`/`merge`/`schema-add`/`schema-remove`/`hook-add`/`hook-remove`) OR any `edit` op with `doc_only: false` |
+| `patch` | only `edit` ops applied (in-place changes within existing files; `doc_only` does NOT affect tier) |
+| `minor` | any additive kind: `create` / `schema-add` / `hook-add` |
+| `major` | any restructuring/removal kind: `rename` / `split` / `merge` / `retire` / `schema-remove` / `hook-remove` |
 | `none`  | (unreachable here - the `>=1 op` precondition above already gates this case) |
 
 Compose a one-line commit message + multi-line body listing the applied ops, then call:
@@ -53,7 +54,7 @@ Mirrors admin-apex SKILL.md task 10. Skip if Step 7 was skipped or returned non-
 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"
 ```
 
-The script reads `{run}-dirty-paths.txt` + `{run}-docs-changed.txt`, applies the closed allowlist (`skills/apex/**`, `skills/admin-apex/**`, `skills/apex-improve/**`, `skills/apex-tech-watch/**`, `agents/**`, `VERSION`, `apex-core.md`, `apex-core-overview.md`), copies survivors to the public mirror (default `/Users/mael/dev/apex-framework`), commits with the same message as the just-made `~/.claude` commit, then pushes the public repo first and `~/.claude` second.
+The script reads `{run}-dirty-paths.txt` + `{run}-docs-changed.txt`, applies the closed allowlist (`skills/apex/**`, `skills/admin-apex/**`, `skills/apex-improve/**`, `skills/apex-merge/**`, `skills/apex-tech-watch/**`, `agents/**`, `VERSION`, `apex-core.md`, `apex-core-overview.md`), copies survivors to the public mirror (default `/Users/mael/dev/apex-framework`), commits with the same message as the just-made `~/.claude` commit, then pushes the public repo first and `~/.claude` second.
 
 On exit 0 (success), immediately sweep this run's artifacts:
 
