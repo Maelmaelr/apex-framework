@@ -99,7 +99,7 @@ LIMIT=$(( 256 * 1024 ))  # 256 KB hard cap
 size=$(wc -c < "$TARGET" 2>/dev/null || echo 0)
 if (( size > LIMIT )); then
   # Force a rotation - treat all blocks older than 7 days as expired
-  python3 -c "<rotation script with --aggressive flag>"
+  # invoke rotation.md's aggressive variant: the Step-1 rotation block re-run with cutoff = timedelta(days=7)
 fi
 ```
 

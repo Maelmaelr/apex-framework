@@ -49,7 +49,7 @@ PY
 When SKILL.md Step 3's 256 KB hard cap is exceeded, Step 3 invokes this same rotation script with the cutoff lowered from 30 days to 7 days:
 
 ```
-python3 -c "<rotation script with --aggressive flag>"
+# the Step-1 rotation block above, re-run with cutoff = now - timedelta(days=7) (see implementation note below)
 ```
 
 Implementation note: the canonical rotation block above uses a fixed 30-day cutoff. The aggressive variant changes only the `cutoff = ... timedelta(days=30)` line to `timedelta(days=7)`. Keep both variants in this file rather than parameterising at the SKILL.md call site.
