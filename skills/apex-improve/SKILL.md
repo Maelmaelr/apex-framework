@@ -71,6 +71,7 @@ cd "$HOME/.claude"
 RUN=$(openssl rand -hex 4)
 ROOT="$HOME/.claude/.claude-tmp/admin-apex-active"
 mkdir -p "$ROOT"
+bash "$HOME/.claude/skills/apex/scripts/sweep-orphan-artifacts.sh" --dir "$ROOT" --age-hours 24 2>/dev/null || true  # producer-side orphan drain: mirror of admin-apex SKILL task 1; reaps stale {run}-deferred-findings with no live manifest
 CC_ID=$(bash "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh")            # env-then-jsonl resolver; abort on failure
 PID=$(bash "$HOME/.claude/skills/apex/scripts/find-claude-pid.sh" 2>/dev/null || echo "$PPID")  # live claude pid; falls back to $PPID on non-standard launcher
 ```
