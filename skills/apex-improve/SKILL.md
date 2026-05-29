@@ -115,7 +115,7 @@ Spawn subagent (general-purpose, sonnet, bypassPermissions):
            phase) then Step 2 (analyze phase). You are running as a subagent
            under apex-improve standalone mode - use deferred routing per the
            analyze phase Route + Finalize subagent restriction. Report the
-           extract Step 6 summary line then the analyze Step 9 final summary."
+           extract Step 5 summary line then the analyze Step 9 final summary."
 ```
 
 Skip silently if pre-flight fails (no lessons.md) or subagent mode is active. Errors from /apex-lessons do NOT block the apex-improve report - it has already committed and mirrored.

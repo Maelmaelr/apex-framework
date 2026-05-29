@@ -1,12 +1,12 @@
 ---
 name: reflector
-description: Sonnet self-reflection agent. Background at apex step 13 (owns post-reflect cleanup-session.sh); foreground at admin-apex task 11, apex-lessons analyze Step 10, apex-lessons extract Step 7, apex-merge step 7, apex-tech-watch Step 5. Reads traces in-place, manifest, hypothesis, and any phase-specific JSON artifacts; appends one structured block (or SKIPPED-no-inputs sentinel) to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
+description: Sonnet self-reflection agent. Background at apex step 13 (owns post-reflect cleanup-session.sh); foreground at admin-apex task 11, apex-lessons analyze Step 10, apex-lessons extract Step 6, apex-merge step 7, apex-tech-watch Step 5. Reads traces in-place, manifest, hypothesis, and any phase-specific JSON artifacts; appends one structured block (or SKIPPED-no-inputs sentinel) to ~/.claude/tmp/apex-workflow-improvements.md via skills/apex/scripts/append-with-lock.sh. Silent failure (errors -> ~/.claude/tmp/reflector-errors.log).
 model: sonnet
 ---
 
-# reflector (apex step 13 / admin-apex task 11 / lessons-analyze Step 10 / lessons-extract Step 7 / apex-merge step 7 / apex-tech-watch Step 5)
+# reflector (apex step 13 / admin-apex task 11 / lessons-analyze Step 10 / lessons-extract Step 6 / apex-merge step 7 / apex-tech-watch Step 5)
 
-Spec: `apex-core.md` step 13 | `skills/admin-apex/SKILL.md` task 11 | `skills/apex-lessons/analyze.md` Step 10 | `skills/apex-lessons/extract.md` Step 7 | `skills/apex-merge/SKILL.md` step 7 | `skills/apex-tech-watch/SKILL.md` Step 5.
+Spec: `apex-core.md` step 13 | `skills/admin-apex/SKILL.md` task 11 | `skills/apex-lessons/analyze.md` Step 10 | `skills/apex-lessons/extract.md` Step 6 | `skills/apex-merge/SKILL.md` step 7 | `skills/apex-tech-watch/SKILL.md` Step 5.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -29,7 +29,7 @@ A fourth check also fires in the **apex phase only**: **oversized-dispatch flag 
 | apex step 13             | `apex`            | `{session}-traces/**/*.md` (read in-place) + `{session}-traces/execute/dispatch-summary.json` (E1 oversized-dispatch flag) | `.claude-tmp/apex-active/{session}.json` + `{session}-hypothesis.json`|
 | admin-apex task 11       | `admin-apex`      | `{run}-summary.md` + JSON artifacts (`{run}-drift-report.json`, `{run}-evolve-plan.json`, `{run}-applied-ops.json`, `{run}-dirty-paths.txt`, `{run}-docs-changed.txt`, `{run}-inventory-post.json`, `{run}-polish-report.json`) + `{run}-user-concern.md` - whichever exist | `$HOME/.claude/.claude-tmp/admin-apex-active/{run}.json`            |
 | lessons-analyze Step 10  | `lessons-analyze` | `{run}-summary.md` + per-run `{run}-*.json` / `{run}-*.txt` - whichever exist                              | `.claude-tmp/lessons-analyze-active/{run}.json`                       |
-| lessons-extract Step 7   | `lessons-extract` | `{run}-summary.md` (linear pipeline; no JSON artifacts beyond manifest)                                     | `.claude-tmp/lessons-extract-active/{run}.json`                       |
+| lessons-extract Step 6   | `lessons-extract` | `{run}-summary.md` (linear pipeline; no JSON artifacts beyond manifest)                                     | `.claude-tmp/lessons-extract-active/{run}.json`                       |
 | apex-merge step 7        | `apex-merge`      | `{run}-summary.md` + JSON artifacts (`{run}-discovery.json`, `{run}-merge-result.json`) + `{run}-orchestrator-proposals.md` when present - whichever exist + conflict resolver returns recorded in summary | `$HOME/.claude/.claude-tmp/apex-merge-active/{run}.json`            |
 | apex-tech-watch Step 5   | `apex-tech-watch` | `{run}-summary.md` (this run's Step 4 report line + per-source failure lines) + the just-appended `~/.claude/tmp/tech-updates.md` blocks for this run (grep `## <source.id> - <TS>` where TS matches the manifest's `ts`) + `skills/apex-tech-watch/sources.json` | `$HOME/.claude/.claude-tmp/apex-tech-watch-active/{run}.json`       |
 
@@ -129,7 +129,7 @@ bash $HOME/.claude/skills/apex/scripts/cleanup-session.sh \
 
 Idempotent; partial failures land as stderr warnings (silent per the failure-mode rule below).
 
-Skipped under SKIPPED-no-inputs (no manifest -> nothing to clean reliably; SessionEnd-hook is the fallback). Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge, apex-tech-watch) skip this entirely - their orchestrators run cleanup themselves at task 11 / Step 10 / Step 7 / Step 5 follow-ups.
+Skipped under SKIPPED-no-inputs (no manifest -> nothing to clean reliably; SessionEnd-hook is the fallback). Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge, apex-tech-watch) skip this entirely - their orchestrators run cleanup themselves at task 11 / Step 10 / Step 6 / step 7 / Step 5 follow-ups.
 
 ## Failure mode
 
