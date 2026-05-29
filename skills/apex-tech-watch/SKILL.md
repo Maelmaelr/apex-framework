@@ -79,13 +79,13 @@ Do NOT abort the run on a single source failure; other sources still produce use
 
 ### kind == websearch
 
-Use `WebSearch` with the source's `query` and the `summarize_prompt`. Block format:
+`WebSearch` takes only `query` / `allowed_domains` / `blocked_domains` (no summary-prompt param). Run it with the source's `query`, then summarize the returned result set in-context using the source's `summarize_prompt` (plus the Step 2 date prefix) as the summarization instruction. Block format:
 
 ```
 ## {source.id} - {TS}
 - url: search:{source.query}
 - summary:
-  {WebSearch summary, indented 2 spaces}
+  {in-context summary of the WebSearch result set, indented 2 spaces}
 ```
 
 Same failure handling as webfetch.
@@ -132,7 +132,7 @@ Errors -> ~/.claude/tmp/reflector-errors.log (silent failure).
 Shut down silently (no main-session output).
 ```
 
-After reflector returns, sweep this run's artifacts: `rm -f "$RUNDIR/${RUN}".*` (idempotent; reflector self-silences on error so cleanup is unconditional).
+After reflector returns, sweep this run's artifacts: `rm -f "$RUNDIR/${RUN}"*` (matches both `${RUN}.json` and `${RUN}-summary.md`; idempotent - reflector self-silences on error so cleanup is unconditional).
 
 ## Manual + automated invocation
 
