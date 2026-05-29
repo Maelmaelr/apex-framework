@@ -1,94 +1,78 @@
 ---
 name: audit
-description: Read-only drift detection for the apex framework. Consumes {run}-inventory.json (from inventory-apex.sh) and emits {run}-drift-report.json clustered by drift kind. Pure read - never mutates files.
+description: Read-only drift detection for the apex framework. Consumes {run}-inventory.json (from inventory-apex.sh) and emits {run}-drift-report.json clustered by drift kind. Structural detectors run via scripts/audit-detectors.py (shared with polish-check.sh); stale-spec + user-driven stay LLM-owned. Pure read - never mutates files.
 ---
 
 # audit (admin-apex task 3)
 
 Spec: `skills/admin-apex/SKILL.md` task 3 (audit drift) | task 4 (audit gate).
 
-## Inputs
+## Input
 
-- `.claude-tmp/admin-apex-active/{run}-inventory.json` (written at task 2 by `scripts/inventory-apex.sh`, conforming to `schemas/inventory.schema.json`)
+`.claude-tmp/admin-apex-active/{run}-inventory.json` (written at task 2 by `scripts/inventory-apex.sh`, per `schemas/inventory.schema.json`).
 
 ## Output
 
-`.claude-tmp/admin-apex-active/{run}-drift-report.json` - JSON object:
+`.claude-tmp/admin-apex-active/{run}-drift-report.json`:
 
 ```
 {
   "run": "<8-hex>",
   "clusters": [
-    {
-      "id": "<short-slug>",
-      "kind": "oversized-files | orphan-refs | missing-refs | stale-spec | schema-mismatch | dead-hook | user-driven",
-      "items": [ "<repo-relative path or descriptor>", ... ],
-      "source_block_token": "<run-or-block-id>",
-      "summary": "<one-line human description>"
-    }, ...
+    { "id": "<slug>", "kind": "<see below>", "items": [ "<path|descriptor>", ... ],
+      "source_block_token": "<run-or-block-id>", "summary": "<one-liner>" }, ...
   ],
   "_meta": { "generated_at": "<iso>" }
 }
 ```
 
-Empty `clusters: []` -> "clean" outcome (SKILL task 4 prints report path and exits 0; tasks 5-9 skipped).
+Empty `clusters: []` -> "clean" (SKILL task 4 prints report path, exits 0; tasks 5-9 skipped).
 
 ## Drift kinds
 
+Five **structural** kinds are detected deterministically by `scripts/audit-detectors.py --mode audit` - the shared engine `polish-check.sh` also runs, so audit and polish cannot diverge. The engine's module docstring + per-detector functions are the source of truth for the exact rules; the slug `id` is what the `--prior-drift` diff and evolve.md's cluster->op table key on:
+
+| Kind (slug id) | Flags |
+|------|---------|
+| `oversized-files` (`oversized`) | skills/agents `.md` > 150 lines, scripts > 500, prose docs (apex-core/overview/README/CLAUDE) > 800. Audit-only - never run post-apply. |
+| `orphan-refs` (`orphan`) | Spec-doc path ref absent from inventory (bare-`scripts/X` shorthand, glob, trailing-slash dir refs excepted). |
+| `missing-refs` (`missing`) | Inventory file referenced by zero spec doc (intra-skill, cross-apex-skill, and parent-dir/glob refs count as covered; `SKILL.md` / `_`-prefixed / `__pycache__` excluded). |
+| `schema-mismatch` (`schema`) | `schemas[]` entry where `id != basename(path)`. |
+| `dead-hook` (`dead-hook`) | `hooks[]` command referencing a script absent on disk. |
+
+Two **judgment** kinds stay LLM-owned here (NOT in the engine), merged AFTER the structural clusters via `--extra-clusters`:
+
 | Kind | Detector |
 |------|---------|
-| `oversized-files` | Any inventory entry (`skills[]`, `agents[]`, `scripts[]`, `spec_docs[]`) with `lines > 500` OR any `skills[]` / `agents[]` entry with `lines > 150` (covers apex sub-skills, sibling apex-* skills, admin-apex sub-skills, and all agents - Principle 3: prevent silent framework bloat). Continuous-prose docs (apex-core.md, apex-core-overview.md, README.md, CLAUDE.md) only flagged at >800 lines. |
-| `orphan-refs` | Spec docs (apex-core.md, apex-core-overview.md, README.md, CLAUDE.md) reference a `skills/apex/...` / `skills/admin-apex/...` / `agents/...` / `scripts/...` path NOT present in the inventory. Detected by extracting `\b(skills/apex/[^ \t\n\)\`]+\|skills/admin-apex/[^ \t\n\)\`]+\|agents/[^ \t\n\)\`]+\|scripts/[^ \t\n\)\`]+)` substrings via grep on each spec doc, then set-differencing against the inventory. The `skills/admin-apex/` alternative is what makes admin-apex paths participate in drift detection (Self-coverage per SKILL.md). **Bare-`scripts/X` shorthand exception**: matches whose first path segment is exactly `scripts/` (i.e., NOT `skills/apex/scripts/...`, `skills/admin-apex/scripts/...`, or `skills/apex-*/scripts/...`) are shorthand used in apex-core.md / apex-core-overview.md prose for "the script lives under one of the apex script dirs". Treat the shorthand as covered if `skills/apex/<match>`, `skills/admin-apex/<match>`, OR any `skills/apex-*/<match>` is present in inventory (the `apex-*` glob covers every sibling apex skill: `apex-lessons`, `apex-merge`, `apex-tech-watch`, `apex-improve`, `apex-init`, `apex-fix`, `apex-eod`, `apex-file-health`, etc.). Only flag as orphan when none of those full paths exist. Closes the gap where `skills/apex-merge/scripts/replay-side-effects.sh` (referenced from `apex-core.md`) would have been flagged as orphan under the prior `apex` + `admin-apex` only resolver. **Glob-pattern exception**: captured paths containing `*` or `?` are prose-level path families (e.g., `skills/apex/schemas/*.schema.json`, `skills/apex/*.md`, `skills/apex/scripts/*`); skip them from orphan flagging - they cover their directory by inventory expansion. **Trailing-slash dir-ref exception**: captured paths ending in `/` (e.g., `skills/apex/schemas/`, `skills/admin-apex/schemas/`) are prose-level dir references and are treated identically to glob patterns - skip them from orphan flagging. They cover the directory by inventory expansion. |
-| `missing-refs` | Inventory file present but appears in zero spec docs (best-effort: filename basename grep across spec_docs[]; wildcard / parent-dir refs in specs like `skills/X/schemas/*.schema.json` or `skills/X/schemas/` count as covering all files in that directory). A non-`SKILL.md` file under `skills/<X>/` (sub-skill OR script under `skills/<X>/scripts/`) is treated as intra-skill-covered when referenced from any sibling under the same `skills/<X>/` root (intra-skill helpers don't need spec-doc references; e.g., `grep-apex-refs.sh` referenced from `skills/admin-apex/audit.md` is covered). **Cross-apex-skill exception**: a file under `skills/apex/` referenced from any sibling apex skill (`skills/apex-*/`, e.g., `lesson-dedup.py` referenced from `skills/apex-lessons/consolidate.md`) is also treated as covered. The apex hot-path scripts under `skills/apex/scripts/` are intentionally shared across `apex-*` siblings; cross-skill references count toward coverage just like intra-skill ones. Excluded: `__pycache__`, files starting with `_` (private helpers), `SKILL.md` itself. |
-| `stale-spec` | A spec doc names a file under skills/apex/scripts that did exist in the inventory at task 2 but does NOT exist on disk at task 3 read time (i.e., race / mid-flight rename). Flagged as a hard-stop cluster - SKILL gate downgrades to audit-only. |
-| `schema-mismatch` | Inventory `schemas[]` entry where `id != basename(path)`. The `$id == filename` rule (per apex-core.md Conventions / JSON Schema validation) is non-negotiable. |
-| `dead-hook` | Inventory `hooks[]` entry whose `command` references a script path that does not exist on disk. Use `${CLAUDE_PROJECT_DIR}` substitution (resolves to repo root) when checking existence. |
-| `user-driven` | Reads `.claude-tmp/admin-apex-active/{run}-user-concern.md` written by SKILL task 1 (sourced from `$ARGUMENTS` or an AskUserQuestion fallback). If the file is present and non-blank, emits a single cluster with `summary` = first non-blank line and `items` = repo-relative `skills/...` / `agents/...` / `scripts/...` / `apex-core*.md` / `README.md` / `CLAUDE.md` paths grep'd from the body (de-duplicated, in document order). When `items` ends up empty (no path tokens in the concern body), populate `source_block_token = {run}` so the eventual placeholder Edit op carries a back-reference to the originating user concern run - keeps the audit trail traceable for clusters whose rationale is freeform-only (reflector 03d9a286: user-driven cluster with empty items had no source id, leaving rationale untraceable). No file = no cluster. This is the user-supplied channel - it sits alongside the structural detectors so user concerns flow through the same gate (keep / apply / defer) instead of needing a manual override of task 4's soft-skip. |
+| `stale-spec` | A file that existed in the inventory at task 2 but is GONE on disk at task 3 read time (race / mid-flight rename). Hard-stop cluster - SKILL task 4 downgrades to audit-only. A task-2-vs-task-3 race check, not a pure inventory function, so it stays prose. Almost always empty. |
+| `user-driven` | Reads `{run}-user-concern.md` (SKILL task 1, from `$ARGUMENTS` or AskUserQuestion fallback). Present + non-blank -> one cluster: `summary` = first non-blank line (trunc 240); `items` = `skills/` / `agents/` / `scripts/` / `apex-core*.md` / `README.md` / `CLAUDE.md` paths grep'd from the body (rstrip `.,;:)`'\"`, deduped in doc order). **Slash-command fallback**: empty path grep -> grep `/[a-z][a-z0-9-]+` tokens, resolve each to `skills/<name>/SKILL.md` when it exists (reflector 8d961553). Empty `items` -> set `source_block_token = {run}` so evolve task 5's placeholder carries a back-ref (reflector 03d9a286). No file = no cluster. |
 
 ## Procedure
 
-1. **Read inventory**:
+1. **Read inventory**; validate it parses as JSON. If not, abort with explicit error (do NOT emit empty clusters - that masks state corruption).
+2. **Compute the judgment clusters** (prose; the engine does not): `stale-spec` (for each `scripts[].path`, `test -e`; vanished -> hard-stop cluster) and `user-driven` (per the row above). Write the 0-2 clusters as a JSON array to `.claude-tmp/admin-apex-active/{run}-extra-clusters.json` (`[]` when none).
+3. **Run the engine** (it appends the judgment clusters after the structural ones, writes the report, exits 0 - drift is normal, the gate decides):
    ```
-   inv=".claude-tmp/admin-apex-active/{run}-inventory.json"
+   python3 scripts/audit-detectors.py --inventory "$inv" --mode audit --run {run} \
+     --extra-clusters .claude-tmp/admin-apex-active/{run}-extra-clusters.json \
+     --out .claude-tmp/admin-apex-active/{run}-drift-report.json
    ```
-   Validate it parses as JSON. If not, abort with explicit error - do NOT silently produce an empty cluster list (that would mask state corruption).
-
-2. **Run each detector** in declaration order; collect non-empty clusters into `clusters[]`. Each cluster gets a short slug id (`oversized`, `orphan`, `missing`, `stale`, `schema`, `dead-hook`, `user-driven`) plus a human one-liner.
-
-   For `user-driven`: read `.claude-tmp/admin-apex-active/{run}-user-concern.md`. If the file is missing or blank (only whitespace), skip - emit no cluster. Otherwise: `summary` = first non-blank line (truncated at 240 chars); `items` = `grep -oE '\b(skills/[^\s\)\`]+|agents/[^\s\)\`]+|scripts/[^\s\)\`]+|apex-core[^\s\)\`]*\.md|README\.md|CLAUDE\.md)' <file>` rstripped of `.,;:)`'\"` and de-duplicated in document order. **Slash-command fallback pass**: when the path grep returns empty, second-pass grep for slash-command tokens (`grep -oE '/[a-z][a-z0-9-]+'` -> `/apex`, `/apex-merge`, `/admin-apex`, etc.) and resolve each to `skills/<name-without-slash>/SKILL.md` when that file exists on disk; append the resolved paths to items. Cheap deterministic mapping that fills the cluster body for the dominant concern shape (user references a slash command without spelling out the file path) so evolve.md task 5's placeholder no longer ships items=[] when a redirect target is recoverable from the concern text (reflector 8d961553: user concern referenced /apex without a path token, items=[] survived into evolve-plan, redirect captured only in `_meta.redirected_from`). Empty items list is still allowed (genuinely informational concerns with no command / path tokens); when `items` is empty, populate `source_block_token = {run}` on the cluster so evolve.md task 5's placeholder `edit` op against `skills/admin-apex/SKILL.md` carries a back-reference to the originating user concern run (audit trail completeness, reflector 03d9a286). evolve.md task 5 then translates the cluster to a single `edit` op as a placeholder for the planner to redirect.
-
-3. **Pre-compute spec-doc coverage map ONCE** (single `scripts/grep-apex-refs.sh` sweep over inventory basenames against spec_docs[]); orphan-refs and missing-refs both consume it - never re-grep per detector. Treat zero hits as "missing"; any hit pointing at a path not in inventory as "orphan".
-
-4. **Write the drift report** at `.claude-tmp/admin-apex-active/{run}-drift-report.json`. Pretty-printed JSON (2-space indent), matching the shape above.
-
-5. **Print the report path to stdout** so the SKILL gate (task 4) can present it via AskUserQuestion.
+4. **Print the report path** to stdout so the SKILL gate (task 4) can present it.
 
 ## Gate (SKILL task 4)
 
-The orchestrator owns the AskUserQuestion. For each cluster, options are `keep | apply | defer`:
-
-- `keep`: cluster ignored this run; not added to evolve plan.
-- `apply`: cluster's items become candidate evolve ops.
-- `defer`: like `keep` but logged for the next run.
-
-Empty clusters list -> SKILL prints "audit clean" + report path, exits 0 (no commit).
-
-All clusters set to `keep`/`defer` -> treated as audit-only outcome (skip 5-9, exit 0).
+The orchestrator owns the AskUserQuestion. Per cluster: `keep` (ignore this run), `apply` (items become candidate evolve ops), `defer` (like keep but logged for next run). Empty clusters -> "audit clean" + exit 0. All `keep`/`defer` -> audit-only outcome (skip 5-9, exit 0).
 
 ## Audit-only mode
 
-When SKILL task 1 selects `audit-only`, this skill still runs (task 3) but the gate at task 4 prints the report and exits before evolve. No mutation, no VERSION bump, no commit.
+When SKILL task 1 selects `audit-only`, task 3 still runs but the gate prints the report and exits before evolve. No mutation, no VERSION bump, no commit.
 
 ## What this skill does NOT do
 
-- Does NOT mutate any file (no Edit / Write to anything except the drift-report JSON under `.claude-tmp/admin-apex-active/`).
-- Does NOT decide what to apply - the gate (SKILL task 4) does.
-- Does NOT consume the reflector log (`apex-workflow-improvements.md`); that is the future `/apex-improve` workflow.
-- Does NOT cross into project app code; apex-internal only.
-- Does NOT run the post-implementation check; `scripts/polish-check.sh` is the post-apply mirror of this skill (orphan-refs / missing-refs / schema-mismatch / dead-hook). audit.md fires PRE-apply at SKILL task 3; polish-check.sh fires POST-apply at sync-docs.md step 6 (admin-apex) and apex-improve/finalize.md step 5a, diffing against this skill's `{run}-drift-report.json` so only NEW drift surfaces.
+- Does NOT mutate any file (only the drift-report + extra-clusters JSON under `.claude-tmp/admin-apex-active/`).
+- Does NOT decide what to apply - the gate (SKILL task 4) does. Does NOT consume the reflector log (that is `/apex-improve`). Does NOT touch project app code.
+- Does NOT run the post-apply check: `polish-check.sh` is the mirror - SAME engine, `--mode polish` (relabeled staleness/unused/inconsistency), diffing `{run}-drift-report.json` so only NEW drift surfaces. audit fires PRE-apply (task 3); polish fires POST-apply (sync-docs.md step 6 + apex-improve/finalize.md step 5a).
 
 ## Lean rule
 
-This skill audits oversized files in apex AND in admin-apex itself (the >150-line cap applies to both `skills/apex/*.md` and `skills/admin-apex/*.md`). If audit.md or evolve.md or sync-docs.md grow past 150 lines, they show up in `oversized-files` like any other.
-
-See `apex-core.md` Conventions for safety paths and JSON validation conventions; admin-apex follows the same rules but operates on its own `.claude-tmp/admin-apex-active/` artifact tree.
+The >150-line cap applies to `skills/apex/*.md` AND `skills/admin-apex/*.md`. If audit.md / evolve.md / sync-docs.md grow past 150 lines, they surface in `oversized-files` like any other. See `apex-core.md` Conventions for safety paths + JSON validation; admin-apex follows the same rules on its own `.claude-tmp/admin-apex-active/` tree.

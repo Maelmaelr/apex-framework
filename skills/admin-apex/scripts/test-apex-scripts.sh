@@ -116,7 +116,7 @@ PY
 }
 
 check_bash skills/apex/scripts/*.sh skills/admin-apex/scripts/*.sh
-check_py   skills/apex/scripts/*.py
+check_py   skills/apex/scripts/*.py skills/admin-apex/scripts/*.py
 check_schemas skills/apex/schemas/*.json skills/admin-apex/schemas/*.json
 
 # Fixture tests for v2 scripts that have orchestrator-visible exit-code
@@ -408,6 +408,14 @@ run_fixture "verify-tests.sh no-manifest-skip" 0 verify_tests_no_manifest_fixtur
 #     flag does not break the no-manifest fast path.
 run_fixture "verify-build.sh --with-tests no-manifest" 0 \
   bash "$REPO_ROOT/skills/apex/scripts/verify-build.sh" --session deadbeef --with-tests
+
+# 11. audit-detectors.py engine fixtures live in a sibling file (this harness is
+#     near the 400-line cap); run it and fold its pass/fail into the totals.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-audit-detectors.sh"; then
+  echo "PASS suite test-audit-detectors.sh"; pass=$((pass + 1))
+else
+  echo "FAIL suite test-audit-detectors.sh" >&2; failed=$((failed + 1))
+fi
 
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
