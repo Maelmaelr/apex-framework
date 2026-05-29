@@ -10,9 +10,9 @@
 #   skills/admin-apex/*.md       -> skills[] (admin-apex sub-skills: SKILL, audit,
 #                                  evolve, sync-docs)
 #   agents/*.md                  -> agents[]
-#   skills/apex/scripts/*.{sh,py}       -> scripts[]
-#   skills/admin-apex/scripts/*.{sh,py} -> scripts[]
-#   skills/apex-merge/scripts/*.{sh,py} -> scripts[]
+#   skills/apex/scripts/*.{sh,py,js}       -> scripts[]
+#   skills/admin-apex/scripts/*.{sh,py,js} -> scripts[]   (.js = committed Workflow scripts, *.workflow.js)
+#   skills/apex-merge/scripts/*.{sh,py,js} -> scripts[]
 #   skills/apex/schemas/*.json       -> schemas[]
 #   skills/admin-apex/schemas/*.json -> schemas[]
 #   settings.json                -> hooks[]
@@ -110,6 +110,12 @@ def collect_scripts(pattern):
             kind = "sh"
         elif ext == ".py":
             kind = "py"
+        elif ext == ".js":
+            # Committed Workflow scripts (*.workflow.js) under a walked scripts/
+            # dir. Subject to the same oversized (>500 lines) + missing-refs
+            # coverage as .sh/.py so a mirrored .js cannot bloat or orphan
+            # silently (workflow-adoption plan A3).
+            kind = "js"
         else:
             continue
         items.append({

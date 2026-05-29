@@ -32,14 +32,14 @@
     },
     "scripts": {
       "type": "array",
-      "description": "skills/apex/scripts/* (.sh and .py). Each entry: path, lines, kind.",
+      "description": "skills/apex/scripts/* (.sh, .py, and .js Workflow scripts). Each entry: path, lines, kind.",
       "items": {
         "type": "object",
         "required": ["path", "lines", "kind"],
         "properties": {
           "path": { "type": "string" },
           "lines": { "type": "integer", "minimum": 0 },
-          "kind": { "enum": ["sh", "py"] }
+          "kind": { "enum": ["sh", "py", "js"] }
         }
       }
     },

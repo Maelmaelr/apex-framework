@@ -417,6 +417,13 @@ else
   echo "FAIL suite test-audit-detectors.sh" >&2; failed=$((failed + 1))
 fi
 
+# 12. Workflow-script syntax fixtures live in a sibling file (file-health cap).
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-workflow-scripts.sh"; then
+  echo "PASS suite test-workflow-scripts.sh"; pass=$((pass + 1))
+else
+  echo "FAIL suite test-workflow-scripts.sh" >&2; failed=$((failed + 1))
+fi
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

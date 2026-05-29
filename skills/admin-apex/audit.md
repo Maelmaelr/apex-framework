@@ -46,11 +46,12 @@ Two **judgment** kinds stay LLM-owned here (NOT in the engine), merged AFTER the
 |------|---------|
 | `stale-spec` | A file that existed in the inventory at task 2 but is GONE on disk at task 3 read time (race / mid-flight rename). Hard-stop cluster - SKILL task 4 downgrades to audit-only. A task-2-vs-task-3 race check, not a pure inventory function, so it stays prose. Almost always empty. |
 | `user-driven` | Reads `{run}-user-concern.md` (SKILL task 1, from `$ARGUMENTS` or AskUserQuestion fallback). Present + non-blank -> one cluster: `summary` = first non-blank line (trunc 240); `items` = `skills/` / `agents/` / `scripts/` / `apex-core*.md` / `README.md` / `CLAUDE.md` paths grep'd from the body (rstrip `.,;:)`'\"`, deduped in doc order). **Slash-command fallback**: empty path grep -> grep `/[a-z][a-z0-9-]+` tokens, resolve each to `skills/<name>/SKILL.md` when it exists (reflector 8d961553). **Named-file resolution (A2)**: still empty AND the body names a file that EXISTS on disk but sits outside the grep prefixes above (e.g. a plan under `tmp/`, a design doc) -> READ that file and resolve concrete in-tree targets from its content (e.g. a plan's "Phase N targets") before falling through - the one user-driven sub-step with genuine non-determinism, so an inline `Read` / small agent step is in-scope. If the named file is a multi-phase plan and the concern picks no phase (a bare `continue`), targets are ambiguous: surface the phase choice at the SKILL task-1 concern prompt / task-4 gate rather than guessing (workflow-adoption plan A2). Empty `items` (no path token, no slash-command, no resolvable named file) -> set `source_block_token = {run}` so evolve task 5's placeholder carries a back-ref (reflector 03d9a286). No file = no cluster. |
+| `semantic-drift` (A3) | LLM judgment greps cannot reach: spec prose contradicting a script's actual flags/behavior, cross-doc contradiction (two docs describing the same thing differently), or behavior a SKILL.md claims to invoke that is absent from its scripts. Runs ONLY in `audit+apply` mode via a per-skill-unit Workflow fan-out - see **Semantic-drift fan-out** below. Each finding cites `spec_ref` + `code_ref` + `confidence`; high -> cluster `items`, low -> `defer` (logged, never auto-applied). Open risk 4: gated to the interactive apply path, never a silent cron path. |
 
 ## Procedure
 
 1. **Read inventory**; validate it parses as JSON. If not, abort with explicit error (do NOT emit empty clusters - that masks state corruption).
-2. **Compute the judgment clusters** (prose; the engine does not): `stale-spec` (for each `scripts[].path`, `test -e`; vanished -> hard-stop cluster) and `user-driven` (per the row above - when the literal-token + slash-command greps come up empty, run the row's Named-file resolution before emitting `items: []`). Write the 0-2 clusters as a JSON array to `.claude-tmp/admin-apex-active/{run}-extra-clusters.json` (`[]` when none).
+2. **Compute the judgment clusters** (prose; the engine does not): `stale-spec` (for each `scripts[].path`, `test -e`; vanished -> hard-stop cluster), `user-driven` (per the row above - when the literal-token + slash-command greps come up empty, run the row's Named-file resolution before emitting `items: []`), and - in `audit+apply` mode only - `semantic-drift` (see **Semantic-drift fan-out** below). Write the 0-3 clusters as a JSON array to `.claude-tmp/admin-apex-active/{run}-extra-clusters.json` (`[]` when none).
 3. **Run the engine** (it appends the judgment clusters after the structural ones, writes the report, exits 0 - drift is normal, the gate decides):
    ```
    python3 scripts/audit-detectors.py --inventory "$inv" --mode audit --run {run} \
@@ -58,6 +59,16 @@ Two **judgment** kinds stay LLM-owned here (NOT in the engine), merged AFTER the
      --out .claude-tmp/admin-apex-active/{run}-drift-report.json
    ```
 4. **Print the report path** to stdout so the SKILL gate (task 4) can present it.
+
+## Semantic-drift fan-out (A3)
+
+Computed in step 2 ONLY when SKILL task 1 selected `audit+apply` (never `audit-only`, never a silent cron path - Open risk 4). Build one drift-check **unit** per skill: `{name, files}` where `files` = the skill's `SKILL.md` + every script under its `scripts/` dir (from inventory `scripts[]`), plus one cross-doc unit `{name: "core-docs", files: ["apex-core.md", "apex-core-overview.md"]}`.
+
+**Opt-in (skill-instructs-Workflow trigger - apex, not a human, is the caller).** When the Workflow tool is reachable, dispatch `scripts/semantic-drift.workflow.js` via an ABSOLUTE `scriptPath` (`$HOME/.claude/skills/admin-apex/scripts/semantic-drift.workflow.js`) with `args = { units, maxFleet: 16 }`. It fans out one `agentType:'Explore'` agent per unit (fleet cap 16; overflow returned in `dropped`), schema-validates each return, and returns `{findings, unitsChecked, dropped}`. No interactive gate sits inside the fan-out (the gate is task 4, after the barrier).
+
+**Workflow-absent fallback (headless/cron).** Dispatch the SAME per-unit `Explore` agents in a single response (read each unit's files, identical prompt + schema) - degrade silently, never block on Workflow being unreachable. Produces identical findings.
+
+**Map findings -> cluster.** Process any `dropped` units serially and fold their findings in. Partition by `confidence`: high-confidence findings become the `semantic-drift` cluster `items` (each `"<spec_ref> <-> <code_ref>: <summary>"`); low-confidence findings go to the cluster `_meta.deferred` and are routed to `defer` at the gate (logged, never auto-applied). Append the cluster to `{run}-extra-clusters.json` only when `items` is non-empty.
 
 ## Gate (SKILL task 4)
 
