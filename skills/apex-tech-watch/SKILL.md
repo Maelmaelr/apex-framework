@@ -141,7 +141,7 @@ See `~/.claude/skills/apex-tech-watch/automation.md` for the manual `/apex-tech-
 ## What this skill does NOT do
 
 - Does NOT process or interpret the fetched content beyond summarization - consumption is `/apex-improve`'s job.
-- Does NOT modify any apex framework file - only `~/.claude/tmp/tech-updates.md` and the archive directory.
+- Does NOT modify any apex framework file beyond the in-place `sources.json` stale-URL refresh (Step 3) - otherwise writes only `~/.claude/tmp/tech-updates.md` and the archive directory.
 - Does NOT cache fetch results - every run re-fetches. The 7-day cron cadence + WebFetch's own caching is the cost-bound.
 - Does NOT push or commit - output lives under `~/.claude/tmp/` which is `.gitignored`.
 - Does NOT validate URLs against a denylist - the source list is closed and editable; trust the operator.

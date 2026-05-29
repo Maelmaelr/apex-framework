@@ -26,7 +26,7 @@ Spec: `skills/admin-apex/SKILL.md` task 3 (audit drift) | task 4 (audit gate).
 }
 ```
 
-Empty `clusters: []` -> "clean" (SKILL task 4 prints report path, exits 0; tasks 5-9 skipped).
+Empty `clusters: []` -> "clean" (SKILL task 4 prints report path, exits 0; soft-skip tasks 5-8, task 9 still runs to capture private-tracked-root deltas).
 
 ## Drift kinds
 
@@ -72,7 +72,7 @@ Computed in step 2 ONLY when SKILL task 1 selected `audit+apply` (never `audit-o
 
 ## Gate (SKILL task 4)
 
-The orchestrator owns the AskUserQuestion. Per cluster: `keep` (ignore this run), `apply` (items become candidate evolve ops), `defer` (like keep but logged for next run). Empty clusters -> "audit clean" + exit 0. All `keep`/`defer` -> audit-only outcome (skip 5-9, exit 0).
+The orchestrator owns the AskUserQuestion. Per cluster: `keep` (ignore this run), `apply` (items become candidate evolve ops), `defer` (like keep but logged for next run). Empty clusters -> "audit clean" + exit 0. All `keep`/`defer` -> soft-skip (skip 5-8; task 9 still runs per SKILL.md task 4), exit 0.
 
 ## Audit-only mode
 

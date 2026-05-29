@@ -19,7 +19,7 @@ Spec: `apex-core.md` step 8.
 ## 8.1 Pre-flight wc-l split queue
 
 - Run `wc -l` on `{session}-main-scope.json` `allowed_files`. Files > 500 LOC always split. Files > 400 LOC queue a split task ahead of normal edits unless the file is continuous-prose (`*.md` heuristic + author judgement).
-- The `file-health-hook.sh` PreToolUse hook is the safety net for files that grow during execution (blocks `Edit` / `Write` on > 500 LOC files).
+- The `file-health-hook.sh` PreToolUse hook is the safety net for files that grow during execution (blocks `Edit` / `Write` when the existing file is > 400 LOC AND the change adds > 10 net lines; trivial <= 10-line edits pass even on > 500-LOC files).
 - **i18n large-locale routine hint**: a locale message file (`messages/*.json`, `locales/**`, `i18n/**`) over ~500 LOC cannot be `chunk-scope`-split (it is one file) and the file-health gate will block in-place growth. When a task adds/changes keys in such a file, the spawn prompt carries `"<locale-file> exceeds the file-health ceiling: apply key changes in pre-chunked batches of <=8 keys per Edit, and mirror the SAME key set across EVERY locale file in the dir (i18n completeness)"` as a routine dispatch hint - not a reactive mid-edit split discovered by the executor. Reflector ad37c6d1: 4058-line locale files forced the executor to reactively split i18n edits into <=8-key chunks every locale-touching session; pre-chunking upfront removes the recurring friction.
 
 ## 8.2 Task split + disjoint scopes (goals-driven)
@@ -30,7 +30,7 @@ Spec: `apex-core.md` step 8.
 - **Concerns-aware pre-split (B0)**: before the scope-size hard split (B1), inspect each per-task goal text for enumerated concerns (rough heuristic: count `+`/`,`/` and ` separators and numbered/lettered list markers). A goal that names 4+ enumerated concerns OR whose per-task `allowed_files` count is >=5 with high coupling (shared parent dir + shared imports) is a candidate for re-decomposition: re-enter step 4 to refine `goals[]` into N concern-level goals OR pre-split the task at the hypothesis level. Reflector cluster 94000169 / 213c1afc / 95d6e4f1 / d2564b0f: executor `tool_calls_made >= 50` consistently rolls out of unsplit multi-concern goals; the executor-side E2 budget hint catches it post-hoc, but pre-split is cheaper than a `split-needed` redispatch.
 - When 2+ tasks are spawned (regardless of goals.length), validate per-task `allowed_files` via:
   ```
-  python3 skills/apex/scripts/validate-disjoint-scopes.py <plan-json>
+  python3 skills/apex/scripts/validate-disjoint-scopes.py --plan <plan-json> --main-scope <main-scope-json>
   ```
   - per-task `allowed_files` pairwise disjoint (excluding standard safety paths)
   - union is a subset of `{session}-main-scope.json` `allowed_files`

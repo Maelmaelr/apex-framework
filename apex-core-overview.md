@@ -30,7 +30,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 2. Create session: create-session.sh
    - exit 0: {session} token + worktree minted + manifest written.
    - exit 1: unrecoverable error (bad args, nested-worktree, detached HEAD, etc.); surface stderr and abort.
-   - create-session.sh creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. All subsequent steps run inside the worktree (isolated .claude-tmp/apex-active/, isolated index, isolated working tree). Per-worktree isolation removes the sibling-session conflict surface entirely - no concurrent-apex overlap detection / scope-overlap classification is needed at session mint. Per-project dep bootstrap (node_modules / .venv / target / etc.) is the project's responsibility, not the framework's; step-10 verify-build is the silent failure point when deps are missing (see apex-core.md Conventions / Worktree dependency bootstrap). Nested-worktree / detached-HEAD / non-git-repo guards refuse to mint. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree). State-mutating commands the executor ran in the worktree (migrations, seeders, codegen producing untracked output) are logged to {session}-side-effects.jsonl; /apex-merge step 4.5 aggregates + dedupes across all merged worktrees and surfaces the unique set via AskUserQuestion for replay on main. /apex-merge step 4.6 invokes apex-fix when 1+ conflicts were resolved in step 4 (merge resolution stitches code across branches and can leave lint regressions neither side carried alone); clean-merge-only runs skip.
+   - create-session.sh creates <main>/.apex-worktrees/<session>/ on branch apex/<session> off HEAD, cd's in, persists worktree_path/branch/base_branch in manifest. All subsequent steps run inside the worktree (isolated .claude-tmp/apex-active/, isolated index, isolated working tree). Per-worktree isolation removes the sibling-session conflict surface entirely - no concurrent-apex overlap detection / scope-overlap classification is needed at session mint. Per-project dep bootstrap is framework-owned in 3 layers (see apex-core.md Conventions / Worktree dependency bootstrap): create-session.sh symlinks gitignored caches + .env from main (Layer 1) and runs docs/apex-bootstrap.sh if present (Layer 2); verify-build.sh does a defensive --frozen-lockfile install when node_modules is still absent at step-10 (Layer 3). Nested-worktree / detached-HEAD / non-git-repo guards refuse to mint. Integration: /apex-merge (skills/apex-merge/SKILL.md, manual trigger from main worktree). State-mutating commands the executor ran in the worktree (migrations, seeders, codegen producing untracked output) are logged to {session}-side-effects.jsonl; /apex-merge step 4.5 aggregates + dedupes across all merged worktrees and surfaces the unique set via AskUserQuestion for replay on main. /apex-merge step 4.6 invokes apex-fix when 1+ conflicts were resolved in step 4 (merge resolution stitches code across branches and can leave lint regressions neither side carried alone); clean-merge-only runs skip.
 
 3. Trivial pre-flight: inline
    - trivial = single-file edit, no new public symbol, named target file, ANY ambiguity = non-trivial
@@ -106,7 +106,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - hard cap: 2 reviews + 1 fix; reviewer never edits files
 
 11. Tail (foreground):
-    - standard: parallel(documentation.md, learn.md)
+    - standard: documentation.md always; learn.md ONLY when difficulty gate holds (fix-attempts.json exists AND attempts>=1) - parallel when both run
     - economy: documentation.md only (learn skipped)
 
 12. Commit + persist bump_hint: **inline** (orchestrator owns; no subagent hop)
@@ -120,12 +120,12 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - reads traces in-place from .claude-tmp/apex-active/{session}-traces/
     - appends to ~/.claude/tmp/apex-workflow-improvements.md
     - non-convergence detection: appends {ts, session, hash=sha1(prompt), scope_count, touched_count, files_touched} to ~/.claude/tmp/apex-prompt-history.log; on hash collision with different files_touched, surfaces non-convergence: line in improvements:
-    - oversized-dispatch flag (E1): read {session}-traces/execute/dispatch-summary.json; for each return with tool_calls_made > 50, surface oversized-dispatch: line under improvements: (cap 3, top-3 by tool_calls_made)
+    - oversized-dispatch flag (E1): read {session}-traces/execute/dispatch-summary.json; trip on orchestrator-recorded actuals - max(tool_calls_made, tool_uses) > 50 OR total_tokens > 150k OR files_touched > 12, never self-report alone - surface oversized-dispatch: line under improvements: (cap 3, top-3 by tool_uses)
     - **owns post-reflect cleanup**: as final action runs `bash scripts/cleanup-session.sh --session {session}` (idempotent)
 
 14. Cleanup session (trivial-only): cleanup-session.sh
     - **runs only on trivial path** (where step 13 was skipped); non-trivial paths get cleanup from the backgrounded reflector at step 13
-    - wipes session dir except {session}-hypothesis.json (do not clean concurrent session files)
+    - forks on worktree state (clean+no-commits = git worktree remove --force + branch -D; clean+commits or dirty = keep, warn awaiting /apex-merge); hypothesis travels with the worktree subtree on remove, preserved on keep branches
 
 15. Inline summary: inline
     - reads {session}-hypothesis.json + per-goal status map from step 8.3 + step 12 commit outcome

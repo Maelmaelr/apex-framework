@@ -75,7 +75,7 @@ Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | a
 
 Read and follow `skills/admin-apex/evolve.md`. Task 5 composes `{run}-evolve-plan.json`; task 6 applies ops, producing `{run}-applied-ops.json` + `{run}-dirty-paths.txt`.
 
-Mid-flight drift: see `evolve.md` lines 53-57 for the `restart | commit-partial | rollback` contract (rollback is the only admin-apex codepath that runs `git restore`).
+Mid-flight drift: see `evolve.md`'s mid-flight drift contract (`restart | commit-partial | rollback`). Both that rollback and task 8's `rollback-evolve` run `git restore`.
 
 ## Task 7: Sync docs (+ polish)
 
@@ -116,7 +116,7 @@ NO push here (task 10 owns pushes). VERSION is appended to `{run}-dirty-paths.tx
 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"
 ```
 
-See `scripts/mirror-to-dev.sh:13-54` for allowlist, path mapping, and exit codes (3-7). On success: proceed to task 11 (reflector); cleanup is deferred until after task 11 returns. On failure: leave artifacts; surface the script's exit code to the user; skip task 11 (no successful run to reflect on).
+See `scripts/mirror-to-dev.sh:13-54` for allowlist + path mapping; exit codes are 2-7 (2 bad args, 3 bad public repo, 4-6 public add/commit/push, 7 private push). On success: proceed to task 11 (reflector); cleanup is deferred until after task 11 returns. On failure: leave artifacts; surface the script's exit code to the user; skip task 11 (no successful run to reflect on).
 
 Env knob: `APEX_MIRROR_NO_PUSH=1` skips both pushes (commit-only inspect). Top-level spec docs (apex-core.md, apex-core-overview.md) are always swept for private-vs-public drift and auto-included even if absent from `{run}-dirty-paths.txt` - reconciles spec-doc commits that landed outside an admin-apex run.
 

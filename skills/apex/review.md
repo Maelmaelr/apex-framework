@@ -13,10 +13,11 @@ Fires ONLY when ALL hold:
 
 1. tier == "standard" (read from `{session}-tier.json`). Economy tier always skips (mirrors step 9 polish-skip rule; tiny scope rarely produces CLAUDE.md-rule violations worth the hop).
 2. step 10 verify exited 0 (a broken build is not the reviewer's concern; step 10's fix-loop owns that).
-3. `len(touched_files) >= 3` where touched = `(git diff --name-only {diff_anchor}; git ls-files --others --exclude-standard) | sort -u` INTERSECTED with `allowed_files`. Small diffs (1-2 files) skip - the cost-vs-coverage trade does not justify the hop.
+3. `len(touched_files) >= 3` where touched = `(git diff --name-only {diff_anchor}; git ls-files --others --exclude-standard) | sort -u` INTERSECTED with `allowed_files`. Small diffs (1-2 files) skip - the cost-vs-coverage trade does not justify the hop. **Docs-only branch**: when every touched file matches `^docs/` OR `\.(md|markdown|txt)$` OR `^README` OR `^CHANGELOG`, the threshold drops to `>= 1` - 2-file documentation diffs still warrant a cross-link / pattern-integrity pass (reflector a2181263).
 4. ANY of:
    - `hypothesis.complexity_hint == "high"`, OR
-   - ANY `hypothesis.goals[]` matches `/\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i`.
+   - ANY `hypothesis.goals[]` matches `/\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i`, OR
+   - `git diff --shortstat {diff_anchor}` deletions across `allowed_files` >= 200 lines (large structural-deletion clause - full component / file removals warrant review even when complexity_hint is medium and the verb regex misses; reflector cef8604f).
 
 **Doc-consistency carve-out** (overrides 3-4; conditions 1-2 still required): even when conditions 3 and 4 do not both hold, the gate fires when the in-scope set (touched INTERSECT `allowed_files`) contains >= 1 doc/spec path (`*.md` / `docs/**` / `CLAUDE.md` / `.claude/rules/**`) AND >= 1 non-doc code path. This catches small (often 2-file) doc+code co-changes the >= 3 size gate would otherwise skip, so a change cannot silently leave an in-scope doc contradicting the new code. Standard tier only for v1 (economy / trivial unaffected - preserves the economy-skip invariant; economy coverage is a noted future extension).
 

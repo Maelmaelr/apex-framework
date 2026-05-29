@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Step 4: lesson hit-tracking. Bumps `[last-hit: YYYY-MM-DD]` to today on the
+# Step 5: lesson hit-tracking. Bumps `[last-hit: YYYY-MM-DD]` to today on the
 # specified lines of a curated lessons.md file (in-place).
-# Spec: apex-core.md step 4.
+# Spec: apex-core.md step 5.
 #
 # Args:
 #   <lessons-file>           required (path to .claude/lessons.md)

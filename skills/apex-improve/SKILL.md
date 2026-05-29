@@ -32,7 +32,7 @@ Track per-file `delta_lines` through Step 4 and surface in Step 6. Growth is **a
 | `~/.claude/tmp/tech-updates.md` | apex-tech-watch (weekly cron / launchd) | **missing** or **mtime > 14 days** -> Step 2 emits a `tech-watch never-run / stale` finding with `target_files: []` (Principle 2: weekly currency silently broken otherwise). Both surface in Step 6 report only. See `analyze.md` for finding shape. Otherwise: nothing to consume. |
 | `~/.claude/tmp/apex-claude-code-version.txt` | apex-improve writes on completion | missing -> CC version drift since last run; treat as a soft signal that current best practices may have shifted |
 
-If all three signals empty / current at Step 2 -> exit `apex-improve: no signals to consume`; skip Steps 3-6.
+If all three signals empty / current at Step 2 -> exit `apex-improve: no signals to consume`; skip Steps 3-4 (Steps 5-6 still run: archive + truncate + minimal report).
 
 ## Step ownership
 
