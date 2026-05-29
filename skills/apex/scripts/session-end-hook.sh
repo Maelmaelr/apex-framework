@@ -15,6 +15,8 @@
 #          <main>/.apex-worktrees/*/.claude-tmp/apex-active/*.json
 #        - Derive apex {session} token, run cleanup-session.sh against the
 #          worktree-resident apex-active directory
+#        - Then sweep stale sibling worktrees (manifest-less crash orphans +
+#          dead-owner fully-merged leftovers) via sweep_stale_worktrees
 #   2. Manual mode (positional arg = apex {session} token):
 #        - Trusted own-session caller (mid-/apex abort: step 1 / 6
 #          cascade-empty / 10 verify cap-3 / unexpected error). Target the
@@ -86,24 +88,61 @@ if d.get('cc_session_id') == sid:
   return 1
 }
 
-sweep_orphan_worktrees() {
-  # Sweep .apex-worktrees/<token>/ dirs missing their matching
-  # .claude-tmp/apex-active/<token>.json manifest - the crash-orphan case
-  # (manifest already wiped or never written, but worktree directory survived).
-  # Without this, the next /apex create-session re-encounters the orphan and
-  # blocks on user interaction; with the sweep, SessionEnd cleans it for free
-  # on any subsequent CC session end (reflector b623b673: orphan worktree
-  # 41eac60c required manual cleanup at step-2 create-session.sh).
+# True iff PID is a live process whose comm basename is "claude" (recycled-PID
+# safe). Mirrors sweep-stale-runs.sh / create-session.sh owner classification.
+pid_is_live_claude() {
+  local pid="$1"
+  [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 1
+  kill -0 "$pid" 2>/dev/null || return 1
+  local comm_base
+  comm_base="$(basename "$(ps -o comm= -p "$pid" 2>/dev/null || true)" 2>/dev/null || true)"
+  [[ "$comm_base" == "claude" ]]
+}
+
+# Read the manifest's recorded owner pid (empty on parse failure / absent key).
+manifest_pid() {
+  python3 -c "
+import json, sys
+try:
+    print(json.load(open(sys.argv[1], encoding='utf-8')).get('pid', ''))
+except Exception:
+    pass
+" "$1" 2>/dev/null || true
+}
+
+sweep_stale_worktrees() {
+  # Sweep two classes of leftover .apex-worktrees/<token>/ dirs at SessionEnd:
+  #   (a) manifest-LESS dirs - the crash-orphan case (manifest already wiped or
+  #       never written, but the worktree directory survived). Removed inline;
+  #       cleanup-session.sh would no-op without a manifest. Without this the
+  #       next /apex create-session re-encounters the orphan and blocks on user
+  #       interaction (reflector b623b673: orphan 41eac60c needed manual cleanup).
+  #   (b) manifest-PRESENT dirs whose owning session is no longer live (recorded
+  #       pid dead OR recycled to a non-claude process). Re-run the
+  #       cleanup-session.sh keep/remove decision so a fully-merged worktree
+  #       (clean + no commits past base) that no other codepath reaps gets
+  #       collected - cleanup-session.sh runs only ONCE, at the owning session's
+  #       own step-13/14, so a branch integrated outside /apex-merge (or whose
+  #       /apex-merge step-5 cleanup was interrupted) otherwise lingers forever
+  #       with its manifest intact, invisible to the (a) orphan branch. The
+  #       decision stays in cleanup-session.sh: merged-clean -> remove; unmerged
+  #       (commits past base) / dirty -> keep + warn. A live claude owner = an
+  #       active sibling /apex session; leave it untouched.
   local wt_root="$MAIN_ROOT/.apex-worktrees"
   [[ -d "$wt_root" ]] || return 0
-  local wt token manifest
+  local wt token manifest owner_pid
   shopt -s nullglob
   for wt in "$wt_root"/*/; do
     token=$(basename "$wt")
     # 8-hex token guard: refuse to touch non-apex dirs that may have leaked in.
     [[ "$token" =~ ^[0-9a-f]{8}$ ]] || continue
     manifest="${wt}.claude-tmp/apex-active/${token}.json"
-    [[ -f "$manifest" ]] && continue
+    if [[ -f "$manifest" ]]; then
+      owner_pid="$(manifest_pid "$manifest")"
+      pid_is_live_claude "$owner_pid" && continue
+      run_cleanup "$token" "${wt}.claude-tmp/apex-active"
+      continue
+    fi
     # Orphan: cleanup-session.sh would skip without a manifest. Remove inline.
     git -C "$MAIN_ROOT" worktree remove --force "$wt" 2>/dev/null || true
     git -C "$MAIN_ROOT" worktree prune 2>/dev/null || true
@@ -159,9 +198,11 @@ else
     TARGET_ACTIVE="${MATCHED#*	}"
     run_cleanup "$SESSION" "$TARGET_ACTIVE"
   fi
-  # Either branch above: also sweep orphan worktrees (manifest-less dirs from
-  # crashed /apex sessions). Cheap + idempotent; runs every SessionEnd.
-  sweep_orphan_worktrees
+  # Either branch above: also sweep stale worktrees - manifest-less crash
+  # orphans AND manifest-present dirs whose owning session is dead and whose
+  # branch is fully merged (clean + no commits past base). Cheap + idempotent;
+  # runs every SessionEnd.
+  sweep_stale_worktrees
 fi
 
 exit 0

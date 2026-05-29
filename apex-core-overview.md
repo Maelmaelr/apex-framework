@@ -10,7 +10,7 @@ Legend: `inline` = main-orchestrator inline prompt | `skill` = `~/.claude/skills
 
 | Tier     | Decided at | Effect                                                                                            |
 | -------- | ---------- | ------------------------------------------------------------------------------------------------- |
-| trivial  | step 3     | step 3.1 inline edit -> jump to 14. Skips 4-13.                                                   |
+| trivial  | step 3     | step 3.1 inline edit + commit -> jump to 14. Skips 4-13.                                          |
 | economy  | step 7     | step 8 executors = sonnet; step 9 polish skipped; step 11 learn skipped. All other steps run.     |
 | standard | step 7     | step 8 executors = main session model; full tail.                                                 |
 
@@ -36,7 +36,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - trivial = single-file edit, no new public symbol, named target file, ANY ambiguity = non-trivial
    - **verb-pattern relaxation**: prompt matching `/^\s*(rename|format|fix typos?|reword|add (a )?comment|remove (a )?comment|update copy|update string)\b/i` may resolve its target via single inline `Glob` (zero or 2+ matches = non-trivial); other trivial constraints unchanged
    - if trivial:
-     - 3.1 inline single Edit/Write; orchestrator writes minimal hypothesis stub (original_prompt + one-line hypothesis) so step 15 contract stays uniform
+     - 3.1 inline single Edit/Write + lightweight commit (worktree lands as a clean mergeable apex/<session> branch awaiting /apex-merge, not a dirty leftover); orchestrator writes minimal hypothesis stub (original_prompt + one-line hypothesis) so step 15 contract stays uniform
      - jump to 14 (skip 4-13). Trade-off: no verify, no commit, no reflect; user owns lint/build + git add+commit.
    - if non-trivial: proceed to 4
 
