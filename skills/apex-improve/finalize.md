@@ -29,11 +29,50 @@ ERRLOG="$HOME/.claude/tmp/reflector-errors.log"
 
 # 5b. Stamp CC version (closes version-drift signal until next CC update)
 claude --version | awk '{print $1}' > "$HOME/.claude/tmp/apex-claude-code-version.txt"
+
+# 5c. Backlog consolidation cleanup (analyze Step 2 "Prior-run deferred-findings").
+# Prune findings that became ops this run from the carried deferred file, THEN
+# delete the prior files this run consumed. Order matters: the consolidated
+# {run}-deferred-findings.json already holds every ingested finding, so deleting
+# the originals only after the prune is loss-free; a crash before here leaves the
+# originals intact for the next run to re-ingest.
+# $RUN is orchestrator-bound (same token Step 1 minted). If unset, skip 5c
+# entirely - never fall back to a .current-run pointer (those are stale across
+# runs) and never operate on an empty token; cleanup defers to the next run.
+if [[ -n "${RUN:-}" ]]; then
+ROOT="$HOME/.claude/.claude-tmp/admin-apex-active"
+DEFERRED="$ROOT/$RUN-deferred-findings.json"; PLAN="$ROOT/$RUN-evolve-plan.json"
+APPLIED="$ROOT/$RUN-applied-ops.json"; CONSUMED="$ROOT/$RUN-consumed-deferred.txt"
+# Prune only when >=1 op was applied; drop deferred ids listed in the plan's
+# _meta.source_clusters (the findings that motivated this run's ops). Plan-level
+# tie (ops carry no per-op finding id); a planned-but-failed sibling op is the
+# rare edge - it re-surfaces via the live signal track, never a silent loss.
+if [[ -s "$APPLIED" && -s "$PLAN" && -s "$DEFERRED" ]] && python3 -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])) else 1)" "$APPLIED" 2>/dev/null; then
+  python3 - "$DEFERRED" "$PLAN" <<'PY' || true
+import json, sys
+deferred_path, plan_path = sys.argv[1], sys.argv[2]
+try:
+    deferred = json.load(open(deferred_path))
+    applied_ids = set(json.load(open(plan_path)).get("_meta", {}).get("source_clusters", []))
+except Exception:
+    sys.exit(0)
+kept = [f for f in deferred if f.get("id") not in applied_ids]
+json.dump(kept, open(deferred_path, "w"), indent=2)
+PY
+fi
+# Delete consumed originals (never this run's own consolidated file).
+if [[ -f "$CONSUMED" ]]; then
+  while IFS= read -r p; do
+    [[ -z "$p" || "$p" == "$DEFERRED" ]] && continue
+    rm -f -- "$p" 2>/dev/null || true
+  done < "$CONSUMED"
+fi
+fi  # end RUN-bound guard
 ```
 
 All three signal files archive to `improvements-archive/` (timestamped) before truncation, so unapplied / deferred blocks and historical errors remain recoverable. `reflector-errors.log` is reset alongside the structured logs because any rescued-from-errlog analyses have by definition been consumed by analyze.md once they reach this point; carrying old errors across runs reads as recurring noise to the next analyze pass. apex-tech-watch's 30-day rotation still bounds `tech-updates.md` between consumption runs (this archive is post-consumption, not a substitute for that rotation). The CC-version stamp lives under `~/.claude/tmp/` which IS tracked (`.gitignore:54` keeps `tmp/` itself tracked, only `*.lock` ignored); the stamp + signal-file truncations produce a real git diff that piggybacks on the next framework-evolution commit (not its own commit when 0 ops applied). Add to `{run}-dirty-paths.txt` only if content changed (`git diff --quiet` check).
 
-Step 5 is two phases: 5a (polish) and 5b (cleanup + stamp). 5a runs FIRST so the report at Step 6 reflects polish findings; 5b's archive + truncate must NOT happen until polish has had a chance to escalate new drift via `apex-workflow-improvements.md` (otherwise polish-driven escalations would be archived in the same breath they were written, becoming consume-on-write noise next run).
+Step 5 is two phases: 5a (polish) and 5b (cleanup + stamp). 5a runs FIRST so the report at Step 6 reflects polish findings; 5b's archive + truncate must NOT happen until polish has had a chance to escalate new drift via `apex-workflow-improvements.md` (otherwise polish-driven escalations would be archived in the same breath they were written, becoming consume-on-write noise next run). The 5c backlog-consolidation cleanup runs LAST within 5b - prune-then-delete-originals strictly after the consolidated `{run}-deferred-findings.json` is on disk, so no crash window can drop the carried backlog.
 
 ## Step 6: Report (inline)
 
@@ -43,6 +82,7 @@ Print a structured summary to stdout (apex-eod step 3 captures and prints this v
 apex-improve run {run} complete.
 
 Findings consumed: <N> (workflow-improvements: <a>, tech-updates: <b>, version-drift: <c>)
+Deferred backlog: <ingested I from M prior files> -> <carried forward K> (chronic C: need manual decision)
 Operations applied: <N>
   - semantic: <n>
   - replace:  <n>
@@ -58,3 +98,5 @@ Net delta_lines across run: <signed int>
 ```
 
 If `Net delta_lines > +50` OR `additive` ops > 1, append a Principle 3 note: `this run grew the framework by N lines / created M new files; review whether the findings could have been satisfied semantically`. Informational only - the run still commits.
+
+When `chronic C > 0`, list the chronic finding ids (one per line) under the report so the user sees what is stuck: a finding `deferrals >= 3` keeps failing the same design-decision / AskUserQuestion gate, so it is carried forward (non-lossy) but no longer auto-planned. Surfacing it nudges a manual decision instead of silent re-cycling.

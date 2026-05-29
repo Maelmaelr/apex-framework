@@ -31,8 +31,9 @@ Track per-file `delta_lines` through Step 4 and surface in Step 6. Growth is **a
 | `~/.claude/tmp/apex-workflow-improvements.md` | reflect-traces.sh + agents/reflector.md (per session) | nothing to consume from session-reflection track |
 | `~/.claude/tmp/tech-updates.md` | apex-tech-watch (weekly cron / launchd) | **missing** or **mtime > 14 days** -> Step 2 emits a `tech-watch never-run / stale` finding with `target_files: []` (Principle 2: weekly currency silently broken otherwise). Both surface in Step 6 report only. See `analyze.md` for finding shape. Otherwise: nothing to consume. |
 | `~/.claude/tmp/apex-claude-code-version.txt` | apex-improve writes on completion | missing -> CC version drift since last run; treat as a soft signal that current best practices may have shifted |
+| `.claude-tmp/admin-apex-active/*-deferred-findings.json` (prior runs) | analyze.md cap-overflow + uncertain-defer + admin-apex audit deferrals | **none consumable** -> no backlog to reprocess. Step 2 ingests the manifest-absent set (run complete), reprocessing findings a past run could not resolve; without this they reap on the 24h orphan backstop. See `analyze.md` "Prior-run deferred-findings". |
 
-If all three signals empty / current at Step 2 -> exit `apex-improve: no signals to consume`; skip Steps 3-4 (Steps 5-6 still run: archive + truncate + minimal report).
+If all three signals empty / current AND no consumable deferred backlog at Step 2 -> exit `apex-improve: no signals to consume`; skip Steps 3-4 (Steps 5-6 still run: archive + truncate + minimal report). A non-empty deferred backlog is NOT a no-signals exit even when the live signals are empty - Step 2 consolidates and carries it forward, and plans any non-chronic survivors.
 
 ## Step ownership
 
@@ -80,9 +81,9 @@ PID=$(bash "$HOME/.claude/skills/apex/scripts/find-claude-pid.sh" 2>/dev/null ||
 
 ## Step 2: Analyze signals
 
-Read and follow `~/.claude/skills/apex-improve/analyze.md`. Produces `{run}-findings.json`.
+Read and follow `~/.claude/skills/apex-improve/analyze.md`. Produces `{run}-findings.json` plus the consolidated `{run}-deferred-findings.json` (carried backlog) + `{run}-consumed-deferred.txt` when a prior-run backlog was ingested.
 
-If empty (zero findings across all three sources), skip Steps 3-4 but still run Step 5 (archive + truncate consumed signal files + CC version stamp) so `apex-workflow-improvements.md` and `tech-updates.md` reset for the next session - leaving stale signal blocks in place re-feeds them as deja-vu noise on the next run, even though no ops were emitted. Print a minimal Step 6 line `apex-improve: no signals to consume` (no findings/ops table). Skip Steps 7-8 (no framework op to commit; the housekeeping diff under `tmp/` piggybacks on the next framework-evolution commit). Manifest swept by SessionEnd hook.
+If empty (zero findings across all three signal sources AND no consumable deferred backlog), skip Steps 3-4 but still run Step 5 (archive + truncate consumed signal files + CC version stamp) so `apex-workflow-improvements.md` and `tech-updates.md` reset for the next session - leaving stale signal blocks in place re-feeds them as deja-vu noise on the next run, even though no ops were emitted. Print a minimal Step 6 line `apex-improve: no signals to consume` (no findings/ops table). Skip Steps 7-8 (no framework op to commit; the housekeeping diff under `tmp/` piggybacks on the next framework-evolution commit). Manifest swept by SessionEnd hook. If a deferred backlog WAS ingested but no live signals fired, Step 2 still consolidates + carries it forward; Steps 3-4 run only for non-chronic survivors (otherwise the run is carry-forward-only and Steps 7-8 are skipped under the 0-ops rule).
 
 ## Step 3: Plan ops
 

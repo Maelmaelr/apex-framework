@@ -1,6 +1,6 @@
 ---
 name: analyze
-description: apex-improve Step 2 - signal extraction. Reads workflow-improvements.md / tech-updates.md / apex-claude-code-version.txt, extracts findings per source-specific rules (dedup, cluster, severity), caps at 12, writes {run}-findings.json (+ {run}-deferred-findings.json for overflow).
+description: apex-improve Step 2 - signal extraction. Reads workflow-improvements.md / tech-updates.md / apex-claude-code-version.txt + prior-run {run}-deferred-findings.json (backlog), extracts findings per source-specific rules (dedup, cluster, severity), caps the plannable set at 12, writes {run}-findings.json + a consolidated {run}-deferred-findings.json carrying the unresolved backlog forward.
 ---
 
 # analyze (apex-improve Step 2)
@@ -9,7 +9,9 @@ Spec: `skills/apex-improve/SKILL.md` Step 2.
 
 ## Inputs
 
-The three files in the SKILL.md "Inputs" table. Read any that exist; tolerate empty / missing per the table contract.
+The three signal files in the SKILL.md "Inputs" table. Read any that exist; tolerate empty / missing per the table contract.
+
+Plus a fourth, session-spanning source: **prior-run `{run}-deferred-findings.json`** files in `.claude-tmp/admin-apex-active/` (see "Prior-run deferred-findings" below). These are findings a past run could not resolve; without this ingestion they orphan and reap (sweep-orphan-artifacts.sh, 24h backstop) instead of being reprocessed.
 
 ## Output
 
@@ -27,7 +29,7 @@ The three files in the SKILL.md "Inputs" table. Read any that exist; tolerate em
 }
 ```
 
-**Cap: 12 findings per run.** If more surface, keep the highest-severity 12 and log the rest to `.claude-tmp/admin-apex-active/{run}-deferred-findings.json` for a future run (the `{run}-deferred-findings.json` artifact is preserved across SessionEnd by `cleanup-run.sh`).
+**Cap: 12 on the plannable set.** `{run}-findings.json` holds at most the highest-severity 12 non-chronic findings (the set Step 3 plans). Everything else - lower-severity overflow, chronic entries, and the carried backlog - lives in the consolidated `{run}-deferred-findings.json` (see "Prior-run deferred-findings" below). That file is preserved across SessionEnd by `cleanup-run.sh` and reprocessed by the next run, not discarded.
 
 ## Source-specific extraction
 
@@ -63,12 +65,35 @@ Both findings carry `target_files: []` so Step 3 plan cannot promote them to ops
 
 If `apex-claude-code-version.txt` is missing or older than the current CC version (`claude --version` parsed), emit ONE finding: `summary: "review CC release notes since version X for behavior changes; check apex hook configurations and skill prompts for affected primitives"`. This is usually a meta-finding pointing at apex-tech-watch's most recent fetch.
 
+## Prior-run deferred-findings (backlog ingestion)
+
+Past runs write `{run}-deferred-findings.json` (cap-overflow + uncertain-defer) and `cleanup-run.sh` preserves them across SessionEnd, but only this step reprocesses them - otherwise they reap on the 24h orphan backstop, never reaching an op.
+
+**Consumable set**: every `.claude-tmp/admin-apex-active/*-deferred-findings.json` where the token != the current run AND the producing `{token}.json` manifest is **absent** (run complete). The manifest-absent guard mirrors `sweep-orphan-artifacts.sh` so a live concurrent run's in-flight deferred file is never consumed. Producer is irrelevant - admin-apex audit deferrals are the same finding class and fold in here.
+
+For each consumable finding:
+
+1. **Increment `deferrals`** (absent -> treat as 0, so first carry-over becomes 1).
+2. **Chronic gate**: `deferrals >= 3` -> set `chronic: true`. Chronic findings are report-only - excluded from the plannable pool (they keep failing the same AskUserQuestion / design-decision gate, so re-planning churns) but carried forward in the consolidated file (non-lossy) and counted in the Step 6 report so the user is nudged to decide manually.
+3. Otherwise merge into the candidate pool alongside the fresh-source findings.
+
+**Dedup by `id`** across the merged pool: a fresh-source finding wins over a carried one of the same `id` (newer evidence), inheriting the higher `deferrals` count. (Semantic near-dups with different ids are left to the human / plan stage - do NOT build a fuzzy matcher; Principle 3.)
+
+**Consolidation outputs** (single backlog-minus-applied invariant):
+
+- `{run}-findings.json` = the top-12 **non-chronic** pool entries by severity (the set Step 3 will plan). Cap is on the plannable set, not the backlog.
+- `{run}-deferred-findings.json` = the FULL deduped pool (carried + fresh, `deferrals` incremented, `chronic` flagged) - i.e. everything ingested this run. `finalize.md` Step 5b prunes whatever Step 4 applied, leaving exactly the unresolved backlog under the live run token (fresh mtime + live manifest -> escapes the reap). Overflow beyond 12 stays here and is never planned this run.
+- `{run}-consumed-deferred.txt` = one path per consumed prior file. `finalize.md` deletes these only AFTER the consolidated file is written + pruned (write-new-then-delete-old; a crash before finalize leaves the originals intact).
+
+24h-backstop trade-off: a >24h idle gap with no apex-improve run still reaps the consolidated file. Steady state keeps at most one deferred file (this run's, freshly stamped), so the gap only bites when the improvement loop itself stops running - acceptable degradation, not silent loss in normal operation.
+
 ## Empty case
 
-If all three sources produce zero findings, write `findings.json` as `[]` and let SKILL Step 2 surface the no-signals exit. Do NOT skip the file write - SKILL needs a deterministic artifact to read.
+If all three signal sources produce zero findings AND the consumable deferred-findings set is empty, write `findings.json` as `[]` and let SKILL Step 2 surface the no-signals exit. Do NOT skip the file write - SKILL needs a deterministic artifact to read. A non-empty deferred backlog is NOT a no-signals exit: write the consolidated `{run}-deferred-findings.json` + `{run}-consumed-deferred.txt` even when the live signals are empty, so the backlog carries forward (and, if any survivors are non-chronic, populate `findings.json` so Step 3 can plan them).
 
 ## What this step does NOT do
 
 - Does NOT write `evolve-plan.json` - that is `plan.md` (Step 3).
 - Does NOT mutate any apex file - that is `apply.md` (Step 4).
 - Does NOT decide on its own that a tech-update is irrelevant - if uncertain, defer (write to `{run}-deferred-findings.json`) rather than guess.
+- Does NOT delete the consumed prior deferred-findings files - it only records their paths in `{run}-consumed-deferred.txt`. `finalize.md` Step 5b deletes them, after the consolidated file is written and pruned (crash-safe ordering).
