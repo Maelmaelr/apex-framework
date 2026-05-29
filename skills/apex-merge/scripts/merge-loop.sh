@@ -74,10 +74,12 @@ if [[ -z "$TOP_RES" || "$TOP_RES" != "$COMMON_ABS" ]]; then
   echo "merge-loop.sh: must run from main worktree (top=$TOP_RES common=$COMMON_ABS)" >&2
   exit 2
 fi
-# .apex-worktrees/ is the apex create-session worktree root (untracked-by-design);
-# .claude-tmp/ holds apex temp artifacts (lessons-tmp, scope JSONs). Filter both so
-# the dirty-tree gate does not flag a routine apex layout (mirrors SKILL.md step-1).
-if [[ -n "$(git status --porcelain | grep -v '^?? \.apex-worktrees/$' | grep -v '^...\.claude-tmp/')" ]]; then
+# .apex-worktrees/ is the apex create-session worktree root (untracked-by-design;
+# its mode-160000 gitlinks must never be committed). Filter ONLY it so the
+# dirty-tree gate does not flag a routine apex layout. Project .claude/ + .claude-tmp/
+# are NOT filtered: SKILL.md step-1 commits them onto main, so this gate requires
+# them clean (committed) before merge (mirrors SKILL.md step-1).
+if [[ -n "$(git status --porcelain | grep -v '^?? \.apex-worktrees/$')" ]]; then
   echo "merge-loop.sh: main worktree is dirty; resolve before merge" >&2
   exit 2
 fi
