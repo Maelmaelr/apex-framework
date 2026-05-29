@@ -78,7 +78,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - parallel dispatch (mandatory when N >= 2 tasks): all tool_use blocks in ONE assistant message AND run_in_background:true on each; foreground multi-block serialises (user-flagged + reflector e1827632); sequential dispatch is only for coupled / B2 chain tasks
    - executor returns {goal, status, notes, tool_calls_made, files_touched} where status is implemented | already-satisfied | failed | split-needed (C1 self-assessment carries residual_goal + residual_files + what_i_did); orchestrator collects per-goal map for step 15
    - dispatch self-report log (E1): each return appended to {session}-traces/execute/dispatch-summary.json; reflector flags tool_calls_made > 50
-   - split-needed redispatch (C1 follow-up): orchestrator re-spawns ONE follow-up with residual_goal + residual_files (cap 1 per goal); second split-needed -> failed
+   - split-needed redispatch (C1 follow-up): orchestrator re-spawns up to 2 follow-ups with residual_goal + residual_files (cap 2 per goal, under a ~100 tool_use / ~300k token per-goal cumulative-budget guard); third split-needed or budget breach -> failed
    - idempotency: same prompt -> same goals -> same N tasks; if goals were achieved last run, executors return already-satisfied -> empty diff -> step 12 skips commit
    - file-health hook = safety net during edits
    - executor model: sonnet if economy, main session model if standard
