@@ -409,6 +409,14 @@ run_fixture "verify-tests.sh no-manifest-skip" 0 verify_tests_no_manifest_fixtur
 run_fixture "verify-build.sh --with-tests no-manifest" 0 \
   bash "$REPO_ROOT/skills/apex/scripts/verify-build.sh" --session deadbeef --with-tests
 
+# 10a. review-result.schema.json: a step-10.5 doc-consistency finding with authority validates.
+review_result_doc_consistency_fixture() {
+  local inst; inst=$(mktemp)
+  printf '%s' '{"session":"abcdef01","attempt":1,"findings":[{"kind":"doc-consistency","file":"README.md","line":12,"summary":"doc describes superseded flag","authority":"doc-stale"}],"action":"fix-needed"}' > "$inst"
+  bash "$REPO_ROOT/skills/apex/scripts/validate-json.sh" review-result.schema.json "$inst"; local rc=$?; rm -f "$inst"; return $rc
+}
+run_fixture "review-result.schema.json doc-consistency+authority" 0 review_result_doc_consistency_fixture
+
 # 11. audit-detectors.py engine fixtures live in a sibling file (this harness is
 #     near the 400-line cap); run it and fold its pass/fail into the totals.
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-audit-detectors.sh"; then

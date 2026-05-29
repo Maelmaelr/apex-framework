@@ -1,6 +1,6 @@
 ---
 name: review
-description: Step 10.5 review sub-step. Gated code-review pass over diff_anchor..HEAD INTERSECT allowed_files; checks CLAUDE.md rules (pattern, over-engineering, security-at-boundaries, i18n, complexity). Spawns agents/reviewer.md (Sonnet, foreground). Runs ONLY under standard tier when diff is non-trivial and complexity-hinted.
+description: Step 10.5 review sub-step. Gated code-review pass over diff_anchor..HEAD INTERSECT allowed_files; checks CLAUDE.md rules (pattern, over-engineering, security-at-boundaries, i18n, complexity, doc-consistency). Spawns agents/reviewer.md (Sonnet, foreground). Runs ONLY under standard tier when diff is non-trivial and complexity-hinted.
 ---
 
 # review (step 10.5)
@@ -18,9 +18,13 @@ Fires ONLY when ALL hold:
    - `hypothesis.complexity_hint == "high"`, OR
    - ANY `hypothesis.goals[]` matches `/\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i`.
 
+**Doc-consistency carve-out** (overrides 3-4; conditions 1-2 still required): even when conditions 3 and 4 do not both hold, the gate fires when the in-scope set (touched INTERSECT `allowed_files`) contains >= 1 doc/spec path (`*.md` / `docs/**` / `CLAUDE.md` / `.claude/rules/**`) AND >= 1 non-doc code path. This catches small (often 2-file) doc+code co-changes the >= 3 size gate would otherwise skip, so a change cannot silently leave an in-scope doc contradicting the new code. Standard tier only for v1 (economy / trivial unaffected - preserves the economy-skip invariant; economy coverage is a noted future extension).
+
 Otherwise: silent skip; proceed to step 11.
 
 The gate is mechanical and reproducible run-to-run (same prompt + same scope -> same gate verdict).
+
+**Doc-consistency dimension routing**: `agents/reviewer.md` flags an in-scope doc whose stated behavior / signature / flag / contract contradicts an in-scope code change, tagging each finding `authority`. `doc-stale` (doc describes superseded behavior; code correct) -> `action: fix-needed` -> executor updates the in-scope doc (already editable - no new scope), or the mechanical-fix inline allowance below. `code-suspect` (change contradicts an authoritative contract; code may be wrong) -> `action: escalate` -> AskUserQuestion. In-scope-only: the reviewer never reads untouched docs (its hard boundary), so pre-existing drift on out-of-scope docs stays out of scope - a future out-of-band project-wide audit, not this hot-path pass.
 
 ## Inputs at spawn (caller propagates explicitly to `agents/reviewer.md`)
 

@@ -32,13 +32,15 @@
               "security-at-boundaries",
               "i18n-completeness",
               "cognitive-complexity",
+              "doc-consistency",
               "additional"
             ]
           },
           "file": { "type": "string", "description": "Repo-relative path or '(synthetic)' for the 'additional' overflow entry." },
           "line": { "type": "integer", "minimum": 0, "description": "1-based line in file; 0 when synthetic / file-level." },
           "summary": { "type": "string", "maxLength": 240, "description": "One-line description of the finding. May be prefixed STILL-PRESENT-AFTER-FIX: on attempt 2." },
-          "severity": { "enum": ["advisory", "actionable"], "description": "Optional. Advisory findings do not force fix-needed; actionable findings do." }
+          "severity": { "enum": ["advisory", "actionable"], "description": "Optional. Advisory findings do not force fix-needed; actionable findings do." },
+          "authority": { "enum": ["doc-stale", "code-suspect"], "description": "Optional; doc-consistency findings only. doc-stale = the doc describes superseded behavior (code correct) -> fix-needed. code-suspect = the change contradicts an authoritative contract (code may be wrong) -> escalate." }
         }
       }
     },
