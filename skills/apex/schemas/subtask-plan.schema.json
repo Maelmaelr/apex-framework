@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "subtask-plan.schema.json",
+  "title": "{session}-subtask-plan-{task_id}.json",
+  "description": "Step 8.2 B0.7 scout output. Read-only decomposition of ONE step-8 goal into a sub-task DAG. The scout can only ADD splits; indivisible:true dispatches the goal whole. The estimate is advisory and never gates dispatch (Open risk 1). See apex-core.md step 8.2 / agents/scout.md.",
+  "type": "object",
+  "required": ["subtasks", "indivisible", "reason"],
+  "properties": {
+    "subtasks": {
+      "type": "array",
+      "description": "Independent (or depends_on-chained) atomic sub-units of the goal. Empty iff indivisible:true.",
+      "items": {
+        "type": "object",
+        "required": ["label", "files", "depends_on"],
+        "properties": {
+          "label": { "type": "string", "description": "<=6-term key-term label (lowercase, stopwords + <4-char tokens dropped); becomes the spawned executor's goal." },
+          "files": {
+            "type": "array",
+            "description": "Repo-relative paths this sub-task writes. MUST be a subset of the goal's resolved per-task allowed_files - the scout can only partition, never widen scope.",
+            "items": { "type": "string" }
+          },
+          "depends_on": {
+            "type": "array",
+            "description": "Indices into this subtasks[] array that must complete before this sub-task dispatches. Empty -> independent (parallel via run_in_background). Non-empty -> serialized after the referenced sub-tasks.",
+            "items": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "indivisible": { "type": "boolean", "description": "True -> the goal is one atomic unit; dispatch it whole as today (subtasks empty)." },
+    "reason": { "type": "string", "description": "One-line justification for the partition (or for indivisibility)." },
+    "estimate": {
+      "type": "object",
+      "description": "Advisory only - NEVER gate dispatch on these numbers (Open risk 1: LLMs estimate cost poorly). The DAG is the deliverable.",
+      "properties": {
+        "tool_calls": { "type": "integer" },
+        "tokens": { "type": "integer" }
+      }
+    }
+  }
+}
