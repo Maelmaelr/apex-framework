@@ -63,6 +63,8 @@ If all three signals empty / current AND no consumable deferred backlog at Step 
 
 Each task `blockedBy` the previous. Steps 3-6 conditional on Step 2 non-empty findings; Steps 7-8 conditional on standalone mode AND >=1 op applied; Step 9 conditional on standalone mode AND `.claude/lessons.md` exists.
 
+**Deferred-tool guard.** `TaskCreate` / `TaskUpdate` / `TaskList` / `AskUserQuestion` are deferred - batch-fetch via `ToolSearch select:TaskCreate,TaskUpdate,TaskList,AskUserQuestion` before queuing the chain. If a `TaskCreate` / `TaskUpdate` errors (`InputValidationError` / "schema not sent to the API"), do NOT fire the remaining lines - re-run that ToolSearch load, retry ONCE, then STOP and surface to the user (an empty / flaky ToolSearch return fails every call identically; same contract as apex / admin-apex / apex-merge Step 0 and session 4f42caf5).
+
 ## Step 1: Mint run + manifest (inline)
 
 **Cwd discipline (critical).** Before any other action, `cd "$HOME/.claude"`. apex-improve operates on the apex framework at `~/.claude` and writes artifacts under `~/.claude/.claude-tmp/admin-apex-active/`; running from a project repo would pollute that project's working tree and the SessionEnd hook for an unrelated cwd would never match this run's manifest (cleanup leak). Absolute paths below provide defense-in-depth.
