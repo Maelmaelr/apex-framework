@@ -39,7 +39,7 @@ Six **structural** kinds are detected deterministically by `scripts/audit-detect
 | `missing-refs` (`missing`) | Inventory file referenced by zero spec doc (intra-skill, cross-apex-skill, and parent-dir/glob refs count as covered; `SKILL.md` / `_`-prefixed / `__pycache__` excluded). |
 | `schema-mismatch` (`schema`) | `schemas[]` entry where `id != basename(path)`. |
 | `dead-hook` (`dead-hook`) | `hooks[]` command referencing a script absent on disk. |
-| `approaching-budget` (`approaching`) | skills/agents `.md` within the near-cap band (`near_cap_ratio * cap < words <= cap`; default 85%). WARN only - never blocks; routed to `defer` at the gate as standing leanness pressure below the hard oversized cap. Fires in `--mode polish` too (escalated, not blocking). |
+| `approaching-budget` (`approaching`) | skills/agents `.md` within the near-cap band (`near_cap_ratio * cap < words <= cap`; default 85%), EXCLUDING paths in `near_cap_exempt` (plan-pinned dense files whose tier was set at current+~10% headroom, e.g. apex/SKILL.md - they sit permanently in-band so the WARN would be every-run noise). WARN only - never blocks; routed to `defer` at the gate as standing leanness pressure below the hard oversized cap. Fires in `--mode polish` too (escalated, not blocking). |
 
 Two **judgment** kinds stay LLM-owned here (NOT in the engine), merged AFTER the structural clusters via `--extra-clusters`:
 

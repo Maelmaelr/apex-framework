@@ -9,5 +9,6 @@
     "skills/apex-merge/SKILL.md": 3500
   },
   "central_prose_members": ["apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"],
-  "near_cap_ratio": 0.85
+  "near_cap_ratio": 0.85,
+  "near_cap_exempt": ["skills/apex/SKILL.md"]
 }

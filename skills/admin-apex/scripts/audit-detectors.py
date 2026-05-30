@@ -93,6 +93,7 @@ def load_budget(root):
         "tiers": {},
         "central_prose_members": sorted(PROSE_DOCS),
         "near_cap_ratio": 0.85,
+        "near_cap_exempt": [],
     }
     try:
         data = json.loads((root / CONTENT_BUDGET_PATH).read_text())
@@ -168,10 +169,16 @@ def detect_approaching(inv, budget):
     WARN-only proactive pressure (never blocks): a file this close to its tier cap
     gets a 'tighten next' signal so leanness is enforced continuously, before the
     hard oversized gate fires. Scripts + central-prose docs are out of band scope
-    (the band is the skills/agents .md leanness discipline)."""
+    (the band is the skills/agents .md leanness discipline). Paths in
+    near_cap_exempt are skipped: deliberately-dense, plan-pinned files (e.g.
+    apex/SKILL.md) whose tier was policy-set at current+~10% headroom sit
+    permanently inside the band, so the WARN would fire every run as noise."""
     items = []
     ratio = budget["near_cap_ratio"]
+    exempt = set(budget.get("near_cap_exempt", []))
     for e in inv.get("skills", []) + inv.get("agents", []):
+        if e["path"] in exempt:
+            continue
         words = e.get("words", 0)
         cap = cap_for(e["path"], budget)
         if ratio * cap < words <= cap:
