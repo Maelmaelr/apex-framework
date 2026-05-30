@@ -1,21 +1,25 @@
 #!/usr/bin/env bash
 # PreToolUse hook: file-health gate.
-# Spec: user-global CLAUDE.md "File health (enforced gate)".
+# Spec: user-global CLAUDE.md "File health".
 #
-# Blocks Edit / Write / MultiEdit when:
-#   - the existing target file is > 400 lines, AND
-#   - the proposed change adds > 10 lines (net delta).
+# Docs (.md / .markdown):
+#   - apex framework skills/** + agents/** docs gate on a CONTENT BUDGET
+#     (projected word count > DOC_WORD_CAP) rather than net line delta - physical
+#     newline count is gamed by one-paragraph-per-line markdown.
+#   - central prose specs (apex-core.md, apex-core-overview.md, README.md,
+#     repo-root CLAUDE.md) stay exempt (single-concern continuous documents).
+#   - all other .md (non-apex trees) stay exempt, unchanged.
 #
-# Trivial edits (<= 10 lines net) always pass, even on > 500-line files.
-# New files (target does not exist on disk) always pass.
-# NotebookEdit is excluded - .ipynb is JSON-encoded; line-count gating on the
-# wire format is not meaningful (the rule is about source-text files).
+# Code (non-.md):
+#   - line-count split gate (global): existing file > 400 lines AND change adds
+#     > 10 net lines -> deny (split a separable concern first).
+#   - max-line-length gate (apex framework skills/** + agents/** scripts): an edit
+#     that introduces a line longer than MAX_LINE_LEN chars -> deny (wrap/refactor).
 #
-# Exception: continuous-prose documents (.md / .markdown - legal prose, central
-# spec docs) are exempt directly by this hook. The split rule targets source
-# text, not prose (CLAUDE.md File health exception; apex-core.md step 8 "*.md
-# heuristic"), so the gate is waived for them here rather than enforced-then-
-# bypassed at the prompt layer. Non-prose files past the cap must be split first.
+# Trivial edits (<= 10 net lines) pass the code line gate even on > 500-line
+# files. Shrinking/neutral doc edits and new files (target absent on disk) always
+# pass. NotebookEdit is excluded - .ipynb is JSON-encoded; line gating on the wire
+# format is not meaningful (the rule is about source-text files).
 #
 # Exit 0 always; block via JSON output per hook protocol (matches the
 # protect-env-hook.sh / block-destructive-hook.sh idiom in this repo).
@@ -27,9 +31,19 @@ ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":
 INPUT=$(cat)
 
 DECISION=$(printf '%s' "$INPUT" | python3 -c '
-import json, sys
+import json, os, sys
 
 ALLOW = "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"allow\"}}"
+
+APEX_ROOT = os.path.join(os.path.expanduser("~"), ".claude")
+SKILLS_ROOT = os.path.join(APEX_ROOT, "skills") + os.sep
+AGENTS_ROOT = os.path.join(APEX_ROOT, "agents") + os.sep
+CENTRAL_SPECS = {os.path.join(APEX_ROOT, n) for n in
+                 ("apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md")}
+DOC_WORD_CAP = 2500
+LINE_SPLIT_CAP = 400
+MAX_LINE_LEN = 120
+
 
 def deny(reason):
     return json.dumps({"hookSpecificOutput": {
@@ -38,54 +52,64 @@ def deny(reason):
         "permissionDecisionReason": reason,
     }})
 
-try:
-    event = json.load(sys.stdin)
-except (json.JSONDecodeError, ValueError):
-    print(ALLOW); sys.exit(0)
 
-tool = event.get("tool_name", "")
-inputs = event.get("tool_input", {}) or {}
-target = inputs.get("file_path", "")
+def word_count(s):
+    return len(s.split())
 
-if tool not in ("Edit", "Write", "MultiEdit") or not target:
-    print(ALLOW); sys.exit(0)
 
-try:
-    with open(target, "r", encoding="utf-8") as f:
-        existing = sum(1 for _ in f)
-except (FileNotFoundError, IsADirectoryError, OSError):
-    print(ALLOW); sys.exit(0)
+def projected_words(tool, inputs, existing):
+    base = word_count(existing)
+    if tool == "Write":
+        return word_count(inputs.get("content", ""))
+    if tool == "Edit":
+        return base + word_count(inputs.get("new_string", "")) - word_count(inputs.get("old_string", ""))
+    return base + sum(word_count(e.get("new_string", "")) - word_count(e.get("old_string", ""))
+                      for e in inputs.get("edits", []))
 
-if existing == 0:
-    print(ALLOW); sys.exit(0)
 
-# Continuous-prose exemption: .md / .markdown docs are single-concern continuous
-# documents (CLAUDE.md File health exception; apex-core.md step 8 "*.md
-# heuristic"). The split rule does not apply to prose, so waive the gate.
-import os
-if os.path.splitext(target)[1].lower() in (".md", ".markdown"):
-    print(ALLOW); sys.exit(0)
-
-if tool == "Write":
-    content = inputs.get("content", "")
-    new_lines = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
-    added = max(0, new_lines - existing)
-elif tool == "Edit":
-    added = inputs.get("new_string", "").count("\n") - inputs.get("old_string", "").count("\n")
-else:  # MultiEdit
-    added = sum(
-        e.get("new_string", "").count("\n") - e.get("old_string", "").count("\n")
-        for e in inputs.get("edits", [])
-    )
-
-if added <= 10:
-    print(ALLOW); sys.exit(0)
-
-if existing > 400:
-    threshold = 500 if existing > 500 else 400
-    sibling_hint = ""
+def doc_decision(tool, target, inputs):
+    # apex skills/agents docs: gate on projected word budget, allow shrink/neutral.
     try:
-        import os, glob
+        with open(target, encoding="utf-8", errors="ignore") as f:
+            existing = f.read()
+    except OSError:
+        return ALLOW
+    base = word_count(existing)
+    proj = projected_words(tool, inputs, existing)
+    if proj <= base:
+        return ALLOW
+    if proj > DOC_WORD_CAP:
+        return deny(f"file-health gate: {target} would be ~{proj} words "
+                    f"(> {DOC_WORD_CAP}-word content budget). Split first - extract a "
+                    f"separable concern before growing it. See global CLAUDE.md File health.")
+    return ALLOW
+
+
+def new_text_lines(tool, inputs):
+    if tool == "Write":
+        return inputs.get("content", "").split("\n")
+    if tool == "Edit":
+        return inputs.get("new_string", "").split("\n")
+    out = []
+    for e in inputs.get("edits", []):
+        out.extend(e.get("new_string", "").split("\n"))
+    return out
+
+
+def added_lines(tool, inputs, existing_lines):
+    if tool == "Write":
+        content = inputs.get("content", "")
+        new_lines = content.count("\n") + (1 if content and not content.endswith("\n") else 0)
+        return max(0, new_lines - existing_lines)
+    if tool == "Edit":
+        return inputs.get("new_string", "").count("\n") - inputs.get("old_string", "").count("\n")
+    return sum(e.get("new_string", "").count("\n") - e.get("old_string", "").count("\n")
+               for e in inputs.get("edits", []))
+
+
+def sibling_hint(target):
+    try:
+        import glob
         target_dir = os.path.dirname(target) or "."
         target_base = os.path.basename(target)
         target_stem, target_ext = os.path.splitext(target_base)
@@ -99,16 +123,65 @@ if existing > 400:
                 siblings.append(sib_base)
         if siblings:
             extra = " + others" if len(siblings) > 1 else ""
-            sibling_hint = (f" Sibling helpers in same directory suggest split target: "
-                            f"{siblings[0]}{extra}.")
+            return (f" Sibling helpers in same directory suggest split target: "
+                    f"{siblings[0]}{extra}.")
     except Exception:
         pass
-    msg = (f"file-health gate: {target} is {existing} lines (>{threshold}). "
-           f"Split first - extract a separable concern before adding {added}+ lines.{sibling_hint} "
-           f"See global CLAUDE.md File health.")
-    print(deny(msg)); sys.exit(0)
+    return ""
 
-print(ALLOW)
+
+def line_split_decision(target, tool, inputs):
+    try:
+        with open(target, "r", encoding="utf-8") as f:
+            existing = sum(1 for _ in f)
+    except (FileNotFoundError, IsADirectoryError, OSError):
+        return ALLOW
+    if existing == 0:
+        return ALLOW
+    added = added_lines(tool, inputs, existing)
+    if added <= 10:
+        return ALLOW
+    if existing > LINE_SPLIT_CAP:
+        threshold = 500 if existing > 500 else 400
+        msg = (f"file-health gate: {target} is {existing} lines (>{threshold}). "
+               f"Split first - extract a separable concern before adding {added}+ "
+               f"lines.{sibling_hint(target)} See global CLAUDE.md File health.")
+        return deny(msg)
+    return ALLOW
+
+
+def code_decision(tool, target, inputs):
+    abs_t = os.path.abspath(target)
+    if abs_t.startswith(SKILLS_ROOT) or abs_t.startswith(AGENTS_ROOT):
+        longest = max((len(ln) for ln in new_text_lines(tool, inputs)), default=0)
+        if longest > MAX_LINE_LEN:
+            return deny(f"file-health gate: {target} edit introduces a {longest}-char "
+                        f"line (> {MAX_LINE_LEN}). Wrap or refactor. See global CLAUDE.md File health.")
+    return line_split_decision(target, tool, inputs)
+
+
+def main():
+    try:
+        event = json.load(sys.stdin)
+    except (json.JSONDecodeError, ValueError):
+        return ALLOW
+    tool = event.get("tool_name", "")
+    inputs = event.get("tool_input", {}) or {}
+    target = inputs.get("file_path", "")
+    if tool not in ("Edit", "Write", "MultiEdit") or not target:
+        return ALLOW
+    ext = os.path.splitext(target)[1].lower()
+    if ext in (".md", ".markdown"):
+        abs_t = os.path.abspath(target)
+        if abs_t in CENTRAL_SPECS:
+            return ALLOW
+        if abs_t.startswith(SKILLS_ROOT) or abs_t.startswith(AGENTS_ROOT):
+            return doc_decision(tool, target, inputs)
+        return ALLOW
+    return code_decision(tool, target, inputs)
+
+
+print(main())
 ' 2>/dev/null) || DECISION="$ALLOW"
 
 echo "$DECISION"

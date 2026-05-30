@@ -8,37 +8,43 @@
   "properties": {
     "skills": {
       "type": "array",
-      "description": "skills/apex/*.md files (skill bodies + SKILL.md). Each entry: path, lines.",
+      "description": "skills/apex/*.md files (skill bodies + SKILL.md). Each entry: path, lines, words, nonws_chars.",
       "items": {
         "type": "object",
         "required": ["path", "lines"],
         "properties": {
           "path": { "type": "string" },
-          "lines": { "type": "integer", "minimum": 0 }
+          "lines": { "type": "integer", "minimum": 0 },
+          "words": { "type": "integer", "minimum": 0, "description": "Whitespace-split word count (formatting-immune content-budget metric)." },
+          "nonws_chars": { "type": "integer", "minimum": 0, "description": "Non-whitespace character count (secondary content-size signal)." }
         }
       }
     },
     "agents": {
       "type": "array",
-      "description": "agents/*.md files. Each entry: path, lines.",
+      "description": "agents/*.md files. Each entry: path, lines, words, nonws_chars.",
       "items": {
         "type": "object",
         "required": ["path", "lines"],
         "properties": {
           "path": { "type": "string" },
-          "lines": { "type": "integer", "minimum": 0 }
+          "lines": { "type": "integer", "minimum": 0 },
+          "words": { "type": "integer", "minimum": 0, "description": "Whitespace-split word count (formatting-immune content-budget metric)." },
+          "nonws_chars": { "type": "integer", "minimum": 0, "description": "Non-whitespace character count (secondary content-size signal)." }
         }
       }
     },
     "scripts": {
       "type": "array",
-      "description": "skills/apex/scripts/* (.sh, .py, and .js Workflow scripts). Each entry: path, lines, kind.",
+      "description": "skills/apex/scripts/* (.sh, .py, and .js Workflow scripts). Each entry: path, lines, words, nonws_chars, kind.",
       "items": {
         "type": "object",
         "required": ["path", "lines", "kind"],
         "properties": {
           "path": { "type": "string" },
           "lines": { "type": "integer", "minimum": 0 },
+          "words": { "type": "integer", "minimum": 0, "description": "Whitespace-split word count (formatting-immune content-size signal)." },
+          "nonws_chars": { "type": "integer", "minimum": 0, "description": "Non-whitespace character count (secondary content-size signal)." },
           "kind": { "enum": ["sh", "py", "js"] }
         }
       }
@@ -71,13 +77,15 @@
     },
     "spec_docs": {
       "type": "array",
-      "description": "Top-level spec docs (apex-core.md, apex-core-overview.md, README.md, CLAUDE.md when present). Each entry: path, lines.",
+      "description": "Top-level spec docs (apex-core.md, apex-core-overview.md, README.md, CLAUDE.md when present). Each entry: path, lines, words, nonws_chars.",
       "items": {
         "type": "object",
         "required": ["path", "lines"],
         "properties": {
           "path": { "type": "string" },
-          "lines": { "type": "integer", "minimum": 0 }
+          "lines": { "type": "integer", "minimum": 0 },
+          "words": { "type": "integer", "minimum": 0, "description": "Whitespace-split word count (formatting-immune content-budget metric)." },
+          "nonws_chars": { "type": "integer", "minimum": 0, "description": "Non-whitespace character count (secondary content-size signal)." }
         }
       }
     },

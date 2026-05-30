@@ -52,6 +52,15 @@ from pathlib import Path
 
 PROSE_DOCS = {"apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"}
 
+# File-health content-budget caps. Docs gate on words (physical newline count is
+# gamed by one-paragraph-per-line markdown); scripts gate on physical lines plus
+# the longest single line. PROSE_WORD_CAP = DOC_WORD_CAP * (800/175): the prose
+# 800-line cap scaled by the skills/agents 175-line -> 2500-word anchor.
+DOC_WORD_CAP = 2500            # skills/agents .md content budget
+PROSE_WORD_CAP = 11400         # apex-core/overview/README/CLAUDE prose budget
+SCRIPT_LINE_CAP = 500          # scripts: physical-line cap (source text, not prose)
+MAX_LINE_LEN = 120             # scripts: longest single-line cap
+
 # Spec-doc reference extractor (mirrors audit.md orphan-refs detector).
 REF_RE = re.compile(
     r"\b(skills/apex/[^\s\)\`\"']+|skills/admin-apex/[^\s\)\`\"']+"
@@ -79,19 +88,40 @@ def read_spec_bodies(inv, root):
     return bodies
 
 
-def detect_oversized(inv):
-    """audit-only. skills/agents .md cap 175; scripts cap 500; prose docs cap 800."""
+def _max_line_len(path):
+    """Longest line length (newline stripped) for a script; 0 if unreadable."""
+    try:
+        with open(path, encoding="utf-8", errors="ignore") as f:
+            return max((len(line.rstrip("\n")) for line in f), default=0)
+    except OSError:
+        return 0
+
+
+def detect_oversized(inv, root):
+    """audit-only oversized gate.
+
+    Docs (skills/agents .md + prose spec docs) gate on a CONTENT BUDGET (words);
+    raw line count is demoted to an informational annotation because physical
+    newline count is gamed by one-paragraph-per-line markdown. Scripts gate on
+    physical lines (<= SCRIPT_LINE_CAP) PLUS longest line (<= MAX_LINE_LEN)."""
     items = []
     for e in inv.get("skills", []) + inv.get("agents", []):
-        if e["lines"] > 175:
-            items.append(f'{e["path"]} ({e["lines"]} lines)')
-    for e in inv.get("scripts", []):
-        if e["lines"] > 500:
-            items.append(f'{e["path"]} ({e["lines"]} lines)')
+        words = e.get("words", 0)
+        if words > DOC_WORD_CAP:
+            items.append(f'{e["path"]} ({words} words > {DOC_WORD_CAP}; {e.get("lines", 0)} lines)')
     for e in inv.get("spec_docs", []):
-        cap = 800 if os.path.basename(e["path"]) in PROSE_DOCS else 500
-        if e["lines"] > cap:
-            items.append(f'{e["path"]} ({e["lines"]} lines)')
+        words = e.get("words", 0)
+        if words > PROSE_WORD_CAP:
+            items.append(f'{e["path"]} ({words} words > {PROSE_WORD_CAP}; {e.get("lines", 0)} lines)')
+    for e in inv.get("scripts", []):
+        reasons = []
+        if e["lines"] > SCRIPT_LINE_CAP:
+            reasons.append(f'{e["lines"]} lines > {SCRIPT_LINE_CAP}')
+        longest = _max_line_len(root / e["path"])
+        if longest > MAX_LINE_LEN:
+            reasons.append(f'longest line {longest} > {MAX_LINE_LEN}')
+        if reasons:
+            items.append(f'{e["path"]} ({"; ".join(reasons)})')
     return items
 
 
@@ -190,7 +220,7 @@ def detect_dead_hooks(inv, root):
 # (id, audit-kind, polish-kind, audit-summary, polish-summary) per structural detector.
 _SPEC = {
     "oversized": ("oversized-files", None,
-                  "{n} file(s) over line cap", None),
+                  "{n} file(s) over content/size budget", None),
     "orphan": ("orphan-refs", "staleness",
                "{n} spec-doc ref(s) with no inventory match",
                "{n} broken spec-doc ref(s) post-apply"),
@@ -260,7 +290,7 @@ def main():
         "dead-hook": detect_dead_hooks(inv, root),
     }
     if args.mode == "audit":
-        detected = {"oversized": detect_oversized(inv), **detected}
+        detected = {"oversized": detect_oversized(inv, root), **detected}
 
     order = ["oversized", "orphan", "missing", "schema", "dead-hook"]
     clusters = [build_cluster(cid, detected[cid], args.mode)

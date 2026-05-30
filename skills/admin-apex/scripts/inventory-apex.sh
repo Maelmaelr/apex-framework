@@ -19,9 +19,11 @@
 #   apex-core.md, apex-core-overview.md, README.md, CLAUDE.md -> spec_docs[]
 #   VERSION                      -> version
 #
-# Coverage rationale: the >175-line cap that audit.md applies to "skills/agents
-# sub-skills" needs sibling apex-* skills + admin-apex sub-skills in inventory
-# to fire (Principle 3: prevent silent bloat in framework files).
+# Coverage rationale: the content-budget cap that audit.md applies to
+# "skills/agents sub-skills" needs sibling apex-* skills + admin-apex sub-skills
+# in inventory to fire (Principle 3: prevent silent bloat in framework files).
+# Each entry carries words + nonws_chars (formatting-immune content size)
+# alongside the historical line count; the audit detector gates docs on words.
 #
 # Pure read; no mutation.
 #
@@ -83,12 +85,23 @@ out_path = os.environ["OUT"]
 warnings = []
 
 
-def line_count(path):
+def content_metrics(path):
+    """Return {lines, words, nonws_chars} for a source/prose file.
+
+    lines keeps the historical newline-chunk count. words (whitespace-split)
+    and nonws_chars (non-whitespace chars) are formatting-immune content-size
+    signals: physical newline count is gamed by one-paragraph-per-line
+    markdown, so the audit content-budget detector keys on words."""
     try:
         with open(path, "rb") as f:
-            return sum(1 for _ in f)
+            raw = f.read()
     except OSError:
-        return 0
+        return {"lines": 0, "words": 0, "nonws_chars": 0}
+    text = raw.decode("utf-8", "ignore")
+    lines = raw.count(b"\n") + (1 if raw and not raw.endswith(b"\n") else 0)
+    words = len(text.split())
+    nonws_chars = sum(1 for ch in text if not ch.isspace())
+    return {"lines": lines, "words": words, "nonws_chars": nonws_chars}
 
 
 def collect_md(pattern):
@@ -96,7 +109,13 @@ def collect_md(pattern):
     for p in sorted(glob.glob(pattern)):
         if not os.path.isfile(p):
             continue
-        items.append({"path": os.path.relpath(p, repo), "lines": line_count(p)})
+        m = content_metrics(p)
+        items.append({
+            "path": os.path.relpath(p, repo),
+            "lines": m["lines"],
+            "words": m["words"],
+            "nonws_chars": m["nonws_chars"],
+        })
     return items
 
 
@@ -118,9 +137,12 @@ def collect_scripts(pattern):
             kind = "js"
         else:
             continue
+        m = content_metrics(p)
         items.append({
             "path": os.path.relpath(p, repo),
-            "lines": line_count(p),
+            "lines": m["lines"],
+            "words": m["words"],
+            "nonws_chars": m["nonws_chars"],
             "kind": kind,
         })
     return items
@@ -178,7 +200,13 @@ def collect_spec_docs():
     for name in ("apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"):
         p = os.path.join(repo, name)
         if os.path.isfile(p):
-            items.append({"path": name, "lines": line_count(p)})
+            m = content_metrics(p)
+            items.append({
+                "path": name,
+                "lines": m["lines"],
+                "words": m["words"],
+                "nonws_chars": m["nonws_chars"],
+            })
     return items
 
 
