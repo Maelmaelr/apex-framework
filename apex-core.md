@@ -41,6 +41,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
 0. Initialisation
    - /apex (main orchestrator) | `~/.claude/skills/apex/SKILL.md`
      - TaskCreate tasks 1 - 15 (15 always queued; trivial branch at step 3 marks 4 - 13 completed-skipped)
+       - deferred-tool guard: TaskCreate/TaskUpdate/TaskList are deferred - load via `ToolSearch select:TaskCreate,TaskUpdate,TaskList` first; on a TaskCreate InputValidationError / schema-not-loaded, reload + retry ONCE then STOP + surface, never re-fire all 15 (an empty ToolSearch return fails every call identically; session 4f42caf5)
 
 1. Analyze + read project-context.md
    - inline task prompt

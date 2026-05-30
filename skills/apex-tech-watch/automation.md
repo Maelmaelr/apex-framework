@@ -1,6 +1,6 @@
 # apex-tech-watch: Manual + Automated Invocation
 
-Called from `SKILL.md` (reference link) by users wiring up cron / launchd. Not part of the per-run fetch loop. Extracted from `SKILL.md` to keep the orchestrator under the 150-line cap.
+Called from `SKILL.md` (reference link) by users wiring up cron / launchd. Not part of the per-run fetch loop. Extracted from `SKILL.md` to keep the orchestrator under the 175-line cap.
 
 ## Manual invocation
 

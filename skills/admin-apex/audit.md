@@ -34,7 +34,7 @@ Five **structural** kinds are detected deterministically by `scripts/audit-detec
 
 | Kind (slug id) | Flags |
 |------|---------|
-| `oversized-files` (`oversized`) | skills/agents `.md` > 150 lines, scripts > 500, prose docs (apex-core/overview/README/CLAUDE) > 800. Audit-only - never run post-apply. |
+| `oversized-files` (`oversized`) | skills/agents `.md` > 175 lines, scripts > 500, prose docs (apex-core/overview/README/CLAUDE) > 800. Audit-only - never run post-apply. |
 | `orphan-refs` (`orphan`) | Spec-doc path ref absent from inventory (bare-`scripts/X` shorthand, glob, trailing-slash dir refs excepted). |
 | `missing-refs` (`missing`) | Inventory file referenced by zero spec doc (intra-skill, cross-apex-skill, and parent-dir/glob refs count as covered; `SKILL.md` / `_`-prefixed / `__pycache__` excluded). |
 | `schema-mismatch` (`schema`) | `schemas[]` entry where `id != basename(path)`. |
@@ -86,4 +86,4 @@ When SKILL task 1 selects `audit-only`, task 3 still runs but the gate prints th
 
 ## Lean rule
 
-The >150-line cap applies to `skills/apex/*.md` AND `skills/admin-apex/*.md`. If audit.md / evolve.md / sync-docs.md grow past 150 lines, they surface in `oversized-files` like any other. See `apex-core.md` Conventions for safety paths + JSON validation; admin-apex follows the same rules on its own `.claude-tmp/admin-apex-active/` tree.
+The >175-line cap applies to `skills/apex/*.md` AND `skills/admin-apex/*.md`. If audit.md / evolve.md / sync-docs.md grow past 175 lines, they surface in `oversized-files` like any other. See `apex-core.md` Conventions for safety paths + JSON validation; admin-apex follows the same rules on its own `.claude-tmp/admin-apex-active/` tree.

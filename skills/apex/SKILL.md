@@ -29,6 +29,8 @@ TaskCreate "15. Inline summary"
 
 All 15 always queued. Trivial branch at step 3 marks 4-13 completed-skipped.
 
+**Deferred-tool guard.** `TaskCreate`/`TaskUpdate`/`TaskList` are deferred (schema absent at session start) - load once via `ToolSearch select:TaskCreate,TaskUpdate,TaskList` before queuing. If a `TaskCreate` errors (`InputValidationError` / "schema not sent to the API"), do NOT fire the remaining queue calls - re-run that ToolSearch load, then retry ONCE; a second failure -> STOP and surface to the user (an empty/flaky ToolSearch return makes every call fail identically, so re-firing all 15 is the failure mode not the fix; session 4f42caf5).
+
 ## Tier matrix
 
 | Tier     | Decided at | Effect                                                                                                  |

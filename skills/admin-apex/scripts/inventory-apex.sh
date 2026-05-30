@@ -19,7 +19,7 @@
 #   apex-core.md, apex-core-overview.md, README.md, CLAUDE.md -> spec_docs[]
 #   VERSION                      -> version
 #
-# Coverage rationale: the >150-line cap that audit.md applies to "skills/agents
+# Coverage rationale: the >175-line cap that audit.md applies to "skills/agents
 # sub-skills" needs sibling apex-* skills + admin-apex sub-skills in inventory
 # to fire (Principle 3: prevent silent bloat in framework files).
 #

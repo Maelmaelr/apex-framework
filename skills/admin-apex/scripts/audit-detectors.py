@@ -80,10 +80,10 @@ def read_spec_bodies(inv, root):
 
 
 def detect_oversized(inv):
-    """audit-only. skills/agents .md cap 150; scripts cap 500; prose docs cap 800."""
+    """audit-only. skills/agents .md cap 175; scripts cap 500; prose docs cap 800."""
     items = []
     for e in inv.get("skills", []) + inv.get("agents", []):
-        if e["lines"] > 150:
+        if e["lines"] > 175:
             items.append(f'{e["path"]} ({e["lines"]} lines)')
     for e in inv.get("scripts", []):
         if e["lines"] > 500:

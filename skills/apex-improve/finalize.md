@@ -1,6 +1,6 @@
 # apex-improve: Polish + Cleanup + Stamp + Report
 
-Called from `SKILL.md` after Step 2 (no-signals exit), after Step 4 (0-ops exit), or after a normal Step 4 apply. Always runs - the consumed signal files reset on every apex-improve invocation, regardless of whether ops were emitted, so stale blocks don't replay as deja-vu noise on the next run. Returns to SKILL.md for Steps 7-8 (sync-git, standalone-mode only; skipped when 0 ops applied since nothing to commit). Extracted from `SKILL.md` to keep the orchestrator under the 150-line cap.
+Called from `SKILL.md` after Step 2 (no-signals exit), after Step 4 (0-ops exit), or after a normal Step 4 apply. Always runs - the consumed signal files reset on every apex-improve invocation, regardless of whether ops were emitted, so stale blocks don't replay as deja-vu noise on the next run. Returns to SKILL.md for Steps 7-8 (sync-git, standalone-mode only; skipped when 0 ops applied since nothing to commit). Extracted from `SKILL.md` to keep the orchestrator under the 175-line cap.
 
 ## Step 5a: Polish (post-implementation check)
 
