@@ -224,47 +224,12 @@ session_end_sibling_preserve_fixture() {
 }
 run_fixture "session-end-hook.sh sibling-preserve" 0 session_end_sibling_preserve_fixture
 
-# 4c. sweep-stale-runs.sh: manifest with dead PID -> cleaned. Manifest with
-#     alive PID + comm=claude -> preserved. Use `: &; pid=$!; wait $!` to mint
-#     a guaranteed-dead PID; use $$ as alive (but comm will be "bash", not
-#     "claude" - so $$ is treated as stale via comm-mismatch). This means we
-#     cannot exercise the "alive + comm=claude -> preserve" branch from inside
-#     the test harness without spawning a real claude binary. Test focuses on
-#     the dead-PID branch (high-value: false positives in this branch would
-#     orphan everything; correctness here is non-negotiable).
-sweep_stale_dead_pid_fixture() {
-  mkdir -p .claude-tmp/admin-apex-active
-  # Mint a guaranteed-dead PID by forking a no-op subshell and waiting on it.
-  local dead_pid
-  ( true ) &
-  dead_pid=$!
-  wait "$dead_pid" 2>/dev/null || true
-  printf '{"run":"deadbe03","cc_session_id":"X","pid":%d,"producer":"admin-apex"}\n' "$dead_pid" \
-    > .claude-tmp/admin-apex-active/deadbe03.json
-  printf 'inv\n' > .claude-tmp/admin-apex-active/deadbe03-inventory.json
-  age_mtime .claude-tmp/admin-apex-active/deadbe03.json \
-            .claude-tmp/admin-apex-active/deadbe03-inventory.json
-  bash "$REPO_ROOT/skills/admin-apex/scripts/sweep-stale-runs.sh"
-  for f in deadbe03.json deadbe03-inventory.json; do
-    [[ -e ".claude-tmp/admin-apex-active/$f" ]] && return 1
-  done
-  return 0
-}
-run_fixture "sweep-stale-runs.sh dead-pid-cleaned" 0 sweep_stale_dead_pid_fixture
-
-# 4d. sweep-stale-runs.sh: manifest WITHOUT a pid field -> SKIPPED (legacy
-#     graceful-degradation contract). Without this guard the sweep would
-#     collateral-damage manifests written before the PID-capture upgrade.
-sweep_stale_no_pid_fixture() {
-  mkdir -p .claude-tmp/admin-apex-active
-  printf '{"run":"deadbe04","cc_session_id":"X","producer":"admin-apex"}\n' \
-    > .claude-tmp/admin-apex-active/deadbe04.json
-  bash "$REPO_ROOT/skills/admin-apex/scripts/sweep-stale-runs.sh"
-  [[ -f .claude-tmp/admin-apex-active/deadbe04.json ]] || return 1
-  rm -f .claude-tmp/admin-apex-active/deadbe04.json
-  return 0
-}
-run_fixture "sweep-stale-runs.sh no-pid-preserved" 0 sweep_stale_no_pid_fixture
+# 4c/4d. sweep-stale-runs.sh PID-classification fixtures (dead-pid-cleaned,
+#     no-pid-preserved) PLUS the sweep-orphan/sweep-stale bash-3.2 procsub
+#     regression cases live in the sibling test-sweep.sh (file-health cap;
+#     folded into the totals at the tail). The bash-3.2 cases must RUN the
+#     scripts (not bash -n) - the heredoc-in-process-substitution failure is a
+#     runtime "bad substitution", invisible to the check_bash syntax pass.
 
 # 4e. apex session-end-hook.sh (worktree mode): cc_session_id match -> hook
 #     scans <main>/.apex-worktrees/*/.claude-tmp/apex-active/*.json, locates
@@ -438,6 +403,15 @@ if bash "$REPO_ROOT/skills/admin-apex/scripts/test-session-end-worktree.sh"; the
   echo "PASS suite test-session-end-worktree.sh"; pass=$((pass + 1))
 else
   echo "FAIL suite test-session-end-worktree.sh" >&2; failed=$((failed + 1))
+fi
+
+# 14. orphan/stale sweep regression suite (sweep-orphan + sweep-stale bash-3.2
+#     procsub runtime check + static anti-pattern guard) lives in a sibling
+#     file (file-health cap); run it and fold its pass/fail into the totals.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-sweep.sh"; then
+  echo "PASS suite test-sweep.sh"; pass=$((pass + 1))
+else
+  echo "FAIL suite test-sweep.sh" >&2; failed=$((failed + 1))
 fi
 
 echo ""

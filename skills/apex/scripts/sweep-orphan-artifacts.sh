@@ -89,10 +89,14 @@ THRESHOLD_SEC=$(( AGE_HOURS * 3600 ))
 # Single python pass enumerates orphan {token}-* artifacts. Bash collects the
 # list and removes them. Python is the right tool for the listdir + regex +
 # manifest-existence check; bash for the rm + warn.
-# Pipe, NOT `done < <(...)` process substitution: bash 3.2 (macOS /usr/bin/env
-# bash) cannot parse a heredoc inside `<(...)` and aborts "bad substitution",
-# silently reaping nothing under `2>/dev/null || true` callers. The while body
-# keeps no state (rm + warn only), so the pipe subshell is harmless.
+# Pipe, NOT `done < <(...)` process substitution: bash 3.2 (macOS /bin/bash
+# 3.2.57) mis-scans a heredoc body nested in `<(...)` at RUNTIME and aborts
+# "bad substitution", silently reaping nothing under `2>/dev/null || true`
+# callers. The failure is content-dependent (the heredoc body's paren balance)
+# and `bash -n` parses it cleanly, so it is invisible to syntax checks - the
+# regression test in test-sweep.sh therefore RUNS the script under bash 3.2,
+# not just `bash -n`. The while body keeps no state (rm + warn only), so the
+# pipe subshell is harmless.
 python3 - "$DIR" "$NOW" "$THRESHOLD_SEC" <<'PY' |
 import os, re, sys
 d = sys.argv[1]

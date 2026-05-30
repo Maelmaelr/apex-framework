@@ -36,6 +36,32 @@ shopt -u nullglob
 # Single python pass extracts {run, pid} pairs from manifests whose name is
 # {run}.json (8-hex). Sibling artifacts ({run}-*.json) are skipped by the
 # regex - cleanup-run.sh sweeps those via prefix glob.
+#
+# Pipe, NOT `done < <(python3 ... <<PY)` process substitution: bash 3.2 (macOS
+# /bin/bash 3.2.57) mis-scans a heredoc body nested in `<(...)` at RUNTIME and
+# aborts "bad substitution" (content-dependent on the body's paren balance;
+# `bash -n` parses it cleanly, so the failure is invisible to syntax checks -
+# regression-covered by test-sweep.sh). The while body keeps no post-loop
+# state, so the pipe subshell is harmless. Mirrors sweep-orphan-artifacts.sh.
+python3 - "$ADMIN_ACTIVE" <<'PY' |
+import json, os, re, sys
+active = sys.argv[1]
+pat = re.compile(r"^([0-9a-f]{8})\.json$")
+if not os.path.isdir(active):
+    sys.exit(0)
+for name in sorted(os.listdir(active)):
+    m = pat.match(name)
+    if not m:
+        continue
+    try:
+        with open(os.path.join(active, name), encoding="utf-8") as f:
+            d = json.load(f)
+    except Exception:
+        continue
+    run = d.get("run", m.group(1))
+    pid = d.get("pid", "")
+    print(f"{run}\t{pid}")
+PY
 while IFS=$'\t' read -r run pid; do
   [[ -z "$run" ]] && continue
   # No pid recorded -> legacy shape; cannot classify safely. Skip.
@@ -56,26 +82,7 @@ while IFS=$'\t' read -r run pid; do
       "$SCRIPT_DIR/cleanup-run.sh" --run "$run" 2>/dev/null || true
     fi
   fi
-done < <(python3 - "$ADMIN_ACTIVE" <<'PY'
-import json, os, re, sys
-active = sys.argv[1]
-pat = re.compile(r"^([0-9a-f]{8})\.json$")
-if not os.path.isdir(active):
-    sys.exit(0)
-for name in sorted(os.listdir(active)):
-    m = pat.match(name)
-    if not m:
-        continue
-    try:
-        with open(os.path.join(active, name), encoding="utf-8") as f:
-            d = json.load(f)
-    except Exception:
-        continue
-    run = d.get("run", m.group(1))
-    pid = d.get("pid", "")
-    print(f"{run}\t{pid}")
-PY
-)
+done
 
 # Orphan-artifact sweep (manifest-stale handled above; this catches {run}-*
 # siblings whose {run}.json is GONE - e.g., apex-improve's session-spanning

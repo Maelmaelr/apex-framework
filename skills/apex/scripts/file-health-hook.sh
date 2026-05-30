@@ -11,10 +11,11 @@
 # NotebookEdit is excluded - .ipynb is JSON-encoded; line-count gating on the
 # wire format is not meaningful (the rule is about source-text files).
 #
-# Exception: single-concern continuous documents (legal prose, central spec
-# docs) are exempt by convention - enforced at the prompt layer. This hook
-# has no semantic awareness of file purpose and applies the rule uniformly.
-# To bypass, the orchestrator must split first.
+# Exception: continuous-prose documents (.md / .markdown - legal prose, central
+# spec docs) are exempt directly by this hook. The split rule targets source
+# text, not prose (CLAUDE.md File health exception; apex-core.md step 8 "*.md
+# heuristic"), so the gate is waived for them here rather than enforced-then-
+# bypassed at the prompt layer. Non-prose files past the cap must be split first.
 #
 # Exit 0 always; block via JSON output per hook protocol (matches the
 # protect-env-hook.sh / block-destructive-hook.sh idiom in this repo).
@@ -56,6 +57,13 @@ except (FileNotFoundError, IsADirectoryError, OSError):
     print(ALLOW); sys.exit(0)
 
 if existing == 0:
+    print(ALLOW); sys.exit(0)
+
+# Continuous-prose exemption: .md / .markdown docs are single-concern continuous
+# documents (CLAUDE.md File health exception; apex-core.md step 8 "*.md
+# heuristic"). The split rule does not apply to prose, so waive the gate.
+import os
+if os.path.splitext(target)[1].lower() in (".md", ".markdown"):
     print(ALLOW); sys.exit(0)
 
 if tool == "Write":
