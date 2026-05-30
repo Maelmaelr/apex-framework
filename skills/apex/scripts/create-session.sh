@@ -28,14 +28,13 @@
 
 set -euo pipefail
 
-# Bash 4+ guard (reflector 4cbf7e86): this script uses heredocs inside process
-# substitutions which fail silently on macOS's default /bin/bash 3.2, leaving
-# the manifest half-written and stranding the session with no clear error.
-# Fail loud at entry rather than mid-heredoc.
-if (( BASH_VERSINFO[0] < 4 )); then
-  echo "create-session.sh: bash >= 4 required (current: $BASH_VERSION). On macOS install via 'brew install bash' and re-run with /opt/homebrew/bin/bash (or /usr/local/bin/bash on Intel)." >&2
-  exit 1
-fi
+# Interpreter: bash 3.2-compatible (macOS default /bin/bash is 3.2.57). A prior
+# bash-4 hard-fail guard was removed (reflector f8b08fb5): its cited reason -
+# heredocs inside process substitutions - does not exist in this file (no `<(`
+# procsub anywhere; the only heredoc is the plain `python3 - ... <<'PY'` below,
+# which runs fine on 3.2). No bash-4 construct is used, so the guard only broke
+# /apex mint on stock macOS unless a brew bash happened to precede /bin/bash in
+# PATH. `bash -n` parses this script clean on 3.2.57; keep it 3.2-safe.
 
 # CWD=PROJECT_ROOT fail-fast guard (reflector c5ea7797): this script writes the
 # manifest to the RELATIVE path .claude-tmp/apex-active, so it MUST run from the

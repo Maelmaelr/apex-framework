@@ -163,19 +163,19 @@ for ENTRY in "${ENTRIES[@]}"; do
   CONFLICTS="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
   if [[ -n "$CONFLICTS" ]]; then
     # Trivial-union skip: deterministically resolve single-hunk additive
-    # conflicts in small (<=20kb), bracket/backtick-balanced files by inline
-    # union of both sides' adds; saves the ~5-10k-token resolver spawn on the
-    # common docs-pile + balanced-code case (reflector c946e283). Files this
-    # predicate rejects fall through to the resolver-spawn path below.
+    # conflicts whose combined span is small (<=50 lines), in bracket/backtick-
+    # balanced files, by inline union of both sides' adds; saves the ~5-10k-token
+    # resolver spawn on the common docs-pile + balanced-code case (reflectors
+    # c946e283 + 6ed86029: gate the conflicted hunk span, not whole-file size, so
+    # big append-only files like lessons.md with a one-line conflict still qualify).
+    # Files this predicate rejects fall through to the resolver-spawn path below.
     REMAINING=""
     TRIVIAL_COUNT=0
     while IFS= read -r P; do
       [[ -z "$P" ]] && continue
       python3 - "$P" <<'PY'
-import os, re, sys
+import re, sys
 p = sys.argv[1]
-if os.path.getsize(p) > 20 * 1024:
-    sys.exit(1)
 with open(p, "r", encoding="utf-8", errors="replace") as f:
     body = f.read()
 hunks = re.findall(r"<<<<<<<[^\n]*\n(.*?)\n=======\n(.*?)\n>>>>>>>[^\n]*\n", body, flags=re.S)
@@ -183,6 +183,13 @@ if len(hunks) != 1:
     sys.exit(1)
 ours, theirs = hunks[0]
 if not ours.splitlines() and not theirs.splitlines():
+    sys.exit(1)
+# Hunk-span gate (reflector 6ed86029): bound the CONFLICTED span, not the whole
+# file - a large append-only file (lessons.md) with a one-line date-bump conflict
+# was rejected by the prior whole-file <=20kb gate and always spawned the resolver.
+# Cap the single hunk's combined add-span so big files with a tiny conflict qualify
+# while large-hunk conflicts still fall through to the resolver.
+if len(ours.splitlines()) + len(theirs.splitlines()) > 50:
     sys.exit(1)
 # Trivial-union safety gate (replaces the prior markdown-only restriction):
 # each side must independently nest () [] {} correctly AND carry an even
