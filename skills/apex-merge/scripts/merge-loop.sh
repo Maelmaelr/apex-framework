@@ -163,10 +163,10 @@ for ENTRY in "${ENTRIES[@]}"; do
   CONFLICTS="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
   if [[ -n "$CONFLICTS" ]]; then
     # Trivial-union skip: deterministically resolve single-hunk additive
-    # conflicts in small markdown files (<=20kb) by inline union of both
-    # sides' adds; saves the ~5-10k-token resolver spawn on the common
-    # docs-pile case (reflector c946e283). Files this predicate rejects
-    # fall through to the resolver-spawn path below.
+    # conflicts in small (<=20kb), bracket/backtick-balanced files by inline
+    # union of both sides' adds; saves the ~5-10k-token resolver spawn on the
+    # common docs-pile + balanced-code case (reflector c946e283). Files this
+    # predicate rejects fall through to the resolver-spawn path below.
     REMAINING=""
     TRIVIAL_COUNT=0
     while IFS= read -r P; do
@@ -174,7 +174,7 @@ for ENTRY in "${ENTRIES[@]}"; do
       python3 - "$P" <<'PY'
 import os, re, sys
 p = sys.argv[1]
-if not p.endswith(".md") or os.path.getsize(p) > 20 * 1024:
+if os.path.getsize(p) > 20 * 1024:
     sys.exit(1)
 with open(p, "r", encoding="utf-8", errors="replace") as f:
     body = f.read()
@@ -183,6 +183,25 @@ if len(hunks) != 1:
     sys.exit(1)
 ours, theirs = hunks[0]
 if not ours.splitlines() and not theirs.splitlines():
+    sys.exit(1)
+# Trivial-union safety gate (replaces the prior markdown-only restriction):
+# each side must independently nest () [] {} correctly AND carry an even
+# backtick count, so unioning the two adds cannot split a bracket pair or a
+# code fence. Single/double-quote parity is deliberately NOT checked - prose
+# apostrophes ("don't") and char literals make it a false-positive magnet;
+# bracket nesting + backtick parity is the robust core. Anything this rejects
+# falls through to the resolver (safe, just costs a spawn).
+def _balanced(s):
+    pairs = {")": "(", "]": "[", "}": "{"}
+    stack = []
+    for ch in s:
+        if ch in ("(", "[", "{"):
+            stack.append(ch)
+        elif ch in pairs:
+            if not stack or stack.pop() != pairs[ch]:
+                return False
+    return not stack and s.count("`") % 2 == 0
+if not _balanced(ours) or not _balanced(theirs):
     sys.exit(1)
 if ours == theirs:
     union = ours
