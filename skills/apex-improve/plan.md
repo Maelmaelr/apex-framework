@@ -20,7 +20,7 @@ Spec: `skills/apex-improve/SKILL.md` Step 3.
 For each finding, pick the **smallest** op-class that satisfies it (per the SKILL.md edit hierarchy). Default bias toward `edit` (semantic). Promotion rules:
 
 - A semantic finding cannot be expressed without breaking sentence flow -> promote to `replace` (still `kind: edit`, larger string swap).
-- A replace finding would push the target file past 500 lines (or 175 for skills/agents per the file-health cap) -> promote to `extract` (`kind: split` or `kind: create` for new sub-file).
+- A replace finding would push the target past its file-health budget (docs: ~2500-word content budget for skills/agents; code: >400 lines split-first, >500 regardless) -> promote to `extract` (`kind: split` or `kind: create` for new sub-file).
 - An extract finding has no obvious split seam -> AskUserQuestion (header: "no-seam extract"; options: `split-anyway | reduce-finding | defer`; dismiss = `defer`). Do NOT silently demote to `additive`.
 
 A finding with `target_files: []` (e.g., a tech-watch never-run / stale finding) must NOT produce any op - it is report-only; surface in Step 6 only.

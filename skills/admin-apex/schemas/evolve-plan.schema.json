@@ -30,7 +30,7 @@
             "items": { "type": "string" }
           },
           "rationale": { "type": "string", "description": "One-line audit-cluster reason this op was chosen." },
-          "doc_only": { "type": "boolean", "description": "True if op only edits spec docs (README/apex-core/overview/CLAUDE.md) without structural mutation. Drives task 9 patch-vs-minor bump." }
+          "doc_only": { "type": "boolean", "description": "Informational; bump keys on op KIND, not doc_only." }
         }
       }
     },

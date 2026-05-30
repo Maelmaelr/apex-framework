@@ -46,7 +46,7 @@ Skip the admin-apex audit (tasks 2-4) entirely - the plan came from session-refl
 
 ## File-health gate
 
-If a Step 4a semantic edit would push an existing >400-line target further by more than 10 net lines, the file-health PreToolUse hook fires (trivial <=10-line edits pass, even on >500-line files). apex-improve MUST AskUserQuestion (header: "file-health gate"; options: `split-now | reduce-edit | abort`; dismiss = `abort`). NEVER bypass the hook - same gate every apex skill respects.
+If a Step 4a semantic edit would push the target past its file-health budget (docs: ~2500-word content budget; scripts: >400-500 lines or any line >120 chars), the file-health PreToolUse hook fires (shrinking / neutral edits and new files always pass). apex-improve MUST AskUserQuestion (header: "file-health gate"; options: `split-now | reduce-edit | abort`; dismiss = `abort`). NEVER bypass the hook - same gate every apex skill respects.
 
 ## Cap-reached / no-progress abort
 

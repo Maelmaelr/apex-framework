@@ -234,6 +234,9 @@ fi
 # (previously only in {run}-applied-ops.json; reflector reads summary.md for
 # friction signals).
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
-echo "task-9: bump=$BUMP $BODY, commit $SHA" >> "$SUMMARY"
+# Strip a leading "bump=<tier>" token if the caller embedded one in --body, so the
+# summary prints bump= exactly once (reflector 3022de5d / 00db0685: "bump=none bump=none").
+BODY_SUMMARY="$(printf '%s' "$BODY" | sed -E 's/^bump=[^ ]*( |$)//')"
+echo "task-9: bump=$BUMP $BODY_SUMMARY, commit $SHA" >> "$SUMMARY"
 
 exit 0

@@ -1,6 +1,6 @@
 # apex-tech-watch: 30-day Block Rotation
 
-Called from `SKILL.md` Step 1 (BEFORE fetching). Returns to SKILL.md for Step 2 (Fetch). Extracted from `SKILL.md` to keep the orchestrator under the 175-line cap.
+Called from `SKILL.md` Step 1 (BEFORE fetching). Returns to SKILL.md for Step 2 (Fetch). Extracted from `SKILL.md` to keep the orchestrator within the file-health content budget.
 
 Rotates blocks in `~/.claude/tmp/tech-updates.md` whose ISO-8601 header timestamp is older than 30 days into a single dated archive file under `~/.claude/tmp/tech-updates-archive/`. Idempotent: runs every fetch cycle, no-ops when nothing has aged out.
 
