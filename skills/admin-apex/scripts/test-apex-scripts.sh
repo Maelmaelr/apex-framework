@@ -414,6 +414,14 @@ else
   echo "FAIL suite test-sweep.sh" >&2; failed=$((failed + 1))
 fi
 
+# 15. content-budget tier + file-health-hook per-path cap fixtures live in a sibling
+#     file (file-health cap); run it and fold its pass/fail into the totals.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-content-budget.sh"; then
+  echo "PASS suite test-content-budget.sh"; pass=$((pass + 1))
+else
+  echo "FAIL suite test-content-budget.sh" >&2; failed=$((failed + 1))
+fi
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

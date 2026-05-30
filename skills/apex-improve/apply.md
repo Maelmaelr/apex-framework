@@ -46,7 +46,7 @@ Skip the admin-apex audit (tasks 2-4) entirely - the plan came from session-refl
 
 ## File-health gate
 
-If a Step 4a semantic edit would push the target past its file-health budget (docs: ~2500-word content budget; scripts: >400-500 lines or any line >120 chars), the file-health PreToolUse hook fires (shrinking / neutral edits and new files always pass). apex-improve MUST AskUserQuestion (header: "file-health gate"; options: `split-now | reduce-edit | abort`; dismiss = `abort`). NEVER bypass the hook - same gate every apex skill respects.
+If a Step 4a semantic edit would push the target past its file-health budget (docs: its per-role content-budget tier in `skills/apex/scripts/content-budget.json`; scripts: >400-500 lines or any line >120 chars), the file-health PreToolUse hook fires (shrinking / neutral edits and new files always pass). apex-improve MUST AskUserQuestion (header: "file-health gate"; options: `split-now | reduce-edit | abort`; dismiss = `abort`). NEVER bypass the hook - same gate every apex skill respects. This reactive hard-hook (100% of tier) is the backstop to the PROACTIVE near-cap rule in `plan.md` (net-neutral-or-negative once a file passes 85% of its tier) and Principle 3's near-cap tightening in `SKILL.md` - read the three together, not in isolation.
 
 ## Cap-reached / no-progress abort
 

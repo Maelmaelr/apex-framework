@@ -10,9 +10,11 @@
 #   skills/admin-apex/*.md       -> skills[] (admin-apex sub-skills: SKILL, audit,
 #                                  evolve, sync-docs)
 #   agents/*.md                  -> agents[]
-#   skills/apex/scripts/*.{sh,py,js}       -> scripts[]
-#   skills/admin-apex/scripts/*.{sh,py,js} -> scripts[]   (.js = committed Workflow scripts, *.workflow.js)
-#   skills/apex-merge/scripts/*.{sh,py,js} -> scripts[]
+#   skills/apex/scripts/*.{sh,py,js,json}       -> scripts[]
+#   skills/admin-apex/scripts/*.{sh,py,js,json} -> scripts[]
+#   skills/apex-merge/scripts/*.{sh,py,js,json} -> scripts[]
+#     (.js = committed Workflow scripts, *.workflow.js;
+#      .json = committed data files, e.g. content-budget.json)
 #   skills/apex/schemas/*.json       -> schemas[]
 #   skills/admin-apex/schemas/*.json -> schemas[]
 #   settings.json                -> hooks[]
@@ -135,6 +137,12 @@ def collect_scripts(pattern):
             # coverage as .sh/.py so a mirrored .js cannot bloat or orphan
             # silently (workflow-adoption plan A3).
             kind = "js"
+        elif ext == ".json":
+            # Committed data files under a walked scripts/ dir (content-budget.json:
+            # the shared per-role content-budget tier read by audit-detectors.py +
+            # file-health-hook.sh). Tracked so doc / script path refs resolve (no
+            # orphan-ref) and the file gets missing-refs coverage like any script.
+            kind = "json"
         else:
             continue
         m = content_metrics(p)

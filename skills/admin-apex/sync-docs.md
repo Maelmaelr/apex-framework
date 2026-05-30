@@ -51,7 +51,7 @@ Spec: `skills/admin-apex/SKILL.md` task 7.
 
 5. **Write `docs-changed.txt`** even if empty - SKILL task 9 expects the file to exist. Dedup the accumulated paths before the final write (`sort -u`, or equivalent): a file edited N times in step 3 must appear exactly once. Duplicate entries waste downstream git-add reads and make the audit trail misleading (reflectors 130a8c9f + 19826768: apex-core.md listed twice across two runs).
 
-6. **Polish (post-implementation check)**: `bash scripts/polish-check.sh --run {run}`. Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch / dead-hook detectors (mirrors `audit.md`), diffs against `{run}-drift-report.json` so only NEW drift introduced by evolve apply + sync-docs surfaces. Skipped automatically when 0 ops applied.
+6. **Polish (post-implementation check)**: `bash scripts/polish-check.sh --run {run}`. Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch / dead-hook / approaching-budget detectors (mirrors `audit.md`), diffs against `{run}-drift-report.json` so only NEW drift introduced by evolve apply + sync-docs surfaces. Skipped automatically when 0 ops applied.
    - Exit `0` -> clean; continue.
    - Exit `1` -> new drift in `{run}-polish-report.json`. Treat exactly like the out-of-scope stale-refs escalation below: append a finding-shaped block to `~/.claude/tmp/apex-workflow-improvements.md` (one per cluster) so the next `/apex-improve` run picks it up; do NOT block the current admin-apex run.
    - Exit `2` -> bad args / state corruption; abort with explicit error.

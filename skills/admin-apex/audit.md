@@ -30,15 +30,16 @@ Empty `clusters: []` -> "clean" (SKILL task 4 prints report path, exits 0; soft-
 
 ## Drift kinds
 
-Five **structural** kinds are detected deterministically by `scripts/audit-detectors.py --mode audit` - the shared engine `polish-check.sh` also runs, so audit and polish cannot diverge. The engine's module docstring + per-detector functions are the source of truth for the exact rules; the slug `id` is what the `--prior-drift` diff and evolve.md's cluster->op table key on:
+Six **structural** kinds are detected deterministically by `scripts/audit-detectors.py --mode audit` - the shared engine `polish-check.sh` also runs, so audit and polish cannot diverge. The engine's module docstring + per-detector functions are the source of truth for the exact rules; the slug `id` is what the `--prior-drift` diff and evolve.md's cluster->op table key on:
 
 | Kind (slug id) | Flags |
 |------|---------|
-| `oversized-files` (`oversized`) | skills/agents `.md` over content budget (>2500 words; line count informational), scripts >500 lines OR longest line >120 chars, prose docs (apex-core/overview/README/CLAUDE) >11400 words. Audit-only - never run post-apply. |
+| `oversized-files` (`oversized`) | skills/agents `.md` over its per-role content budget (resolved by `cap_for` from `skills/apex/scripts/content-budget.json`: 2500 default, higher for orchestrator-core / hot-path-heavy files; line count informational), scripts >500 lines OR longest line >120 chars, central-prose docs (apex-core/overview/README/CLAUDE) >11400 words. Audit-only - never run post-apply. |
 | `orphan-refs` (`orphan`) | Spec-doc path ref absent from inventory (bare-`scripts/X` shorthand, glob, trailing-slash dir refs excepted). |
 | `missing-refs` (`missing`) | Inventory file referenced by zero spec doc (intra-skill, cross-apex-skill, and parent-dir/glob refs count as covered; `SKILL.md` / `_`-prefixed / `__pycache__` excluded). |
 | `schema-mismatch` (`schema`) | `schemas[]` entry where `id != basename(path)`. |
 | `dead-hook` (`dead-hook`) | `hooks[]` command referencing a script absent on disk. |
+| `approaching-budget` (`approaching`) | skills/agents `.md` within the near-cap band (`near_cap_ratio * cap < words <= cap`; default 85%). WARN only - never blocks; routed to `defer` at the gate as standing leanness pressure below the hard oversized cap. Fires in `--mode polish` too (escalated, not blocking). |
 
 Two **judgment** kinds stay LLM-owned here (NOT in the engine), merged AFTER the structural clusters via `--extra-clusters`:
 
@@ -86,4 +87,4 @@ When SKILL task 1 selects `audit-only`, task 3 still runs but the gate prints th
 
 ## Lean rule
 
-The content budget (>2500 words) applies to `skills/apex/*.md` AND `skills/admin-apex/*.md`. If audit.md / evolve.md / sync-docs.md grow past the word budget, they surface in `oversized-files` like any other. See `apex-core.md` Conventions for safety paths + JSON validation; admin-apex follows the same rules on its own `.claude-tmp/admin-apex-active/` tree.
+The per-role content budget (`skills/apex/scripts/content-budget.json`; 2500 default) applies to `skills/apex/*.md` AND `skills/admin-apex/*.md`. If audit.md / evolve.md / sync-docs.md grow past their budget they surface in `oversized-files` like any other (and in `approaching-budget` once past 85%). See `apex-core.md` Conventions for safety paths + JSON validation; admin-apex follows the same rules on its own `.claude-tmp/admin-apex-active/` tree.

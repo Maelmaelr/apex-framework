@@ -40,9 +40,32 @@ SKILLS_ROOT = os.path.join(APEX_ROOT, "skills") + os.sep
 AGENTS_ROOT = os.path.join(APEX_ROOT, "agents") + os.sep
 CENTRAL_SPECS = {os.path.join(APEX_ROOT, n) for n in
                  ("apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md")}
+# Per-role skills/agents .md word caps live in content-budget.json (shared with
+# audit-detectors.py - one source, no duplicated-constant drift). DOC_WORD_CAP is
+# the fail-safe fallback default used only when that file is missing/unparseable.
 DOC_WORD_CAP = 2500
 LINE_SPLIT_CAP = 400
 MAX_LINE_LEN = 120
+CONTENT_BUDGET = os.path.join(APEX_ROOT, "skills", "apex", "scripts", "content-budget.json")
+
+
+def load_tiers():
+    """(default_cap, tiers) from content-budget.json; fail-safe to flat default."""
+    try:
+        with open(CONTENT_BUDGET, encoding="utf-8") as f:
+            data = json.load(f)
+        return int(data.get("default", DOC_WORD_CAP)), dict(data.get("tiers", {}))
+    except (OSError, ValueError):
+        return DOC_WORD_CAP, {}
+
+
+def cap_for(target, default_cap, tiers):
+    """Resolve a skills/agents .md target word cap by repo-relative path."""
+    try:
+        rel = os.path.relpath(os.path.abspath(target), APEX_ROOT)
+    except ValueError:
+        return default_cap
+    return tiers.get(rel, default_cap)
 
 
 def deny(reason):
@@ -78,9 +101,11 @@ def doc_decision(tool, target, inputs):
     proj = projected_words(tool, inputs, existing)
     if proj <= base:
         return ALLOW
-    if proj > DOC_WORD_CAP:
+    default_cap, tiers = load_tiers()
+    cap = cap_for(target, default_cap, tiers)
+    if proj > cap:
         return deny(f"file-health gate: {target} would be ~{proj} words "
-                    f"(> {DOC_WORD_CAP}-word content budget). Split first - extract a "
+                    f"(> {cap}-word content budget). Split first - extract a "
                     f"separable concern before growing it. See global CLAUDE.md File health.")
     return ALLOW
 

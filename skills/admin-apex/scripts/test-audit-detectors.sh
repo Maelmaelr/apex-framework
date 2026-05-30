@@ -63,6 +63,60 @@ python3 "$ENG" --inventory "$inv" --mode polish --run abcd1234 --prior-drift "$p
 check "polish no-new-drift exit0" 0 $?
 rm -f "$inv" "$prior" "$out"
 
+# --- per-role content-budget tier + approaching-budget (reads content-budget.json) ---
+RUN=abcd1234
+t=$(mktemp)
+
+mkinv() {  # $1=path $2=words -> single-skill inventory on $t
+  python3 - "$1" "$2" > "$t" <<'PY'
+import json, sys
+print(json.dumps({"skills": [{"path": sys.argv[1], "words": int(sys.argv[2])}],
+                  "agents": [], "scripts": [], "schemas": [], "hooks": [],
+                  "spec_docs": [], "version": "0"}))
+PY
+}
+
+inband() {  # $1=engine-out $2=cluster-id $3=path -> exit 0 if path appears in that cluster
+  AD="$1" CID="$2" P="$3" python3 -c '
+import json, os, sys
+cs = {c["id"]: c["items"] for c in json.loads(os.environ["AD"])["clusters"]}
+sys.exit(0 if any(os.environ["P"] in i for i in cs.get(os.environ["CID"], [])) else 1)
+'
+}
+
+# 5. tier: apex/SKILL.md 6900 < 7000 tier -> NOT oversized, but IS approaching (98%).
+mkinv "skills/apex/SKILL.md" 6900
+out=$(python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" oversized "skills/apex/SKILL.md"; o=$?
+inband "$out" approaching "skills/apex/SKILL.md"; a=$?
+[[ $o -ne 0 && $a -eq 0 ]]; check "tier SKILL.md 6900 pass+approaching" 0 $?
+
+# 6. tier: apex/SKILL.md 7100 > 7000 tier -> oversized.
+mkinv "skills/apex/SKILL.md" 7100
+out=$(python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" oversized "skills/apex/SKILL.md"; check "tier SKILL.md 7100 oversized" 0 $?
+
+# 7. default tier: a non-mapped skill .md at 2600 > 2500 default -> oversized.
+mkinv "skills/apex-improve/SKILL.md" 2600
+out=$(python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" oversized "skills/apex-improve/SKILL.md"; check "default 2600 oversized" 0 $?
+
+# 8. approaching silent below the band: apex/SKILL.md 5000 (71%) -> neither cluster.
+mkinv "skills/apex/SKILL.md" 5000
+out=$(python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" approaching "skills/apex/SKILL.md"; a=$?
+inband "$out" oversized "skills/apex/SKILL.md"; o=$?
+[[ $a -ne 0 && $o -ne 0 ]]; check "approaching silent at 71%" 0 $?
+
+# 9. fail-safe fallback: content-budget.json absent (empty CLAUDE_PROJECT_DIR) -> flat
+#    2500 default, no error; a 3000-word skill .md flags oversized under the default.
+fake=$(mktemp -d)
+mkinv "skills/apex/SKILL.md" 3000
+out=$(CLAUDE_PROJECT_DIR="$fake" python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" oversized "skills/apex/SKILL.md"; check "detector fallback flags 3000w at 2500" 0 $?
+rm -rf "$fake"
+rm -f "$t"
+
 echo "test-audit-detectors.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1
 exit 0

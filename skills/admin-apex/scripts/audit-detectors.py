@@ -10,25 +10,28 @@ across both callers - only the cluster vocabulary, the oversized inclusion, and
 the prior-drift diff differ by --mode:
 
   --mode audit   Structural pre-scan for audit.md task 3. Runs oversized-files /
-                 orphan-refs / missing-refs / schema-mismatch / dead-hook with
-                 audit.md's cluster vocabulary (kinds: oversized-files /
-                 orphan-refs / missing-refs / schema-mismatch / dead-hook; ids:
-                 oversized / orphan / missing / schema / dead-hook). No
-                 prior-drift diff. The LLM-owned stale-spec + user-driven
-                 detectors stay in audit.md prose and are merged after the
-                 structural clusters via --extra-clusters. Always exits 0 (drift
-                 is the normal case; the SKILL task-4 gate, not the exit code,
-                 drives keep/apply/defer).
+                 orphan-refs / missing-refs / schema-mismatch / dead-hook /
+                 approaching-budget with audit.md's cluster vocabulary (ids:
+                 oversized / orphan / missing / schema / dead-hook /
+                 approaching). oversized + approaching resolve per-path word caps
+                 from content-budget.json (cap_for); approaching-budget is
+                 WARN-only (skills/agents .md within the near-cap band, never
+                 blocks; routed to defer at the gate). No prior-drift diff. The
+                 LLM-owned stale-spec + user-driven detectors stay in audit.md
+                 prose and are merged after the structural clusters via
+                 --extra-clusters. Always exits 0 (drift is the normal case; the
+                 SKILL task-4 gate, not the exit code, drives keep/apply/defer).
 
   --mode polish  Post-apply mirror for polish-check.sh. Runs orphan-refs /
-                 missing-refs / schema-mismatch / dead-hook (NO oversized -
-                 line-cap remediation is owned by /apex verify + file-health,
-                 not the post-apply polish gate). Uses polish vocabulary (kinds:
-                 staleness / unused / inconsistency; ids: orphan / missing /
-                 schema / dead-hook - ids match audit mode so --prior-drift
-                 diffs line up). Diffs against --prior-drift so only NEW items
-                 introduced by the apply surface. Exits 1 when any NEW cluster
-                 remains (caller surfaces to user), else 0.
+                 missing-refs / schema-mismatch / dead-hook / approaching-budget
+                 (NO oversized - line-cap remediation is owned by /apex verify +
+                 file-health, not the post-apply polish gate). Uses polish
+                 vocabulary (kinds: staleness / unused / inconsistency; ids:
+                 orphan / missing / schema / dead-hook / approaching - ids match
+                 audit mode so --prior-drift diffs line up; approaching-budget
+                 keeps its own WARN kind). Diffs against --prior-drift so only
+                 NEW items introduced by the apply surface. Exits 1 when any NEW
+                 cluster remains (caller surfaces to user), else 0.
 
 CLI:
   audit-detectors.py --inventory <path> --mode {audit|polish} --run <RUN>
@@ -54,12 +57,19 @@ PROSE_DOCS = {"apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"}
 
 # File-health content-budget caps. Docs gate on words (physical newline count is
 # gamed by one-paragraph-per-line markdown); scripts gate on physical lines plus
-# the longest single line. PROSE_WORD_CAP = DOC_WORD_CAP * (800/175): the prose
-# 800-line cap scaled by the skills/agents 175-line -> 2500-word anchor.
-DOC_WORD_CAP = 2500            # skills/agents .md content budget
-PROSE_WORD_CAP = 11400         # apex-core/overview/README/CLAUDE prose budget
+# the longest single line. The per-role word caps live in
+# skills/apex/scripts/content-budget.json (one shared source with
+# file-health-hook.sh - no duplicated-constant drift); load_budget() reads it and
+# cap_for() resolves a path's cap. DOC_WORD_CAP / PROSE_WORD_CAP are the fail-safe
+# fallback used ONLY when that file is missing or unparseable (never block on a
+# read error); the flat 2500 alone was mis-anchored (it assumed ~14 words/line but
+# apex house style runs 25-45 words/line, so legitimately-dense hot-path files
+# tripped it), which the per-role tier replaces.
+DOC_WORD_CAP = 2500            # fallback default skills/agents .md content budget
+PROSE_WORD_CAP = 11400         # fallback central-prose (apex-core/overview/README/CLAUDE) budget
 SCRIPT_LINE_CAP = 500          # scripts: physical-line cap (source text, not prose)
 MAX_LINE_LEN = 120             # scripts: longest single-line cap
+CONTENT_BUDGET_PATH = "skills/apex/scripts/content-budget.json"
 
 # Spec-doc reference extractor (mirrors audit.md orphan-refs detector).
 REF_RE = re.compile(
@@ -69,6 +79,35 @@ REF_RE = re.compile(
 HOOK_RE = re.compile(
     r"(?:\$\{CLAUDE_PROJECT_DIR\}|~/\.claude|/Users/[^\s]+/\.claude)/([^\s]+\.(?:sh|py))"
 )
+
+
+def load_budget(root):
+    """Read the shared per-role content-budget tier data.
+
+    Fail-safe: returns the hardcoded DOC_WORD_CAP / PROSE_WORD_CAP defaults when
+    content-budget.json is missing or unparseable (never block on a read error).
+    A partial file still resolves every key (merged over the fallback)."""
+    fallback = {
+        "default": DOC_WORD_CAP,
+        "central_prose": PROSE_WORD_CAP,
+        "tiers": {},
+        "central_prose_members": sorted(PROSE_DOCS),
+        "near_cap_ratio": 0.85,
+    }
+    try:
+        data = json.loads((root / CONTENT_BUDGET_PATH).read_text())
+    except (OSError, json.JSONDecodeError):
+        return fallback
+    return {**fallback, **{k: data[k] for k in fallback if k in data}}
+
+
+def cap_for(path, budget):
+    """Resolve a doc path's word cap: explicit tier > central-prose member > default."""
+    if path in budget["tiers"]:
+        return budget["tiers"][path]
+    if os.path.basename(path) in set(budget["central_prose_members"]):
+        return budget["central_prose"]
+    return budget["default"]
 
 
 def inventory_path_set(inv):
@@ -97,22 +136,20 @@ def _max_line_len(path):
         return 0
 
 
-def detect_oversized(inv, root):
+def detect_oversized(inv, root, budget):
     """audit-only oversized gate.
 
-    Docs (skills/agents .md + prose spec docs) gate on a CONTENT BUDGET (words);
-    raw line count is demoted to an informational annotation because physical
-    newline count is gamed by one-paragraph-per-line markdown. Scripts gate on
-    physical lines (<= SCRIPT_LINE_CAP) PLUS longest line (<= MAX_LINE_LEN)."""
+    Docs (skills/agents .md + central-prose spec docs) gate on a per-role CONTENT
+    BUDGET (words) resolved via cap_for(); raw line count is demoted to an
+    informational annotation because physical newline count is gamed by
+    one-paragraph-per-line markdown. Scripts gate on physical lines (<=
+    SCRIPT_LINE_CAP) PLUS longest line (<= MAX_LINE_LEN)."""
     items = []
-    for e in inv.get("skills", []) + inv.get("agents", []):
+    for e in inv.get("skills", []) + inv.get("agents", []) + inv.get("spec_docs", []):
         words = e.get("words", 0)
-        if words > DOC_WORD_CAP:
-            items.append(f'{e["path"]} ({words} words > {DOC_WORD_CAP}; {e.get("lines", 0)} lines)')
-    for e in inv.get("spec_docs", []):
-        words = e.get("words", 0)
-        if words > PROSE_WORD_CAP:
-            items.append(f'{e["path"]} ({words} words > {PROSE_WORD_CAP}; {e.get("lines", 0)} lines)')
+        cap = cap_for(e["path"], budget)
+        if words > cap:
+            items.append(f'{e["path"]} ({words} words > {cap}; {e.get("lines", 0)} lines)')
     for e in inv.get("scripts", []):
         reasons = []
         if e["lines"] > SCRIPT_LINE_CAP:
@@ -122,6 +159,23 @@ def detect_oversized(inv, root):
             reasons.append(f'longest line {longest} > {MAX_LINE_LEN}')
         if reasons:
             items.append(f'{e["path"]} ({"; ".join(reasons)})')
+    return items
+
+
+def detect_approaching(inv, budget):
+    """skills/agents .md within the near-cap band (near_cap_ratio*cap, cap].
+
+    WARN-only proactive pressure (never blocks): a file this close to its tier cap
+    gets a 'tighten next' signal so leanness is enforced continuously, before the
+    hard oversized gate fires. Scripts + central-prose docs are out of band scope
+    (the band is the skills/agents .md leanness discipline)."""
+    items = []
+    ratio = budget["near_cap_ratio"]
+    for e in inv.get("skills", []) + inv.get("agents", []):
+        words = e.get("words", 0)
+        cap = cap_for(e["path"], budget)
+        if ratio * cap < words <= cap:
+            items.append(f'{e["path"]} ({words} words, {round(100 * words / cap)}% of {cap} cap)')
     return items
 
 
@@ -233,6 +287,9 @@ _SPEC = {
     "dead-hook": ("dead-hook", "inconsistency",
                   "{n} hook(s) point to missing scripts",
                   "{n} hook(s) point to missing scripts post-apply"),
+    "approaching": ("approaching-budget", "approaching-budget",
+                    "{n} skills/agents .md within near-cap band (>= 85% of tier; WARN, never blocks)",
+                    "{n} skills/agents .md newly within near-cap band post-apply (WARN)"),
 }
 
 
@@ -282,17 +339,19 @@ def main():
 
     inv_paths = inventory_path_set(inv)
     bodies = read_spec_bodies(inv, root)
+    budget = load_budget(root)
 
     detected = {
         "orphan": detect_orphans(inv_paths, bodies),
         "missing": detect_missing(inv, inv_paths, bodies, root),
         "schema": detect_schema_mismatch(inv),
         "dead-hook": detect_dead_hooks(inv, root),
+        "approaching": detect_approaching(inv, budget),
     }
     if args.mode == "audit":
-        detected = {"oversized": detect_oversized(inv, root), **detected}
+        detected = {"oversized": detect_oversized(inv, root, budget), **detected}
 
-    order = ["oversized", "orphan", "missing", "schema", "dead-hook"]
+    order = ["oversized", "orphan", "missing", "schema", "dead-hook", "approaching"]
     clusters = [build_cluster(cid, detected[cid], args.mode)
                 for cid in order if cid in detected and detected[cid]]
 

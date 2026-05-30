@@ -20,7 +20,8 @@ Spec: `skills/apex-improve/SKILL.md` Step 3.
 For each finding, pick the **smallest** op-class that satisfies it (per the SKILL.md edit hierarchy). Default bias toward `edit` (semantic). Promotion rules:
 
 - A semantic finding cannot be expressed without breaking sentence flow -> promote to `replace` (still `kind: edit`, larger string swap).
-- A replace finding would push the target past its file-health budget (docs: ~2500-word content budget for skills/agents; code: >400 lines split-first, >500 regardless) -> promote to `extract` (`kind: split` or `kind: create` for new sub-file).
+- A replace finding would push the target past its file-health budget (docs: the per-role content-budget tier in `skills/apex/scripts/content-budget.json` - 2500 default, higher for the orchestrator-core / hot-path-heavy files; code: >400 lines split-first, >500 regardless) -> promote to `extract` (`kind: split` or `kind: create` for new sub-file).
+- **Prose-budget discipline (near-cap)**: an op targeting an apex skill/agent .md already above 85% of its tier cap (the `approaching-budget` band) MUST be net-neutral-or-negative in word delta - bundle compensating tightening into the SAME file in the same op, or promote to `extract`. Never let a near-cap file grow without an offsetting tighten. New prose follows caveman house style (drop filler; keep every threshold / MUST / `reflector <hex>` citation).
 - An extract finding has no obvious split seam -> AskUserQuestion (header: "no-seam extract"; options: `split-anyway | reduce-finding | defer`; dismiss = `defer`). Do NOT silently demote to `additive`.
 
 A finding with `target_files: []` (e.g., a tech-watch never-run / stale finding) must NOT produce any op - it is report-only; surface in Step 6 only.
