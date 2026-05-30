@@ -37,6 +37,8 @@ TaskCreate "10. Mirror + push both"  (scripts/mirror-to-dev.sh)
 TaskCreate "11. Self-reflect"        (agents/reflector.md --phase admin-apex)
 ```
 
+**Deferred-tool guard.** `TaskCreate`/`TaskUpdate`/`TaskList`/`AskUserQuestion` are deferred - batch-fetch via `ToolSearch select:TaskCreate,TaskUpdate,TaskList,AskUserQuestion` before queuing. If a `TaskCreate` errors (`InputValidationError` / "schema not sent to the API"), do NOT fire the remaining lines - re-run that ToolSearch load, retry ONCE, then STOP and surface to the user (an empty/flaky ToolSearch return fails every call identically; same contract as apex SKILL.md Step 0 / session 4f42caf5).
+
 Tasks 5-8 are conditional on task 4's gate (skipped on audit-only outcome). Task 9 still runs to capture private-tracked-root deltas; if nothing ends up staged, task 9 produces no commit and task 10 is skipped. Task 11 fires only on task 10 success (the no-commit and hard-stop branches let `cleanup-run.sh` sweep without reflection - those branches lack the post-commit git context the reflector reads).
 
 ## Task 1: Mode select
