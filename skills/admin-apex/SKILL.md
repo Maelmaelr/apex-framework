@@ -13,7 +13,7 @@ Per-run artifacts live under `.claude-tmp/admin-apex-active/{run}-*` (mirrors ap
 
 Inputs: `skills/apex/**`, `skills/admin-apex/**`, `agents/**`, `apex-core.md`, `apex-core-overview.md`, `README.md`, `settings.json`, repo-root `CLAUDE.md`, `VERSION`.
 
-Self-coverage: admin-apex's own files (`skills/admin-apex/**`) are subject to the same audit + evolve rules as the apex hot path. The per-role content budget on `.md` (`skills/apex/scripts/content-budget.json`; 2500 default), the orphan-refs / missing-refs / schema-mismatch / dead-hook / approaching-budget detectors, and the doc_only / structural classification driving task 9's bump rule all apply to admin-apex too. Task 11 closes the loop by feeding reflection signals into `~/.claude/tmp/apex-workflow-improvements.md`, which `/apex-improve` consumes to evolve admin-apex like any other apex file.
+Self-coverage: admin-apex's own files (`skills/admin-apex/**`) are subject to the same audit + evolve rules as the apex hot path. The per-role content budget on `.md` (`skills/apex/scripts/content-budget.json`; 2500 default), the orphan-refs / missing-refs / schema-mismatch / dead-hook / approaching-budget detectors, and the doc_only / structural classification driving task 9's bump rule all apply to admin-apex too. Task 11 feeds reflection signals to `/apex-improve`, which evolves admin-apex like any other apex file.
 
 Per-task summary trace: every task that runs (1-10) appends one line to `.claude-tmp/admin-apex-active/{run}-summary.md` in the format `task-{N}: <outcome>` (e.g., `task-3: drift 2 clusters (oversized, orphan)`, `task-6: applied 4 ops, drift=none`, `task-8: test pass`). Captures friction the JSON artifacts do not (gate dismissals, mid-flight drift `restart`, test failure auto-fix loops). Read by task 11's reflector. Append in real time as each task completes (never reconstruct the trace retrospectively) so lines land in strict ascending task-N order; the reflector treats any out-of-order or missing task-N line as a gap (reflector a68776f1: task-9 printed before task-8 in a retrospectively-written summary, masking the ordering drift).
 
@@ -126,7 +126,7 @@ Env knob: `APEX_MIRROR_NO_PUSH=1` skips both pushes (commit-only inspect). Top-l
 
 ## Task 11: Self-reflect
 
-Spawn `agents/reflector.md` (Sonnet, foreground) with the admin-apex phase. The agent reads its own contract for input/output shape (table row `admin-apex task 11`); this skill supplies only the run-specific context. The reflector's appended block in `~/.claude/tmp/apex-workflow-improvements.md` is consumed by `/apex-improve`'s next run, which can target `skills/admin-apex/**` in `target_files` - closing the self-improvement loop.
+Spawn `agents/reflector.md` (Sonnet, foreground) with the admin-apex phase. The agent reads its own contract for input/output shape (table row `admin-apex task 11`); this skill supplies only the run-specific context. The reflector's appended block in `~/.claude/tmp/apex-workflow-improvements.md` is consumed by `/apex-improve`'s next run, which can target `skills/admin-apex/**` in `target_files`.
 
 Spawn-prompt template (substitute `{run}`):
 
