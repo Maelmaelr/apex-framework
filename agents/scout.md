@@ -10,14 +10,14 @@ Spec: `apex-core.md` step 8.2 + `skills/apex/execute.md` 8.2 B0.7.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
-A single read-only pass decides whether ONE step-8 goal hides independent atomic sub-units. The blind spot it closes: intra-goal iteration depth on a SMALL file set (e.g. 4 files / 47 tool-uses / 167k tokens) slips every static count gate (B0 concerns, B1 file-count, B2 coupled-merge) because depth is invisible to file / concern counts. The scout is genuine decomposition judgment greps cannot derive (e.g. "per-platform metadata" -> N platforms -> N independent test files), paid against the fat dispatch + redispatch it prevents.
+A single read-only pass decides whether ONE step-8 goal hides independent atomic sub-units. The blind spot it closes: intra-goal iteration depth on a SMALL file set (e.g. 4 files / 47 tool-uses / 167k tokens) slips every static count gate (B0 concerns, B1 file-count, B2 coupled-merge) because depth is invisible to file / concern counts. The scout is genuine decomposition judgment greps cannot derive (e.g. "per-platform metadata" -> N platforms -> N independent test files), paid against the fat dispatch + redispatch it prevents. The blind spot scales UP too: a LARGE high-cost set (A1 incident: 23 files / 134 tool_uses / 229k tokens) otherwise gets only B1's mechanical -n 2 directory-sibling chunk, leaving each half still oversized - so B0.7 now also routes a high-cost large set here BEFORE B1, replacing the coarse split with a judgment DAG.
 
 ## Inputs (passed by the orchestrator at step 8.2; explicit, not inherited)
 
 - `session` - 8-char hex token for `.claude-tmp/apex-active/{session}-*` artifact paths.
 - `task_id` - the per-task id (drives the output filename `{session}-subtask-plan-{task_id}.json`).
 - `goal` - the goal's `hypothesis.goals[]` entry VERBATIM (the full clause, not the condensed label - the scout needs the full semantics to spot atomic sub-units like "per-platform" / "phase-1 then phase-2").
-- `allowed_files` - the goal's resolved per-task scope subset (the ~3-8 files step 8.2 narrowed to). This is the HARD ceiling on `subtasks[].files`.
+- `allowed_files` - the goal's resolved per-task scope subset (the ~3-8 files step 8.2 narrowed to, OR a larger high-cost set routed here before B1 per execute.md B0.7). This is the HARD ceiling on `subtasks[].files`.
 - `hypothesis` - JSON-serialized `{session}-hypothesis.json` (for `complexity_hint` + surrounding intent).
 - trace / output path (see Output).
 
@@ -54,7 +54,7 @@ JSON path + a one-line status: `subtasks: N (M independent, K chained)` OR `indi
 - Does NOT write / edit ANY project file. Read-only; the only artifact it writes is the subtask-plan JSON under `.claude-tmp/apex-active/`.
 - Does NOT widen scope (`subtasks[].files` subset of `allowed_files`) and does NOT merge this goal with any other goal - it can only ADD splits.
 - Does NOT gate dispatch on its numeric `estimate` (advisory only; Open risk 1).
-- Does NOT fire on economy / trivial tiers, on coupled / B2-serialized tasks, or on tasks B1 already hard-splits (>8 files) - the orchestrator gate at step 8.2 B0.7 decides whether to spawn it.
+- Does NOT fire on economy / trivial tiers or on coupled / B2-serialized tasks. Fires on a >8-file task ONLY when it carries a high-cost signal (then BEFORE B1, so the DAG pre-empts the mechanical chunk); a plain >8 set with no high-cost signal goes straight to B1's chunk. The orchestrator gate at step 8.2 B0.7 decides whether to spawn it.
 - Does NOT inherit working memory; all inputs flow through the spawn prompt.
 
 See `apex-core.md` step 8.2 for the orchestrator-side gate + dispatch contract; `skills/apex/execute.md` 8.2 B0.7 for the per-task gate; `agents/executor.md` for the executor the sub-tasks dispatch to.

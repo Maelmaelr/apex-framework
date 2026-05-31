@@ -43,7 +43,7 @@ Tasks 5-8 are conditional on task 4's gate (skipped on audit-only outcome). Task
 
 ## Task 1: Mode select
 
-**Cwd discipline (critical).** Before any other action, `cd "$HOME/.claude"`. admin-apex operates on the apex framework, which always lives at `~/.claude`; running from a project repo would create `.claude-tmp/admin-apex-active/` artifacts in that project (relative-path pollution) and the inventory step would walk the wrong tree. The script-side absolute-path hardening in `session-end-hook.sh` / `cleanup-run.sh` / `sweep-stale-runs.sh` / `admin-apex-finalize.sh` / `inventory-apex.sh` defends against the SessionEnd-fires-from-elsewhere case, but the LLM-driven path examples below stay relative for readability and require this `cd` to resolve correctly.
+**Cwd discipline (critical).** Before any other action, `cd "$HOME/.claude"`. admin-apex operates on the apex framework, which always lives at `~/.claude`; running from a project repo would create `.claude-tmp/admin-apex-active/` artifacts in that project (relative-path pollution) and the inventory step would walk the wrong tree. Script-side absolute-path hardening (`session-end-hook.sh`, `cleanup-run.sh`, `sweep-stale-runs.sh`, `admin-apex-finalize.sh`, `inventory-apex.sh`) defends the SessionEnd-fires-elsewhere case; the LLM-driven path examples below stay relative and require this `cd`.
 
 AskUserQuestion (header: "admin-apex mode"; options: `audit-only`, `audit+apply`; dismiss/cancel = abort). Then run `bash skills/admin-apex/scripts/check-deps.sh` - exit 1 means strict Python deps (currently `jsonschema`) are missing; surface the script's stderr install one-liner to the user and abort cleanly (no manifest written yet, no session-end-hook needed). Exit 0 -> proceed.
 
@@ -72,6 +72,8 @@ Soft-skips (skip 5-8 only; task 9 still runs to capture private-tracked-root del
 - every cluster decision is `keep`/`defer`
 
 Otherwise, AskUserQuestion per cluster (header: cluster.kind; options: `keep | apply | defer`; dismiss = `keep`). Fast-path: a single cluster of `kind=user-driven` (concern was supplied this run) defaults to `apply` without prompt - the user already expressed intent at task 1. **Empty-items short-circuit**: when that user-driven cluster has `items: []` (informational concern - no concrete file picked), default to `defer` instead of `apply` so task 5's placeholder-edit pipeline does NOT fire on a target the planner cannot redirect (reflector 7b5a0441: user-driven cluster with items=[] still ran the full cluster pipeline). At least one `apply` -> proceed to task 5. All `keep`/`defer` -> soft-skip to task 9.
+
+**Audit-only -> apply pivot (mid-run follow-up)**: when this run hard-stopped on `mode == audit-only` but the user then asks mid-run to apply specific findings, the orchestrator MAY apply the chosen clusters as direct inline `Edit`s WITHOUT re-entering evolve.md task 5/6 - so no `{run}-evolve-plan.json` / `{run}-applied-ops.json` / inventory re-snapshot exists for that pivot. Record each as `task-4: audit->apply pivot (<paths>)` in `{run}-summary.md`; task 9 then stages + commits the dirty paths (bump `patch`, edits only). Intentional-and-recorded, not an evolve.md bypass (reflector b7227aa5).
 
 ## Task 5 / 6: Evolve
 

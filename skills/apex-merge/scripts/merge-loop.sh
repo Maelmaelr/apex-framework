@@ -162,6 +162,20 @@ for ENTRY in "${ENTRIES[@]}"; do
   # Merge stopped (conflict OR refusal). Capture conflicted paths.
   CONFLICTS="$(git diff --name-only --diff-filter=U 2>/dev/null || true)"
   if [[ -n "$CONFLICTS" ]]; then
+    # Partition by index state. UU/AA carry <<<< markers (content conflicts the
+    # trivial-union pass or the content resolver can splice). DU/UD/DD are
+    # delete/modify (or delete/delete) index-state conflicts: one side deleted
+    # the path, so the working tree has NO markers - the content resolver cannot
+    # splice what is absent. They need a keep-deleted|keep-modified decision the
+    # orchestrator owns (SKILL.md step 4), never the resolver (apex-merge-du-ud).
+    DU_UD=""; CONTENT_CONFLICTS=""
+    while IFS= read -r _CP; do
+      [[ -z "$_CP" ]] && continue
+      case "$(git status --porcelain -- "$_CP" 2>/dev/null | cut -c1-2)" in
+        DU|UD|DD) DU_UD="${DU_UD:+$DU_UD$'\n'}$_CP" ;;
+        *)        CONTENT_CONFLICTS="${CONTENT_CONFLICTS:+$CONTENT_CONFLICTS$'\n'}$_CP" ;;
+      esac
+    done <<< "$CONFLICTS"
     # Trivial-union skip: deterministically resolve single-hunk additive
     # conflicts whose combined span is small (<=50 lines), in bracket/backtick-
     # balanced files, by inline union of both sides' adds; saves the ~5-10k-token
@@ -229,18 +243,26 @@ PY
       else
         REMAINING="${REMAINING:+$REMAINING$'\n'}$P"
       fi
-    done <<< "$CONFLICTS"
-    if [[ -z "$REMAINING" && "$TRIVIAL_COUNT" -gt 0 ]]; then
+    done <<< "$CONTENT_CONFLICTS"
+    # Auto-commit the trivial-union result ONLY when nothing else is unresolved -
+    # no content remainder AND no DU/UD index-state conflict awaiting a decision.
+    if [[ -z "$REMAINING" && -z "$DU_UD" && "$TRIVIAL_COUNT" -gt 0 ]]; then
       if git commit --no-edit >/dev/null 2>&1; then
         append_result "$BRANCH" "$BASE" "merged" "trivial-union=$TRIVIAL_COUNT"
         append_summary "$BRANCH" "merged" "$TRIVIAL_COUNT" "none"
         continue
       fi
     fi
-    REPORT="${REMAINING:-$CONFLICTS}"
-    append_result "$BRANCH" "$BASE" "conflict" "$(echo "$REPORT" | tr '\n' ',' | sed 's/,$//')"
+    # Content remainder for the resolver; fall back to the content set when the
+    # trivial-union staged everything but the commit failed (rare git-hook case).
+    CONTENT_REPORT="$REMAINING"
+    [[ -z "$CONTENT_REPORT" && -z "$DU_UD" ]] && CONTENT_REPORT="$CONTENT_CONFLICTS"
+    DETAIL="$(echo "$CONTENT_REPORT" | tr '\n' ',' | sed 's/,$//;s/^,//')"
+    [[ -n "$DU_UD" ]] && DETAIL="${DETAIL:+$DETAIL }du-ud=$(echo "$DU_UD" | tr '\n' ',' | sed 's/,$//;s/^,//')"
+    append_result "$BRANCH" "$BASE" "conflict" "$DETAIL"
     echo "merge-loop.sh: conflict on $BRANCH (trivial-union resolved $TRIVIAL_COUNT):"
-    echo "$REPORT"
+    [[ -n "$CONTENT_REPORT" ]] && { echo "content-conflicts:"; echo "$CONTENT_REPORT"; }
+    [[ -n "$DU_UD" ]] && { echo "du-ud (keep-deleted|keep-modified, NOT resolver):"; echo "$DU_UD"; }
     exit 20
   fi
   append_result "$BRANCH" "$BASE" "merge-refused" "git merge returned non-zero without conflicts"
