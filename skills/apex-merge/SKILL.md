@@ -52,6 +52,8 @@ TaskCreate "7. Self-reflect"
      fi
      git add -A -- ':!.apex-worktrees'
      git commit -m "apex-merge: auto-commit dirty main before integration ($DIRTY_COUNT files)"
+     # Append resulting commit hash + diff-stat for post-hoc audit (apex-merge-precheck-commit-hash).
+     { git rev-parse HEAD; git show --stat --oneline HEAD; } >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-precheck-auto-committed.txt"
    fi
    ```
 
@@ -63,7 +65,7 @@ TaskCreate "7. Self-reflect"
    PID=$(bash "$HOME/.claude/skills/apex/scripts/find-claude-pid.sh" 2>/dev/null || echo "$PPID")
    printf '{"run":"%s","cc_session_id":"%s","pid":%s,"producer":"apex-merge"}\n' "$RUN" "$CC_ID" "$PID" > "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}.json"
    ```
-   NEVER write `cc_session_id:""` (breaks SessionEnd sweep) and NEVER use bare `$PPID` inside `bash -c` (captures transient zsh pid). Reuse `RUN` across all subsequent steps. Then append a one-line summary trace for Step 7's reflector: `step-1: precheck ok (auto-committed N dirty files on main; list -> <run>-precheck-auto-committed.txt)` if `DIRTY_COUNT > 0` else `step-1: precheck ok (main worktree clean)`, written to `$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md`. The sidecar `${RUN}-precheck-auto-committed.txt` (written above before the commit) carries the verbatim `git status --porcelain` lines so the reflector + downstream `/apex-improve` can audit what landed without re-running `git log` (reflector cluster 390baaaf / 87eeade0 / d60c2e75).
+   NEVER write `cc_session_id:""` (breaks SessionEnd sweep) and NEVER use bare `$PPID` inside `bash -c` (captures transient zsh pid). Reuse `RUN` across all subsequent steps. Then append a one-line summary trace for Step 7's reflector: `step-1: precheck ok (auto-committed N dirty files on main; list -> <run>-precheck-auto-committed.txt)` if `DIRTY_COUNT > 0` else `step-1: precheck ok (main worktree clean)`, written to `$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md`. The sidecar `${RUN}-precheck-auto-committed.txt` carries the verbatim `git status --porcelain` lines plus the resulting commit hash + diff-stat (appended after the commit) so the reflector + downstream `/apex-improve` can audit what landed without re-running `git log` (reflector cluster 390baaaf / 87eeade0 / d60c2e75).
 
 2. **Discover** - inline. Enumerate `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`. For each branch B:
    - SESSION = strip `apex/` prefix.
