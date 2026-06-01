@@ -11,7 +11,7 @@ bash $HOME/.claude/skills/admin-apex/scripts/polish-check.sh --run "$RUN"
 Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch / dead-hook detectors (mirrors `~/.claude/skills/admin-apex/audit.md`), diffs against any pre-existing `{run}-drift-report.json` so only NEW drift introduced by Step 4 apply surfaces. Skipped automatically when 0 ops applied this run.
 
 - Exit `0` -> clean; continue to Step 5b.
-- Exit `1` -> new drift in `{run}-polish-report.json`. Append one finding-shaped block per cluster to `~/.claude/tmp/apex-workflow-improvements.md` (via `skills/apex/scripts/append-with-lock.sh`) so the next `/apex-improve` run picks it up. Continue to Step 5b - do NOT block the current run; the report (Step 6) surfaces the polish cluster count.
+- Exit `1` -> new drift in `{run}-polish-report.json`. Hold the clusters in working memory - do NOT append yet. The escalation append happens in Step 5d, AFTER 5b archives + truncates the workflow file; appending here would copy the block to the archive and wipe it from the live file in the same pass, so the next run would read an empty file and NOT pick it up (run 04ed5943). Continue to Step 5b - do NOT block the current run; the report (Step 6) surfaces the polish cluster count.
 - Exit `2` -> bad args / state corruption; abort with explicit error.
 
 ## Step 5b: Cleanup + version stamp (inline)
@@ -70,9 +70,15 @@ fi
 fi  # end RUN-bound guard
 ```
 
+## Step 5d: Polish escalation (post-truncate; only when 5a exited 1)
+
+If Step 5a returned exit 1, NOW - after 5b's archive+truncate has run - append one finding-shaped block per held polish cluster to the freshly-truncated `~/.claude/tmp/apex-workflow-improvements.md` via `skills/apex/scripts/append-with-lock.sh`, framed as a `## {run} - apex-improve-polish - {ts}` block (same shape reflector.md emits). Post-truncate placement is what makes "the next run picks it up" actually hold. Frame `approaching-budget` clusters as standing-state, NOT "introduced by apply", when this run's net `delta_lines` for the named files was `<= 0` - the Step-4 pre-flight baseline (apply.md) already suppresses those at the detector level, so a surviving approaching-budget item here is genuinely net-new.
+
+## Notes
+
 All three signal files archive to `improvements-archive/` (timestamped) before truncation, so unapplied / deferred blocks and historical errors remain recoverable. `reflector-errors.log` is reset alongside the structured logs because any rescued-from-errlog analyses have by definition been consumed by analyze.md once they reach this point; carrying old errors across runs reads as recurring noise to the next analyze pass. apex-tech-watch's 30-day rotation still bounds `tech-updates.md` between consumption runs (this archive is post-consumption, not a substitute for that rotation). The CC-version stamp lives under `~/.claude/tmp/` which IS tracked (`.gitignore:54` keeps `tmp/` itself tracked, only `*.lock` ignored); the stamp + signal-file truncations produce a real git diff that piggybacks on the next framework-evolution commit (not its own commit when 0 ops applied). Add to `{run}-dirty-paths.txt` only if content changed (`git diff --quiet` check).
 
-Step 5 is two phases: 5a (polish) and 5b (cleanup + stamp). 5a runs FIRST so the report at Step 6 reflects polish findings; 5b's archive + truncate must NOT happen until polish has had a chance to escalate new drift via `apex-workflow-improvements.md` (otherwise polish-driven escalations would be archived in the same breath they were written, becoming consume-on-write noise next run). The 5c backlog-consolidation cleanup runs LAST within 5b - prune-then-delete-originals strictly after the consolidated `{run}-deferred-findings.json` is on disk, so no crash window can drop the carried backlog.
+Step 5 ordering: 5a runs polish DETECTION first so Step 6's report reflects it, but the escalation APPEND (Step 5d) happens only AFTER 5b archives + truncates `apex-workflow-improvements.md`. Appending before the truncate would archive the escalation in the same pass and the next run would read an empty live file - it would NOT pick it up (run 04ed5943, where 5a-before-truncate was the original contradiction). The 5c backlog-consolidation cleanup runs LAST within 5b - prune-then-delete-originals strictly after the consolidated `{run}-deferred-findings.json` is on disk, so no crash window can drop the carried backlog.
 
 ## Step 6: Report (inline)
 

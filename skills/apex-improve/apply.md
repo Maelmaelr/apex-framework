@@ -16,6 +16,19 @@ Spec: `skills/apex-improve/SKILL.md` Step 4.
 - `.claude-tmp/admin-apex-active/{run}-applied-ops.json` - JSON array of applied ops (verbatim from plan) with **actual** `delta_lines` field per op (computed post-edit)
 - `.claude-tmp/admin-apex-active/{run}-dirty-paths.txt` - one repo-relative path per line; appended after each successful op
 
+## Step 4 pre-flight: pre-apply baseline drift report
+
+Before applying ANY op, snapshot the pre-apply drift state so Step 5a `polish-check.sh` diffs against a real baseline and surfaces only NET-NEW drift. apex-improve skips the admin-apex audit, so without this `{run}-drift-report.json` is absent, `audit-detectors.py --prior-drift` treats the baseline as empty, and every standing approaching-budget file mis-reports as "introduced by apply" even when the apply was net-negative (run 04ed5943: a -2-word edit to a near-cap file surfaced as 4 "new" approaching-budget clusters).
+
+```
+bash skills/admin-apex/scripts/inventory-apex.sh --out .claude-tmp/admin-apex-active/{run}-inventory.json >/dev/null
+python3 skills/admin-apex/scripts/audit-detectors.py \
+  --inventory .claude-tmp/admin-apex-active/{run}-inventory.json --mode audit --run {run} \
+  --out .claude-tmp/admin-apex-active/{run}-drift-report.json
+```
+
+This is the same `inventory-apex.sh` + `audit-detectors.py --mode audit` invocation admin-apex/audit.md task 3 runs pre-apply; the inventory it writes is the one Step 4b's structural path also consumes.
+
 ## Step 4a: Semantic / replace ops - inline Edit
 
 For each `op.kind == edit` operation:
@@ -35,7 +48,7 @@ If an Edit tool call fails (string not found, ambiguous match), surface AskUserQ
 For any operation in `{create, rename, split, merge, retire, schema-add, schema-remove, hook-add, hook-remove}`:
 
 1. **Read and follow** `~/.claude/skills/admin-apex/evolve.md` task 6 ("Apply ops"). Inputs are already in place: `{run}-evolve-plan.json` (Step 3 wrote it; same schema).
-2. If `{run}-inventory.json` is absent (apex-improve normally skips inventory; admin-apex flow always writes it), run `bash skills/admin-apex/scripts/inventory-apex.sh --out .claude-tmp/admin-apex-active/{run}-inventory.json` first - evolve.md task 6 reads it for re-snapshot drift detection.
+2. The Step-4 pre-flight (above) already wrote `{run}-inventory.json`; evolve.md task 6 reads it for re-snapshot drift detection. (Re-run `inventory-apex.sh --out` only if it is somehow absent.)
 3. evolve.md handles per-op re-snapshot, applies via Edit / Write / Bash with `grep-apex-refs.sh` ref-rewriting, appends to `{run}-applied-ops.json` + `{run}-dirty-paths.txt`.
 4. Mid-flight drift -> evolve.md surfaces `restart | commit-partial | rollback`. apex-improve maps:
    - `restart` -> exit cleanly; let user re-invoke (no truncation, no commit).
