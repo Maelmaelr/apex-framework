@@ -3,11 +3,11 @@
 Lazy-loaded contract for orchestrator step 12. Dispatched from `skills/apex/SKILL.md`
 step 12; Read this file before executing the step so the rule is maximally recent
 (B/R3 read-before-work). The item-3 step-read gate enforces the read once armed;
-until then the dispatch is a soft convention. This file is the full per-step contract. Cross-cutting rules: `apex-core.md` ## Conventions; routing summary: `apex-core-overview.md`.
+until then the dispatch is a soft convention. This file is the full per-step contract.
 
 ## Contract
 
-Inline (no subagent hop; orchestrator owns it). Worktree isolation means each session has its own branch + index + working tree, so plain `git add -A; git commit; git push` is correct - no allowlist / private-index / CAS-retry machinery needed. The orchestrator classifies the diff and persists `bump_hint: patch|minor` into the manifest for the project-side deploy skill (e.g. `.claude/skills/deploy/` in the project repo): the deploy skill reads every merged session's `bump_hint`, picks the highest tier across the batch (`minor` > `patch`), and runs `bash skills/apex/scripts/bump-version.sh --kind <tier>` ONCE on the final integration commit (`/apex-merge` no longer owns the bump). Tier definitions live in `apex-core.md` ## Conventions (bump tiers).
+Inline (no subagent hop; orchestrator owns it). Worktree isolation means each session has its own branch + index + working tree, so plain `git add -A; git commit; git push` is correct - no allowlist / private-index / CAS-retry machinery needed. The orchestrator classifies the diff and persists `bump_hint: patch|minor` into the manifest for the project-side deploy skill (e.g. `.claude/skills/deploy/` in the project repo): the deploy skill reads every merged session's `bump_hint`, picks the highest tier across the batch (`minor` > `patch`), and runs `bash skills/apex/scripts/bump-version.sh --kind <tier>` ONCE on the final integration commit (`/apex-merge` no longer owns the bump).
     ```
     # Classify diff -> patch (bug fix / refactor / internal-only / tweak) | minor (new public symbol/route/component OR breaking API change). Never major - user-set only.
     BUMP_HINT=<patch|minor>

@@ -6,7 +6,7 @@ model: sonnet
 
 # reflector (apex step 13 / admin-apex task 11 / lessons-analyze Step 10 / lessons-extract Step 6 / apex-merge step 7 / apex-tech-watch Step 5)
 
-Spec: `apex-core.md` step 13 | `skills/admin-apex/SKILL.md` task 11 | `skills/apex-lessons/analyze.md` Step 10 | `skills/apex-lessons/extract.md` Step 6 | `skills/apex-merge/SKILL.md` step 7 | `skills/apex-tech-watch/SKILL.md` Step 5.
+Spec: `skills/apex/steps/13-reflect.md` (step 13) | `skills/admin-apex/SKILL.md` task 11 | `skills/apex-lessons/analyze.md` Step 10 | `skills/apex-lessons/extract.md` Step 6 | `skills/apex-merge/SKILL.md` step 7 | `skills/apex-tech-watch/SKILL.md` Step 5.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -90,7 +90,7 @@ If only ONE of the two inputs is missing, still emit the structured block - hypo
 
 ## Non-convergence detection (apex phase only)
 
-Canonical contract (when, collision condition, output line format, history-log path): `apex-core.md` step 13. Implementation specifics:
+Canonical contract (when, collision condition, output line format, history-log path): `skills/apex/steps/13-reflect.md`. Implementation specifics:
 
 1. `prompt_hash` = sha1 of normalized `original_prompt` from `{session}-hypothesis.json` (recipe: `skills/apex/scripts/discovery-cache.sh:normalize_prompt` - includes a plan-pointer salt for `continue:<plan-file>` / `implement <plan-file>` shapes so plans that evolve between runs hash per-snapshot rather than colliding on the path-stripped prompt; 4+ session false-positive cluster on model-inventory-audit-plan.md).
 2. `scope_count` from `{session}-main-scope.json` `allowed_files.length`; when that artifact is absent fall back to `{session}-discovery-skip.json` `inlined_paths.length`, and when discovery-skip omits `inlined_paths` (byte-identical to hypothesis - see SKILL.md step 6 inline-skip) fall back further to `{session}-hypothesis.json` `discovered_paths.length`; record `0` only when none of the three artifacts exists - never read it from the sparse manifest, which carries no `allowed_files` key (the log recorded `scope_count=0` because only the manifest was consulted). `touched_count` from `git diff --name-only {diff_anchor}` line count; `files_touched` from the same output (sorted, comma-joined, truncated at 240 chars).
@@ -134,5 +134,3 @@ Skipped under SKIPPED-no-inputs (no manifest -> nothing to clean reliably; Sessi
 ## Failure mode
 
 Errors -> `~/.claude/tmp/reflector-errors.log`. Shut down silently (no main-session output).
-
-See `apex-core.md` Conventions for trace path schema and manifest schema.

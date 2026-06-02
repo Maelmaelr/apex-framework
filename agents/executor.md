@@ -6,7 +6,7 @@ model: sonnet
 
 # executor (step 8 / step 10 fix-loop)
 
-Spec: `apex-core.md` step 8 / step 10.
+Spec: `skills/apex/steps/08-execute.md` (step 8) / `skills/apex/steps/10-verify.md` (step 10).
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -107,5 +107,3 @@ Step 8: structured JSON `{goal, status, notes, tool_calls_made, files_touched}` 
 - step 8 split-needed (C1): `{"goal": "audit and close audio parity gaps", "status": "split-needed", "residual_goal": "wire mute toggle + level-meter for inputs B/C/D", "residual_files": ["audio/inputs/b.ts","audio/inputs/c.ts","audio/inputs/d.ts"], "what_i_did": "wired input A only (level + mute)", "tool_calls_made": 18, "files_touched": ["audio/inputs/a.ts"]}`
 - step 10 fix-attempt-1: `step-10 fix-attempt-1: resolved TS2345 errors in 2 files (build clean)`
 - step 8 file-split (orthogonal to C1; surfaces as failed + trace; orchestrator re-spawns): `{"goal": "...", "status": "failed", "notes": "split user-service.ts (612L) before adding webhook handler", "tool_calls_made": 4, "files_touched": []}`
-
-See `apex-core.md` Conventions for safety paths, scope-check / file-health hooks, trace path schema, JSON-Schema validation.

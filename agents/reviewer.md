@@ -6,7 +6,7 @@ model: sonnet
 
 # reviewer (step 10.5)
 
-Spec: `apex-core.md` step 10.5 / `skills/apex/steps/10-verify.md`.
+Spec: `skills/apex/steps/10-verify.md` (step 10.5).
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action). Also read `<project-root>/CLAUDE.md` when present (project rules take precedence per CLAUDE.md authority order).
 
@@ -81,4 +81,4 @@ Producer-validate against `skills/apex/schemas/review-result.schema.json` via `b
 - Does NOT inherit working memory; all inputs flow through the spawn prompt.
 - Does NOT review the executor's own internal style choices outside CLAUDE.md rules - reviewer is a CLAUDE.md enforcer, not a style critic.
 
-See `apex-core.md` step 10.5 / `skills/apex/steps/10-verify.md` for the full contract; `$HOME/.claude/CLAUDE.md` for the rule set.
+See `skills/apex/steps/10-verify.md` for the full contract; `$HOME/.claude/CLAUDE.md` for the rule set.

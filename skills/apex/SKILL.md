@@ -5,7 +5,7 @@ description: Main coding orchestrator. Linear 15-step flow with three tiers (tri
 
 # /apex
 
-Main session orchestrator. Full behavioral contract: `apex-core.md`. Light-read skeleton + skip matrix: `apex-core-overview.md`.
+Main session orchestrator. This SKILL plus the lazy-loaded `steps/NN-*.md` per-step contracts are the complete runtime spec - self-contained, read nothing else to run /apex.
 
 ## Step 0: queue tasks
 
@@ -48,7 +48,7 @@ Dispatch each step N in this exact order - the order is load-bearing for the `st
 2. `Read(skills/apex/steps/NN-*.md)` - loads the contract. It MUST follow the step-1 `TaskUpdate`: a read taken before the step became active does not satisfy the gate (`read_steps[N] >= active_since`).
 3. Step work (`Edit` / `Write` / `MultiEdit` / `NotebookEdit` / `Task` / `Bash`) - the gate denies the first work tool of step N until its contract has been read since activation, then passes for the rest of the step.
 
-The trivial branch still marks step 3 `in_progress` with `metadata={step: 3}` before its 3.1 inline `Edit`. Step 0 (the `TaskCreate` queue) runs before any step is active, so the gate fail-opens there. The gate is orchestrator-only and fail-opens on every non-apex / unset-step / parse-error path (`apex-core.md` Conventions, "step-read gate hook"). R3-a perf + a real-transcript canary green were signed off over a captured standard run at VERSION 10.0.0 (replay via `skills/apex/scripts/replay-canary.sh`).
+The trivial branch still marks step 3 `in_progress` with `metadata={step: 3}` before its 3.1 inline `Edit`. Step 0 (the `TaskCreate` queue) runs before any step is active, so the gate fail-opens there. The gate is orchestrator-only and fail-opens on every non-apex / unset-step / parse-error path (`skills/apex/scripts/step-read-gate-hook.sh`). R3-a perf + a real-transcript canary green were signed off over a captured standard run at VERSION 10.0.0 (replay via `skills/apex/scripts/replay-canary.sh`).
 
 ## Step contracts (terse)
 
@@ -88,6 +88,4 @@ Claude Code SessionEnd hook catches the case where the entire CC session ends mi
 
 ## Parallel CC sessions on one project
 
-Two Claude Code sessions running /apex against the same project repo mint independent worktrees (`<main>/.apex-worktrees/<sessionA>/`, `<main>/.apex-worktrees/<sessionB>/`) on independent branches (`apex/<sessionA>`, `apex/<sessionB>`). Each has its own index, working tree, and `.claude-tmp/apex-active/`; the sessions do not observe each other's edits during execution. Each lands back on its recorded `base_branch` via its own `/apex-merge` run; textual overlap surfaces as a conflict in the standard `/apex-merge` step 4 resolver flow. No coordination is required at mint - worktree isolation is the coordination. See `apex-core.md` Conventions ("Parallel /apex on one project") for the full contract.
-
-See `apex-core.md` for the full per-step contract (artifacts, exit codes, schemas, abort paths) and Conventions block (safety paths, cc_session_id resolution, manifest schema, scope-check hook, file-health hook, trace path schema, JSON-Schema validation).
+Two Claude Code sessions running /apex against the same project repo mint independent worktrees (`<main>/.apex-worktrees/<sessionA>/`, `<main>/.apex-worktrees/<sessionB>/`) on independent branches (`apex/<sessionA>`, `apex/<sessionB>`). Each has its own index, working tree, and `.claude-tmp/apex-active/`; the sessions do not observe each other's edits during execution. Each lands back on its recorded `base_branch` via its own `/apex-merge` run; textual overlap surfaces as a conflict in the standard `/apex-merge` step 4 resolver flow. No coordination is required at mint - worktree isolation is the coordination.

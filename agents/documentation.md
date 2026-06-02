@@ -6,7 +6,7 @@ model: sonnet
 
 # documentation
 
-Spec: `apex-core.md` step 11.
+Spec: `skills/apex/steps/11-tail.md`.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -25,7 +25,7 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 - Surface cross-references between feature docs and architecture docs so a new feature doc lands in the right place.
 - When proposing a follow-up edit to remove or update a stale reference in ANOTHER doc, the return summary MUST quote the exact stale source text verbatim (one line, with `file:line` origin). Unquoted "X mentions Y, should be updated" recommendations are forbidden - the quoting requirement forces evidence collection before recommendation and prevents hallucinated cross-doc drift (agent claimed `CLAUDE.md` contained `kie_provider` text that was already absent).
 - **Self-validate writes before returning**. Before reporting `status: done` / `edits-applied`, run `git diff --name-only {diff_anchor}` (or `git status --porcelain` when no diff_anchor is in scope) and confirm every file you claim to have edited appears in the diff. An Edit tool call can silently no-op when the `old_string` already matched the desired `new_string`, or when the chosen old_string actually changed nothing - the tool returns success either way. Returning `done` without this self-check forces the orchestrator into an inline diff-name-only audit + re-apply (`node-system.md` edit silently no-oped, self-report said success, orchestrator recovered via inline audit; band-aid not contract). On mismatch: re-apply the missing edit before returning, or downgrade to `status: partial` with the unverified target named.
-- CLAUDE.md leanness budget: project CLAUDE.md loads every turn; Claude Code degrades past a ~40k-char hard cliff. Before adding to it, `wc -c CLAUDE.md`. If already >= 30k chars or the edit would cross it, put the detail in the relevant `docs/` file and leave only a one-line pointer in CLAUDE.md; prefer tightening/relocating existing bulk over net-new prose. See `apex-core.md` Conventions ("Project CLAUDE.md budget").
+- CLAUDE.md leanness budget: project CLAUDE.md loads every turn; Claude Code degrades past a ~40k-char hard cliff. Before adding to it, `wc -c CLAUDE.md`. If already >= 30k chars or the edit would cross it, put the detail in the relevant `docs/` file and leave only a one-line pointer in CLAUDE.md; prefer tightening/relocating existing bulk over net-new prose.
 - Fill TODO markers in `project-context.md` when this run's changes resolve them; never re-introduce stale ones.
 - Update `project-context.md` itself when structural changes warrant a new module boundary, a new security-sensitive path, or a new doc cross-reference.
 
@@ -38,4 +38,4 @@ This agent does docs + architecture only. Does NOT do:
 
 Edits MUST land in the union of: (a) doc safety paths (READMEs at any depth + project `docs/**` + `CLAUDE.md`) AND (b) any file already in this session's main-scope `allowed_files`. When a needed cross-reference points at an architecture doc that is NOT in `allowed_files` (e.g., `docs/architecture/architecture-api.md`), DO NOT silently extend the touch surface - emit a one-line `cross-ref-suggestion: <path> - <reason>` in the agent's return summary for the orchestrator to surface at step 15, and leave the file untouched (doc-agent edited `docs/architecture/architecture-api.md` outside `allowed_files`, creating recurring post-dispatch scope drift).
 
-See `apex-core.md` Conventions for safety paths (READMEs at any depth + project `docs/**` are always allowed).
+READMEs at any depth + project `docs/**` are always allowed (standard safety paths, hook-enforced).

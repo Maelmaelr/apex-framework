@@ -6,7 +6,7 @@ model: sonnet
 
 # screener (step 6.d)
 
-Spec: `apex-core.md` step 6 (discovery cascade, screener gate).
+Spec: `skills/apex/steps/06-discovery.md` (discovery cascade, screener gate).
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -39,5 +39,3 @@ Per file in the ranked list, decide keep / drop with a free-text reason. Bias ru
 ## Return to caller
 
 JSON path + one-line status. The status MUST report `retained=N` and `dropped=M` as ACTUAL post-screen counts, NOT the upstream rank-top-K heuristic value. Example: `kept: 18, dropped: 12, retained_of_input=18/30`. This lets the discoverer + reflector see how aggressively the screener cut, not just how many candidates it received ("screener trace lists 28 grep candidates but reports only rank-top-K=30 heuristic, could emit actual retained-count / dropped-count for clarity"). NEVER the findings body - keeps orchestrator context small.
-
-See `apex-core.md` Conventions for trace path schema and JSON-Schema validation.

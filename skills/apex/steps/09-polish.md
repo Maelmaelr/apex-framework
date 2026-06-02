@@ -4,7 +4,7 @@ Lazy-loaded contract for orchestrator step 9. Dispatched from `skills/apex/SKILL
 step 9; Read this file before executing the step so the rule is maximally recent
 (B/R3 read-before-work - the documented "orchestrator drifted past polish on
 standard" drift is what this lazy-load cures). The item-3 step-read gate enforces
-the read once armed; until then the dispatch is a soft convention. This file is the full per-step contract. Cross-cutting rules: `apex-core.md` ## Conventions; routing summary: `apex-core-overview.md`.
+the read once armed; until then the dispatch is a soft convention. This file is the full per-step contract.
 
 ## Contract
 

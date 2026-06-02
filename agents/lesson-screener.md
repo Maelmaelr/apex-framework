@@ -6,7 +6,7 @@ model: haiku
 
 # lesson-screener (apex step 5)
 
-Spec: `apex-core.md` step 5 (lesson loading) | schema `skills/apex/schemas/lesson-screened.schema.json`.
+Spec: `skills/apex/steps/05-lessons.md` (lesson loading) | schema `skills/apex/schemas/lesson-screened.schema.json`.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -41,5 +41,3 @@ Per section in the raw input, decide keep / drop with a free-text reason. Bias r
 ## Return to caller
 
 JSON path + one-line status (e.g., `kept: 3, dropped: 7`). NEVER the kept content - the orchestrator reads `kept[]` from the JSON to keep its message-history footprint small. When the raw grep input carried the `--- TRUNCATED ---` footer, the status MUST append ` truncated=true` so the orchestrator can re-run `grep-lessons.sh` with a higher line cap or targeted keys before relying on the screened set - a silently discarded 121st+ line dropped potentially relevant sections in 2 sessions.
-
-See `apex-core.md` Conventions for trace path schema and JSON-Schema validation.

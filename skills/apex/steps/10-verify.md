@@ -3,7 +3,7 @@
 Lazy-loaded contract for orchestrator step 10 (absorbs the former `skills/apex/review.md` as the
 10.5 sub-step). Dispatched from `skills/apex/SKILL.md` step 10; Read this file before executing
 the step so the verify + review rules are maximally recent (B/R3 read-before-work). The item-3
-step-read gate enforces the read once armed; until then the dispatch is a soft convention. This file is the full per-step contract. Cross-cutting rules: `apex-core.md` ## Conventions; routing summary: `apex-core-overview.md`.
+step-read gate enforces the read once armed; until then the dispatch is a soft convention. This file is the full per-step contract.
 
 ## Step 10 - Verify
 
@@ -14,7 +14,7 @@ step-read gate enforces the read once armed; until then the dispatch is a soft c
 
 ## Step 10.5 - Review
 
-Spec: `apex-core.md` step 10.5. Sub-step of `apex/SKILL.md` task 10.
+Sub-step of `apex/SKILL.md` task 10.
 
 ## Gate (deterministic, inline at orchestrator; NO AI emit)
 
@@ -94,4 +94,4 @@ The reflector (step 13) reads `.claude-tmp/apex-active/{session}-traces/review/*
 - `review-fired: gate_match=<reason> findings=N action=<verdict>` when the gate passed.
 - `review-skipped: gate_block=<reason>` when the gate dropped (read from `{session}-review-skipped.json`).
 
-See `apex-core.md` step 10.5 / `agents/reviewer.md` for the full contract; `skills/apex/schemas/review-result.schema.json` for the return shape.
+See `agents/reviewer.md` for the full contract; `skills/apex/schemas/review-result.schema.json` for the return shape.

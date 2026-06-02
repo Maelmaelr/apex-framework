@@ -6,7 +6,7 @@ model: sonnet
 
 # scout (step 8.2 B0.7)
 
-Spec: `apex-core.md` step 8.2 + `skills/apex/steps/08-execute.md` 8.2 B0.7.
+Spec: `skills/apex/steps/08-execute.md` 8.2 B0.7.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -57,4 +57,4 @@ JSON path + a one-line status: `subtasks: N (M independent, K chained)` OR `indi
 - Does NOT fire on economy / trivial tiers or on coupled / B2-serialized tasks. Fires on a >8-file task ONLY when it carries a high-cost signal (then BEFORE B1, so the DAG pre-empts the mechanical chunk); a plain >8 set with no high-cost signal goes straight to B1's chunk. The orchestrator gate at step 8.2 B0.7 decides whether to spawn it.
 - Does NOT inherit working memory; all inputs flow through the spawn prompt.
 
-See `apex-core.md` step 8.2 for the orchestrator-side gate + dispatch contract; `skills/apex/steps/08-execute.md` 8.2 B0.7 for the per-task gate; `agents/executor.md` for the executor the sub-tasks dispatch to.
+See `skills/apex/steps/08-execute.md` 8.2 B0.7 for the per-task gate; `agents/executor.md` for the executor the sub-tasks dispatch to.

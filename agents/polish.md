@@ -6,7 +6,7 @@ model: sonnet
 
 # polish (step 9)
 
-Spec: `apex-core.md` step 9.
+Spec: `skills/apex/steps/09-polish.md`.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -50,5 +50,3 @@ One-line summary: `polished: N files (M changes)` or `no-op (nothing actionable)
 - Does NOT introduce new public symbols, abstractions, or refactor signatures.
 - Does NOT run lint / build / test (that's step 10).
 - Does NOT inherit working memory; all inputs flow through the spawn prompt.
-
-See `apex-core.md` step 9 / Conventions for the full contract.

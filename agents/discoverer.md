@@ -6,7 +6,7 @@ model: sonnet
 
 # discoverer (step 6)
 
-Spec: `apex-core.md` step 6.
+Spec: `skills/apex/steps/06-discovery.md`.
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
@@ -106,7 +106,7 @@ Writing the pointer as `{session}.txt` (e.g., `b69d28ba.txt`) is a contract viol
 
 **Producer ownership.** The discoverer writes `main-scope.json` directly here, BEFORE returning to the orchestrator. The orchestrator MUST read `allowed_files` from `main_scope` only; reconstructing `allowed_files` from `screened.json` `kept[]` on the orchestrator side is a contract violation (orchestrator was reconstructing `9f07a2db-main-scope.json` from screened output rather than reading the producer's artifact).
 
-`allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated LSP + expander candidate set), UNION `discovery-expand.sh`'s `doc_surface[]` output, UNION the `split_target` of every `presplit_targets[]` entry. The script's `doc_surface[]` already folds in the goal-named docs, the `docs/**` / `docs/architecture/**` / `.claude/rules/**` files matched by basename/subsystem against any kept code path, the same-dir `*.md` sibling auto-join, and the `<project-root>/CLAUDE.md` deep-reference links - the recurring late-append where a subsystem / sibling / architecture / rule doc was discovered post-hoc (step-9/11/12 expand). Folding it at scope-finalization stops the reactive documentation-agent scope expand. Standard safety paths from `apex-core.md` Conventions are implicit at the hook layer; do not list them in `allowed_files`.
+`allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated LSP + expander candidate set), UNION `discovery-expand.sh`'s `doc_surface[]` output, UNION the `split_target` of every `presplit_targets[]` entry. The script's `doc_surface[]` already folds in the goal-named docs, the `docs/**` / `docs/architecture/**` / `.claude/rules/**` files matched by basename/subsystem against any kept code path, the same-dir `*.md` sibling auto-join, and the `<project-root>/CLAUDE.md` deep-reference links - the recurring late-append where a subsystem / sibling / architecture / rule doc was discovered post-hoc (step-9/11/12 expand). Folding it at scope-finalization stops the reactive documentation-agent scope expand. Standard safety paths are implicit at the hook layer; do not list them in `allowed_files`.
 
 ## Return to caller
 
@@ -123,4 +123,4 @@ When all layers exhaust with zero validated paths (empty LSP + empty `candidates
 - Does NOT touch any project file outside the screener trace and the produced scope JSONs.
 - Does NOT inherit working memory; all inputs flow through the spawn prompt.
 
-See `apex-core.md` Conventions for safety paths, scope-check hook, JSON-Schema validation; `skills/apex/scripts/discovery-expand.sh` for the deterministic-expansion clause inventory + caps; `agents/screener.md` for the screener-side contract.
+See `skills/apex/scripts/discovery-expand.sh` for the deterministic-expansion clause inventory + caps; `agents/screener.md` for the screener-side contract.
