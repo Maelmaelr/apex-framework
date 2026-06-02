@@ -114,6 +114,8 @@ line="apex-tech-watch: <N> source(s) fetched, <M> failure(s), <K> block(s) rotat
 printf '%s\n' "$line" | tee -a "$SUMMARY"   # on failures, tee each "  <id>: <err>" too
 ```
 
+Then surface degraded fetch quality: grep the blocks appended THIS run for quality markers (`stale`, `unverified`, `likely-stale`) and emit one `  warn <id>: <marker line>` per hit into `$SUMMARY`. A `fetch returned a likely-stale snapshot` / out-of-window source is NOT a hard failure (the block still appended) so it never trips the `<M> failure(s)` count - without this scan it passes silently and the improve loop cannot see partial-quality runs deterministically (the consumer would have to re-read every block). Zero hits -> no extra line.
+
 ## Step 5: Self-reflect
 
 Spawn `agents/reflector.md` (Sonnet, foreground) with phase `apex-tech-watch`. Captures stale-source / rotation-policy / sources.json drift signals into `~/.claude/tmp/apex-workflow-improvements.md` for the next `/apex-improve` to consume.
