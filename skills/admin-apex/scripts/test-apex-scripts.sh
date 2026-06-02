@@ -438,6 +438,14 @@ else
   echo "FAIL suite test-step-gate.sh" >&2; failed=$((failed + 1))
 fi
 
+# 18. apex-merge per-iteration reload reminder fixtures (Workstream B item-4) live
+#     in a sibling file (file-health cap); run it and fold pass/fail into totals.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-merge-reload.sh"; then
+  echo "PASS suite test-merge-reload.sh"; pass=$((pass + 1))
+else
+  echo "FAIL suite test-merge-reload.sh" >&2; failed=$((failed + 1))
+fi
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

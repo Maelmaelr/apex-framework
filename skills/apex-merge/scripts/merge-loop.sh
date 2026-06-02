@@ -263,6 +263,17 @@ PY
     echo "merge-loop.sh: conflict on $BRANCH (trivial-union resolved $TRIVIAL_COUNT):"
     [[ -n "$CONTENT_REPORT" ]] && { echo "content-conflicts:"; echo "$CONTENT_REPORT"; }
     [[ -n "$DU_UD" ]] && { echo "du-ud (keep-deleted|keep-modified, NOT resolver):"; echo "$DU_UD"; }
+    # Per-iteration reload reminder (SKILL.md step 4 / resolve-one-conflict.md
+    # dispatch; Workstream B item-4). Emit one line per remaining conflicted file
+    # (content + du/ud) as the LAST stdout block so the orchestrator re-reads the
+    # per-conflict contract before resolving each, keeping it recent across the
+    # unbounded loop. A 2-conflict-file branch therefore prints the reminder twice.
+    { [[ -n "$CONTENT_REPORT" ]] && printf '%s\n' "$CONTENT_REPORT"
+      [[ -n "$DU_UD" ]] && printf '%s\n' "$DU_UD"; } \
+      | while IFS= read -r _RP; do
+          [[ -z "$_RP" ]] && continue
+          echo "CONFLICT on $_RP. Per dispatch, Read skills/apex-merge/resolve-one-conflict.md before resolving."
+        done
     exit 20
   fi
   append_result "$BRANCH" "$BASE" "merge-refused" "git merge returned non-zero without conflicts"
