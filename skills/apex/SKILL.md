@@ -46,7 +46,7 @@ Step 13 reflector is **background** in non-trivial paths (economy + standard); t
 Dispatch each step N in this exact order - the order is load-bearing for the `step-read-gate-hook.sh` gate (settings.json, wired at all touchpoints):
 1. `TaskUpdate(taskId=N, status="in_progress", metadata={step: N})` - the step-start signal; stamps the gate's `active_step`/`active_since`.
 2. `Read(skills/apex/steps/NN-*.md)` - loads the contract. It MUST follow the step-1 `TaskUpdate`: a read taken before the step became active does not satisfy the gate (`read_steps[N] >= active_since`).
-3. Step work (`Edit` / `Write` / `Task` / `Bash`) - the gate denies the first work tool of step N until its contract has been read since activation, then passes for the rest of the step.
+3. Step work (`Edit` / `Write` / `MultiEdit` / `NotebookEdit` / `Task` / `Bash`) - the gate denies the first work tool of step N until its contract has been read since activation, then passes for the rest of the step.
 
 The trivial branch still marks step 3 `in_progress` with `metadata={step: 3}` before its 3.1 inline `Edit`. Step 0 (the `TaskCreate` queue) runs before any step is active, so the gate fail-opens there. The gate is orchestrator-only and fail-opens on every non-apex / unset-step / parse-error path (`apex-core.md` Conventions, "step-read gate hook"). R3-a perf + a real-transcript canary green stay measured under a live standard run (`skills/apex/steps/_dod.md`).
 

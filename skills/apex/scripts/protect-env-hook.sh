@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Guardrail hook: blocks access to .env* and credential files.
-# PreToolUse matcher: Read|Edit|Write
+# PreToolUse matcher: Edit|Write|MultiEdit|NotebookEdit (settings.json; not wired on Read)
 # Allows .env.example, .env.sample, .env.template (safe reference files).
 # Exit 0 always -- blocks via JSON output per hook protocol.
 set -euo pipefail

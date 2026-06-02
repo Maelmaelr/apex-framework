@@ -26,7 +26,8 @@
 #     keeps guard - sibling SessionEnd misfire could race a mid-flight run)
 #   - admin-apex-finalize.sh (no-commit branch when nothing staged; keeps
 #     guard - the no-commit branch fires before any structural mutation)
-#   - evolve.md mid-flight rollback (after git restore; keeps guard)
+#   - evolve.md task 6 rollback + SKILL.md task 8 rollback-evolve (after git restore;
+#     both pass --post-success - an explicit-abort run is authoritatively over)
 #   - skills/admin-apex/SKILL.md task 11 (post-success path; uses
 #     --post-success to bypass the guard)
 #
