@@ -38,7 +38,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - **verb-pattern relaxation**: prompt matching `/^\s*(rename|format|fix typos?|reword|add (a )?comment|remove (a )?comment|update copy|update string)\b/i` may resolve its target via single inline `Glob` (zero or 2+ matches = non-trivial); other trivial constraints unchanged
    - if trivial:
      - 3.1 inline single Edit/Write + lightweight commit (worktree lands as a clean mergeable apex/<session> branch awaiting /apex-merge, not a dirty leftover); orchestrator writes minimal hypothesis stub (original_prompt + one-line hypothesis) so step 15 contract stays uniform
-     - jump to 14 (skip 4-13). Trade-off: no verify, no commit, no reflect; user owns lint/build + git add+commit.
+     - jump to 14 (skip 4-13). Trade-off: no verify, no reflect, no push/bump_hint; user owns lint/build (the 3.1 inline commit already lands a clean mergeable apex/<session> branch).
    - if non-trivial: proceed to 4
 
 4. Hypothesis: inline -> {session}-hypothesis.json

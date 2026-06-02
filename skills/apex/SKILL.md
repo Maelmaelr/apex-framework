@@ -37,9 +37,18 @@ All 15 always queued. Trivial branch at step 3 marks 4-13 completed-skipped.
 |----------|------------|---------------------------------------------------------------------------------------------------------|
 | trivial  | step 3     | Step 3.1 inline `Edit`/`Write` + commit -> jump to 14. Skips 4-13.                                      |
 | economy  | step 7     | Step 8 executors run on Sonnet; step 9 polish skipped; step 11 skips `learn`.                           |
-| standard | step 7     | Step 8 executors run on the main session model; full tail (step 9 polish + step 11 documentation always run; learn runs when the difficulty gate holds - no tier-conditional skip path under standard). |
+| standard | step 7     | Step 8 executors run on the main session model; full tail (step 9 polish always; step 11 documentation unless `code-only-no-docs` mode; learn runs when the difficulty gate holds - no tier-conditional skip path under standard). |
 
 Step 13 reflector is **background** in non-trivial paths (economy + standard); the reflector owns the post-reflect `cleanup-session.sh` call as its final action. Step 14 only runs on the trivial path (where step 13 was skipped).
+
+## Per-step dispatch (read-before-work gate)
+
+Dispatch each step N in this exact order - the order is load-bearing for the `step-read-gate-hook.sh` gate (settings.json, wired at all touchpoints):
+1. `TaskUpdate(taskId=N, status="in_progress", metadata={step: N})` - the step-start signal; stamps the gate's `active_step`/`active_since`.
+2. `Read(skills/apex/steps/NN-*.md)` - loads the contract. It MUST follow the step-1 `TaskUpdate`: a read taken before the step became active does not satisfy the gate (`read_steps[N] >= active_since`).
+3. Step work (`Edit` / `Write` / `Task` / `Bash`) - the gate denies the first work tool of step N until its contract has been read since activation, then passes for the rest of the step.
+
+The trivial branch still marks step 3 `in_progress` with `metadata={step: 3}` before its 3.1 inline `Edit`. Step 0 (the `TaskCreate` queue) runs before any step is active, so the gate fail-opens there. The gate is orchestrator-only and fail-opens on every non-apex / unset-step / parse-error path (`apex-core.md` Conventions, "step-read gate hook"). R3-a perf + a real-transcript canary green stay measured under a live standard run (`skills/apex/steps/_dod.md`).
 
 ## Step contracts (terse)
 

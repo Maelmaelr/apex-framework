@@ -7,12 +7,13 @@ its prerequisites. Relocated from the apex-context-rot-optimization plan
 `skills/apex/steps/` now holds all 15 lazy-loaded step contracts (`01-analyze.md` ...
 `15-summary.md`; B step-2 extraction complete - runs 74cb182f / 9101979a / c982c195).
 The item-3 step-read gate (`step-read-gate-hook.sh`) is wired LIVE and ARMED (the
-`{session}-step-progress.json` sentinel is created at every session mint), but still
-fail-opens on every work tool because the orchestrator does not yet emit `metadata.step`
-on its per-step `TaskUpdate`, so `active_step` never advances. Wiring that emission (the
-ENFORCEMENT half) is the remaining step that turns the soft dispatch into a hard
-read-before-work gate; it must be validated under a real /apex standard run (R3-a perf +
-no false-denies) before it ships.
+`{session}-step-progress.json` sentinel is created at every session mint). The ENFORCEMENT
+half is now WIRED: `skills/apex/SKILL.md` "Per-step dispatch" emits
+`TaskUpdate(status=in_progress, metadata={step: N})` before each step's contract Read, so
+`active_step` advances and the gate enforces read-before-work for every real /apex session.
+What stays LIVE-RUN-GATED is the empirical sign-off, not the wiring: R3-a perf on the hot
+Bash/Task path and a no-false-denies real-transcript canary, both measurable only from a
+captured standard run (no standard run is producible inside an admin-apex session).
 
 ## Canonical step filenames
 
@@ -48,15 +49,18 @@ Acceptance status re-verified VERSION 8.0.x (admin-apex run 3ddb1e42, mechanical
 - MET - `test-step-gate.sh` (item-3 step-read gate) green (11/11).
 - PARTIAL - `transcript-step-read-check.py` (item-5 canary) green over the 8/8 synthetic
   fixtures (`test-transcript-step-read.sh`). A green over a REAL captured /apex
-  standard-run transcript with a live `steps/NN` gates spec is LIVE-RUN-GATED: today's
-  flows emit no per-step `metadata.step` boundary, so no real fixture exists yet.
+  standard-run transcript with a live `steps/NN` gates spec is LIVE-RUN-GATED: with the
+  ENFORCEMENT wiring above, real /apex runs now emit the per-step `metadata.step` boundary,
+  so a real fixture becomes capturable on the next standard run - none has been captured
+  inside this admin-apex session yet.
 - LIVE-RUN-GATED - pre/post-B token accounting (R1) recorded for a standard run, so an
   equal or higher total reads as the expected recency tradeoff, not a regression.
 
 The mechanical split (skeleton + 15 lazy-load step files + armed gate + synthetic canary)
-is structurally COMPLETE. The two open items both require a real /apex standard run, which
+plus the ENFORCEMENT wiring (orchestrator emits `metadata.step`) is structurally COMPLETE.
+The remaining items are empirical captures that require a real /apex standard run, which
 cannot be produced inside an admin-apex session; the major-bump step-6 ACCEPTANCE sign-off
-lands once they are captured from a live run (alongside the ENFORCEMENT wiring above).
+lands once they are captured from a live run.
 
 ## apex-merge (item 4)
 
