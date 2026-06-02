@@ -363,18 +363,25 @@ def build_cluster(cid, items, mode):
     return {"id": cid, "kind": kind, "items": items, "summary": summary}
 
 
+def _diff_key(item):
+    """NEW-diff identity: leading path/label, minus the volatile count detail
+    (word/hash/id). Keying the diff on the full string mis-reports a count delta
+    on an unchanged path as NEW; items without ' (' key on the whole string."""
+    return item.split(" (", 1)[0]
+
+
 def diff_against_prior(clusters, prior_path):
-    """polish-only NEW-item diff keyed on cluster id."""
+    """polish-only NEW-item diff keyed on cluster id + per-item path key."""
     prior = {}
     if prior_path and os.path.exists(prior_path):
         try:
             for c in json.loads(Path(prior_path).read_text()).get("clusters", []):
-                prior[c["id"]] = set(c.get("items", []))
+                prior[c["id"]] = {_diff_key(i) for i in c.get("items", [])}
         except (OSError, json.JSONDecodeError, KeyError):
             pass
     new_clusters = []
     for c in clusters:
-        new_items = [i for i in c["items"] if i not in prior.get(c["id"], set())]
+        new_items = [i for i in c["items"] if _diff_key(i) not in prior.get(c["id"], set())]
         if new_items:
             nc = dict(c)
             nc["items"] = new_items

@@ -162,6 +162,48 @@ inband "$out" hash-roster "agents/at.md"; at=$?
 rm -rf "$hr"
 rm -f "$ti"
 
+# --- approaching NEW-diff path-keying (regression: recurred runs that nudged an
+#     in-band file's word count). The polish NEW-only diff must key on FILE PATH,
+#     not the volatile count-string, so a word delta (up OR down) on a file already
+#     in the prior approaching band is NOT a false NEW; a file NEWLY entering the
+#     band still surfaces. refs.md keeps missing/orphan-refs quiet so only the
+#     approaching cluster is in play. ---
+ak=$(mktemp -d); mkdir -p "$ak/skills/apex/scripts"
+{
+  printf '{"default":2500,"tiers":{"agents/executor.md":4000},'
+  printf '"near_cap_ratio":0.85,"near_cap_exempt":[],"hash_roster":{"ceiling":0,"docs":[]}}'
+} > "$ak/skills/apex/scripts/content-budget.json"
+printf 'agents/executor.md\n' > "$ak/refs.md"
+invp=$(mktemp); prior=$(mktemp); aout=$(mktemp)
+{   # post-apply inventory: executor.md at 3700w (93% of 4000) -> in band.
+  printf '{"skills":[],"agents":[{"path":"agents/executor.md","words":3700}],'
+  printf '"scripts":[],"schemas":[],"hooks":[],"spec_docs":[{"path":"refs.md"}],"version":"0"}'
+} > "$invp"
+
+prior_at() {  # $1=words $2=pct -> 1-item approaching prior on $prior
+  printf '{"run":"x","clusters":[{"id":"approaching","kind":"approaching-budget",' > "$prior"
+  printf '"items":["agents/executor.md (%s words, %s%% of 4000 cap)"]}]}' "$1" "$2" >> "$prior"
+}
+
+# 12a. prior in-band at a HIGHER count (3900/98% -> 3700/93%, reduction) -> 0 NEW.
+prior_at 3900 98
+CLAUDE_PROJECT_DIR="$ak" python3 "$ENG" --inventory "$invp" --mode polish --run "$RUN" \
+  --prior-drift "$prior" --out "$aout" >/dev/null 2>&1
+check "approaching path-keyed: reduction is not NEW" 0 $?
+
+# 12b. prior in-band at a LOWER count (3500/88% -> 3700/93%, increase) -> 0 NEW.
+prior_at 3500 88
+CLAUDE_PROJECT_DIR="$ak" python3 "$ENG" --inventory "$invp" --mode polish --run "$RUN" \
+  --prior-drift "$prior" --out "$aout" >/dev/null 2>&1
+check "approaching path-keyed: increase is not NEW" 0 $?
+
+# 12c. file NOT in the prior band -> genuinely NEW (path-key must not over-suppress).
+printf '%s' '{"run":"x","clusters":[]}' > "$prior"
+CLAUDE_PROJECT_DIR="$ak" python3 "$ENG" --inventory "$invp" --mode polish --run "$RUN" \
+  --prior-drift "$prior" --out "$aout" >/dev/null 2>&1
+check "approaching path-keyed: new entrant still surfaces" 1 $?
+rm -f "$invp" "$prior" "$aout"; rm -rf "$ak"
+
 echo "test-audit-detectors.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1
 exit 0
