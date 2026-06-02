@@ -23,4 +23,9 @@ The content resolver only handles `<<<<`-marked UU/AA hunks. Remaining content c
 
 ## Decision (per file)
 
-Then AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = reject-edit-manually). Per-option `description` carries a one-line diff sketch + recommendation only; full rationale lives in `<run>-merge-result.json`. On accept: write file, `git add P`. On reject: user manual edit, then `git add P`. On abort: `git merge --abort`, skip cleanup, continue.
+Then AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = reject-edit-manually). Per-option `description` carries a one-line diff sketch + recommendation only; full rationale lives in `<run>-merge-result.json`. On accept: write file, `git add P`. On reject: user manual edit, then `git add P`. On abort: `git merge --abort`, then stamp the terminal entry (below) + skip cleanup, continue.
+
+## Terminal stamp (per branch, after the last file)
+
+merge-loop.sh left a transient `conflict` entry for this branch; the orchestrator owns the terminal rewrite. Once EVERY conflicted file on the branch is resolved, `git merge --continue`, then record the terminal status so step 4.6's lint pass has a scope:
+`bash skills/apex-merge/scripts/stamp-merge-result.sh <run> --branch <B> --status merged --decision <accept|reject-edit-manually|mixed> --paths <csv of the files you git-added>`. On an abort instead: `bash skills/apex-merge/scripts/stamp-merge-result.sh <run> --branch <B> --status skipped-conflict-abort` (no resolver stamp -> 4.6 runs no apex-fix). Pass ONLY the files you resolved as `--paths`, NOT the trivial-union files merge-loop.sh already staged - those `--paths` become step 4.6's apex-fix scope; a markdown-only set yields an empty lintable filter and 4.6 correctly skips (plan F22).

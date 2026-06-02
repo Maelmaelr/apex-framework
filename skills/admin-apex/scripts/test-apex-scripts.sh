@@ -446,6 +446,18 @@ else
   echo "FAIL suite test-merge-reload.sh" >&2; failed=$((failed + 1))
 fi
 
+# 19. stamp-merge-result.sh terminal-stamp fixtures (plan F22: resolver=/paths so
+#     step 4.6's apex-fix gate fires) live in a sibling file; fold pass/fail.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-stamp-merge-result.sh"; then
+  echo "PASS suite test-stamp-merge-result.sh"; pass=$((pass + 1))
+else echo "FAIL suite test-stamp-merge-result.sh" >&2; failed=$((failed + 1)); fi
+
+# 20. protect-env-hook.sh deny/allow fixtures (now relied on for the Read matcher)
+#     live in a sibling file; fold pass/fail into totals.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-protect-env.sh"; then
+  echo "PASS suite test-protect-env.sh"; pass=$((pass + 1))
+else echo "FAIL suite test-protect-env.sh" >&2; failed=$((failed + 1)); fi
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1
