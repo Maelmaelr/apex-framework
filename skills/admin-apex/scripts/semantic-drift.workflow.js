@@ -18,8 +18,10 @@ export const meta = {
 // unlike the deterministic lessons-freshness check, this fan-out's per-unit work
 // is non-deterministic, so the orchestrator cannot correctly inline it.
 //
-// Invoked by audit.md task 3 ONLY when: mode == audit+apply (never audit-only,
-// never a silent cron path - Open risk 4), AND the Workflow tool is reachable.
+// Invoked by audit.md task 3 ONLY when: SKILL task 1's semantic-drift toggle ==
+// run (opt-in; offered only after an audit+apply mode select, default skip - the
+// expensive fan-out is off on a normal session; never audit-only, never a silent
+// cron path - Open risk 4), AND the Workflow tool is reachable.
 // The serial fallback (audit.md: dispatch the same per-unit Explore agents in a
 // single response) produces identical findings when Workflow is absent
 // (headless/cron). Agents reuse agentType 'Explore' (read-only search, no Edit ->
