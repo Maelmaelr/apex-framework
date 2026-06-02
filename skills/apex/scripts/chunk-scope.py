@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Partition allowed_files into N approximately-equal chunks.
 
-Spec: skills/apex/execute.md step 8.2 (B1: scope-size hard split when
+Spec: skills/apex/steps/08-execute.md step 8.2 (B1: scope-size hard split when
 len(allowed_files) > 8). Goal text duplicates across chunks; first executor
 to implement wins, the second sees `already-satisfied`.
 

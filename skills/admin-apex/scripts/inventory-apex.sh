@@ -4,6 +4,7 @@
 #
 # Walks:
 #   skills/apex/*.md             -> skills[] (apex sub-skills)
+#   skills/apex/steps/*.md       -> skills[] (per-step lazy-load contracts; R5 budget-enforced)
 #   skills/apex-*/SKILL.md       -> skills[] (sibling apex skills: improve, tech-watch,
 #                                  eod, fix, init, lessons-extract, lessons-analyze,
 #                                  file-health)
@@ -227,6 +228,7 @@ def read_version():
 inventory = {
     "skills": (
         collect_md(os.path.join(repo, "skills/apex/*.md"))
+        + collect_md(os.path.join(repo, "skills/apex/steps/*.md"))
         + collect_md(os.path.join(repo, "skills/apex-*/SKILL.md"))
         + collect_md(os.path.join(repo, "skills/admin-apex/*.md"))
     ),

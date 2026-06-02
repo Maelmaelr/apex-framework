@@ -37,7 +37,7 @@ Inline **deterministic rule** (no AI emit, no subagent). Inputs: `{session}-hypo
        # fan-out where Sonnet suffices and the polish/learn skip is correct, so
        # goals.length is irrelevant (multi-
        # goal all-green audits burned 88k-109k tokens on standard/opus for
-       # checklist passes; execute.md B3 already clusters such fan-outs under E1).
+       # checklist passes; steps/08-execute.md B3 already clusters such fan-outs under E1).
        hypothesis.mode == "report-only"
        OR every goals[] entry is a verify/check/audit predicate with no write target
      )

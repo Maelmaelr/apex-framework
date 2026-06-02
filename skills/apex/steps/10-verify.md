@@ -1,9 +1,19 @@
----
-name: review
-description: Step 10.5 review sub-step. Gated code-review pass over diff_anchor..HEAD INTERSECT allowed_files; checks CLAUDE.md rules (pattern, over-engineering, security-at-boundaries, i18n, complexity, doc-consistency). Spawns agents/reviewer.md (Sonnet, foreground). Runs ONLY under standard tier when diff is non-trivial and complexity-hinted.
----
+# apex step 10 - Verify (+ 10.5 Review)
 
-# review (step 10.5)
+Lazy-loaded contract for orchestrator step 10 (absorbs the former `skills/apex/review.md` as the
+10.5 sub-step). Dispatched from `skills/apex/SKILL.md` step 10; Read this file before executing
+the step so the verify + review rules are maximally recent (B/R3 read-before-work). The item-3
+step-read gate enforces the read once armed; until then the dispatch is a soft convention. Full
+per-step contract (artifacts, exit codes, schemas, abort paths): `apex-core.md` step 10 + step 10.5.
+
+## Step 10 - Verify
+
+`bash skills/apex/scripts/verify-build.sh --session {session} --with-tests --in-scope-only` (project-aware: `package.json` / `Cargo.toml` / `pyproject.toml` / `go.mod`; first-fail-stop). `--session` validates 8-hex (the explicit flag is the canonical callsite shape). `--with-tests` delegates to `verify-tests.sh` after lint/typecheck/build pass: derives modified files from the session manifest's `base_branch` via `git merge-base $base_branch HEAD`, maps them to project-specific test files (vitest `--related` / jest `--findRelatedTests` / heuristic glob; `cargo test -p <pkg>` per touched workspace member; `pytest` on related test files; `go test ./<dir>/...` per touched dir), runs only those. Auto-skips silently when no manifest / no test runner / zero derived test files. `--in-scope-only` (6-session foreign-lint recurrence) makes a foreign-only first-fail (no `allowed_file` implicated) exit 0 instead of first-fail-stopping; the script implements the partition already. Failure feeds the same fix-loop as build errors.
+
+- exit 0 = clean, proceed to **step 10.5 review** below.
+- non-zero = errors at `.claude-tmp/apex-active/{session}-verify-errors.txt`. **Scope-partition before fix-loop dispatch**: split errors three ways - in-scope-changed (file path in `allowed_files` AND error line falls inside this session's changed-line range from `git diff {diff_anchor} -- <file>`), in-scope-foreign-line (file in `allowed_files` but error line outside the changed-line range - pre-existing debt that this session did not touch; auto-defer without AskUserQuestion, MediaNode complexity 23 at line 205 blocked tsc/build/tests for an unrelated edit), and out-of-scope (file path not in `allowed_files`). In-scope-foreign-line AND out-of-scope errors are appended to `~/.claude/tmp/git-agent-errors.log` directly and never enter the fix-loop (cap-3 burned on a foreign sibling cognitive-complexity error outside the session's 3-file scope). Before appending, grep that log for a prior `path:rule` match; a hit means this foreign violation was already parked in an earlier session - print one advisory line `persistent foreign debt: <path> <rule> across N sessions` at fall-through so chronic out-of-scope debt is surfaced to the user, not silently re-parked forever. Because `verify-build.sh` is first-fail-stop, a foreign first-failure aborts before the in-scope lint/tsc/specs ever run; when the first (and only observed) failure is out-of-scope, re-invoke the in-scope check isolated to the `allowed_files` owning package dir (`cd <in-scope pkg> && <lint>; <tsc>; <related specs>`) before falling through, so a foreign first-failure neither masks a real in-scope regression nor triggers a full executor fix-loop on the foreign error (parked the foreign failure correctly only via manual isolation). If only out-of-scope errors remain, fall through to step 11. Otherwise dispatch `agents/executor.md` with the in-scope error subset (always Sonnet, regardless of step 8 tier; trace at `{session}-traces/verify/fix-{attempt-N}.md`). Counter at `{session}-fix-attempts.json` (producer-validated). Cap 3. On cap exhaustion: AskUserQuestion (`abort` | `proceed-with-errors`). `abort` -> clean exit via `session-end-hook.sh {session}` inline. `proceed-with-errors` -> append remaining in-scope errors to `~/.claude/tmp/git-agent-errors.log`; fall through to step 11.
+
+## Step 10.5 - Review
 
 Spec: `apex-core.md` step 10.5. Sub-step of `apex/SKILL.md` task 10.
 

@@ -22,10 +22,11 @@ regex also keys on the zero-padded leading step number.
 | 1 Analyze | `steps/01-analyze.md` | 3500 |
 | 5 Load lessons | `steps/05-lessons.md` | 3000 |
 | 6 Discovery | `steps/06-discovery.md` | 3500 |
-| 8 Execute | `steps/08-execute.md` | 4000 (absorbs execute.md) |
+| 8 Execute | `steps/08-execute.md` | 4500 (absorbed execute.md) |
 | 2-4, 7, 9-15 | `steps/NN-*.md` | 2500 (default) |
 
-Step 8 absorbs `execute.md`; step 10 absorbs `review.md` (10.5).
+Step 8 absorbed `execute.md` (tier 4500); step 10 absorbed `review.md` (10.5) into
+`steps/10-verify.md` (default 2500 tier).
 
 ## A-core (met)
 

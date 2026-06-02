@@ -113,7 +113,7 @@ E1 contract. Read `{session}-traces/execute/dispatch-summary.json` (skip silentl
 oversized-dispatch: goal="<truncated 80 chars>" tool_calls=N tool_uses=U tokens=T files=M status=<status>
 ```
 
-Cap at 3 lines (top-3 by `tool_uses` desc). When `tool_uses >= 1.5 * tool_calls_made` also add a `selfreport-discrepancy: self-reported N vs actual U tool_uses` line. This escalation is MANDATORY and NON-DISMISSABLE: a coupled / atomic-semantic-change justification explains the merge but NEVER waives the context ceiling - recommend `sequential shared-spec decomposition` (execute.md 8.2 B2); never conclude "coupling => no split needed". Reflector (user-flagged x2) dismissed its own trip on under-reported self-data while the run was actually 134 tool_uses / 256k tokens. Skipped under SKIPPED-no-inputs. Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge, apex-tech-watch) skip this check entirely.
+Cap at 3 lines (top-3 by `tool_uses` desc). When `tool_uses >= 1.5 * tool_calls_made` also add a `selfreport-discrepancy: self-reported N vs actual U tool_uses` line. This escalation is MANDATORY and NON-DISMISSABLE: a coupled / atomic-semantic-change justification explains the merge but NEVER waives the context ceiling - recommend `sequential shared-spec decomposition` (steps/08-execute.md 8.2 B2); never conclude "coupling => no split needed". Reflector (user-flagged x2) dismissed its own trip on under-reported self-data while the run was actually 134 tool_uses / 256k tokens. Skipped under SKIPPED-no-inputs. Other phases (admin-apex, lessons-analyze, lessons-extract, apex-merge, apex-tech-watch) skip this check entirely.
 
 ## Post-reflect cleanup (apex phase only)
 

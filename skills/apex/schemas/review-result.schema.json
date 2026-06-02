@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "review-result.schema.json",
   "title": "{session}-traces/review/result-{attempt}.json",
-  "description": "Output of agents/reviewer.md (step 10.5). Validated by orchestrator post-spawn via validate-json.sh. See skills/apex/review.md.",
+  "description": "Output of agents/reviewer.md (step 10.5). Validated by orchestrator post-spawn via validate-json.sh. See skills/apex/steps/10-verify.md.",
   "type": "object",
   "required": ["session", "attempt", "findings", "action"],
   "properties": {

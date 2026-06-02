@@ -70,7 +70,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - output: {session}-tier.json (validated against tier.schema.json; same shape) -> reason "len(goals)=N, allowed_files=M, rewrite_match=<true|false>, report_only=<true|false>"
    - same prompt + scope -> same tier, every run
 
-8. Execute: execute.md -> executor.md (per task)
+8. Execute: steps/08-execute.md -> executor.md (per task)
    - 8.0 init: orchestrator resolves diff_anchor via `git merge-base $base_branch HEAD` (base_branch from manifest); modified files derived per-consumer via `git diff --name-only {diff_anchor}`. No producer file.
    - pre-flight wc -l on scope; >400 LOC -> queue split task ahead of edits
    - 8.2 goals-driven split: len(goals)==1 -> 1 task (full scope); len(goals)>1 -> N tasks, one goal per spawn prompt; per-task allowed_files narrowed to main-scope subset matching goal nouns; validate-disjoint-scopes.py enforces disjoint when 2+
@@ -98,7 +98,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - if errors: executor.md (always Sonnet for fix-loop, regardless of step 8's tier; cap 3)
     - on cap exhaustion: AskUserQuestion (abort | proceed-with-errors)
 
-10.5 Review (sub-step; runs ONLY on step 10 exit 0): review.md -> reviewer.md (Sonnet, foreground)
+10.5 Review (sub-step; runs ONLY on step 10 exit 0): steps/10-verify.md -> reviewer.md (Sonnet, foreground)
     - deterministic gate: tier==standard AND len(touched INTERSECT allowed_files)>=3 AND (complexity_hint==high OR any goal matches /\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i OR deletions across allowed_files >= 200 lines)
     - reviewer scans diff INTERSECT allowed_files against CLAUDE.md rules (pattern, over-engineering, security-at-boundaries, i18n, cognitive-complexity); cap 5 findings
     - returns {action: pass|fix-needed|escalate} validated against review-result.schema.json
