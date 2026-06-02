@@ -10,7 +10,7 @@ Spec: `apex-core.md` step 13 | `skills/admin-apex/SKILL.md` task 11 | `skills/ap
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
-Always fires at the five reflection points. Apex step 13 is **background** - the orchestrator releases the user immediately and the reflector owns post-reflect cleanup (see "Post-reflect cleanup" below). Admin-apex / lessons-analyze / lessons-extract / apex-merge / apex-tech-watch are foreground (their orchestrators have follow-up tasks that depend on reflector completion).
+Always fires at the six reflection points. Apex step 13 is **background** - the orchestrator releases the user immediately and the reflector owns post-reflect cleanup (see "Post-reflect cleanup" below). Admin-apex / lessons-analyze / lessons-extract / apex-merge / apex-tech-watch are foreground (their orchestrators have follow-up tasks that depend on reflector completion).
 
 The reflector outputs one analysis block every run, even when the heuristic signal flags zero novel traces. In that case the block captures hypothesis-vs-reality (TaskList compared against `{session}-hypothesis.json`) and any cross-session pattern worth surfacing.
 

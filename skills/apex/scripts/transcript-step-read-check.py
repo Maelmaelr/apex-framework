@@ -18,7 +18,7 @@ Model (post-B apex shape - the flow item 5 exists to gate):
   - boundary = a TaskUpdate tool_use marking a step active (status == in_progress;
                step id read from taskId, or metadata.step when keyed that way).
   - contract = a Read whose path matches the gate's regex (steps/NN-*.md post-B).
-  - work     = the first Edit/Write/MultiEdit/Task/Agent/Bash after the boundary.
+  - work     = the first Edit/Write/MultiEdit/NotebookEdit/Task/Bash after the boundary.
 Only ORCHESTRATOR (main-session) tool calls count: subagents do not run steps and
 are never gated (mirrors scope-check / item-3's orchestrator-only split - sidechain
 lines and non-direct callers are skipped).
@@ -38,7 +38,7 @@ Gates file (--gates, JSON):
     "boundary_id_key": "taskId",            # optional; e.g. "metadata.step" post-B
     "read_tool": "Read",                    # optional, default Read
     "read_path_key": "file_path",           # optional, default file_path
-    "work_tools": ["Edit","Write","MultiEdit","Task","Agent","Bash"],  # optional
+    "work_tools": ["Edit","Write","MultiEdit","NotebookEdit","Task","Bash"],  # optional
     "gates": [ {"id": "8", "contract": "steps/08-.*\\.md$"}, ... ]      # required
   }
 
@@ -51,7 +51,7 @@ import json
 import re
 import sys
 
-WORK_TOOLS_DEFAULT = ["Edit", "Write", "MultiEdit", "Task", "Agent", "Bash"]
+WORK_TOOLS_DEFAULT = ["Edit", "Write", "MultiEdit", "NotebookEdit", "Task", "Bash"]
 
 
 def dotted_get(obj, path):

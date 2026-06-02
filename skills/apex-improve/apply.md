@@ -13,7 +13,7 @@ Spec: `skills/apex-improve/SKILL.md` Step 4.
 
 ## Outputs
 
-- `.claude-tmp/admin-apex-active/{run}-applied-ops.json` - JSON array of applied ops (verbatim from plan) with **actual** `delta_lines` field per op (computed post-edit)
+- `.claude-tmp/admin-apex-active/{run}-applied-ops.json` - JSON array of applied-op outcome entries `{plan_op_index: N, status: "applied", delta_lines: <int|null>, dirty_paths: [...]}` that reference the plan op by index; do NOT restate `kind` / `target` / `rationale` verbatim (the plan is authoritative - same shape as evolve.md task 6). `delta_lines` computed post-edit.
 - `.claude-tmp/admin-apex-active/{run}-dirty-paths.txt` - one repo-relative path per line; appended after each successful op
 
 ## Step 4 pre-flight: pre-apply baseline drift report
@@ -36,7 +36,7 @@ For each `op.kind == edit` operation:
 1. Read the target file (full).
 2. Apply the edit via the Edit tool. Use `replace_all` only when the rename is unambiguous across the file (e.g., a renamed symbol).
 3. Re-read the target file; compute actual `delta_lines = new_total - old_total`.
-4. Append the operation (verbatim from the plan) to `{run}-applied-ops.json` with the **actual** `delta_lines` attached.
+4. Append an outcome entry `{plan_op_index: N, status: "applied", delta_lines: <computed>, dirty_paths: [<target>]}` to `{run}-applied-ops.json` - reference the plan op by index, do NOT restate `kind` / `target` / `rationale` (matches evolve.md task 6 so Step 4b's structural ops produce the same shape).
 5. Append the target path to `{run}-dirty-paths.txt`.
 
 **Dangling-ref pre-flight (multi-Edit batches on same file)**: when two or more ops in this run target the same file, OR a single op deletes a variable/function/path-definition that other parts of the file may rely on, after the final Edit re-read the file and grep for tokens that were just removed (variable names, function names, file paths). Any surviving reference to a now-undefined name is a dangling ref - apply a follow-on Edit before moving on. The polish.md `scope_path` incident (session 9e51202e) is the prototype: Step 2 collapse deleted the bash variable definition, Step 3 still referenced `$scope_path` until a follow-on Edit fixed it. Discipline check, not tooling - the cost of one extra grep is much lower than the cost of shipping a broken contract.

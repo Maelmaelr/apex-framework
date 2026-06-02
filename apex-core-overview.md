@@ -11,7 +11,7 @@ Legend: `inline` = main-orchestrator inline prompt | `skill` = `~/.claude/skills
 | Tier     | Decided at | Effect                                                                                            |
 | -------- | ---------- | ------------------------------------------------------------------------------------------------- |
 | trivial  | step 3     | step 3.1 inline edit + commit -> jump to 14. Skips 4-13.                                          |
-| economy  | step 7     | step 8 executors = sonnet; step 9 polish skipped; step 11 learn skipped. All other steps run.     |
+| economy  | step 7     | step 8 executors = sonnet; step 9 polish skipped; step 10.5 review skipped; step 11 learn skipped. All other steps run. |
 | standard | step 7     | step 8 executors = main session model; full tail.                                                 |
 
 Step 13 reflector is **background** in non-trivial paths; reflector owns post-reflect `cleanup-session.sh`. Step 14 only runs on trivial path. Step 15 inline summary is fully deterministic (no LLM hop, no git audit pass).

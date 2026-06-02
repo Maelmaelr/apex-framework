@@ -239,8 +239,15 @@ def detect_hash_roster(root, budget):
     return items
 
 
-def detect_orphans(inv_paths, bodies):
-    """Spec-doc refs with no inventory match (with shorthand/glob/dir exceptions)."""
+def detect_orphans(inv_paths, bodies, root):
+    """Spec-doc refs that resolve to neither an inventory entry nor a real file.
+
+    A ref is an orphan only when nothing in the inventory matches it (after the
+    shorthand/glob/dir exceptions) AND no file exists at that path on disk. The
+    inventory is a curated subset that intentionally skips committed data
+    artifacts (e.g. scripts/fixtures/*.jsonl), so a ref to a real-but-untracked
+    file is a valid reference, not drift - this gate flags dead references, not
+    inventory-membership gaps (those are missing-refs' job)."""
     orphans = set()
     for body in bodies.values():
         for m in REF_RE.findall(body):
@@ -256,6 +263,8 @@ def detect_orphans(inv_paths, bodies):
             if ref in inv_paths:
                 continue
             if any(p.startswith(ref + "/") for p in inv_paths):
+                continue
+            if (root / ref).exists():
                 continue
             orphans.add(ref)
     return sorted(orphans)
@@ -412,7 +421,7 @@ def main():
     budget = load_budget(root)
 
     detected = {
-        "orphan": detect_orphans(inv_paths, bodies),
+        "orphan": detect_orphans(inv_paths, bodies, root),
         "missing": detect_missing(inv, inv_paths, bodies, root),
         "schema": detect_schema_mismatch(inv),
         "dead-hook": detect_dead_hooks(inv, root),

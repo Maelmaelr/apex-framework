@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
-# Step 12: VERSION bump.
-# Spec: apex-core.md step 12.
+# VERSION bump tier applier. NOT run at /apex step 12: step 12 only classifies
+# + persists bump_hint into the session manifest. The project-side deploy skill
+# reads every merged session's bump_hint, picks the highest tier across the
+# batch, and runs this script ONCE on the final integration commit.
+# Spec: apex-core.md ## Conventions (bump tiers) + steps/12-commit.md.
 #
 # Reads <project-root>/VERSION (vX.Y.Z; tolerates missing-`v` and trailing
 # newlines), increments per --kind, writes back. Missing file = silent skip

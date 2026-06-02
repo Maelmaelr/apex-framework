@@ -5,7 +5,8 @@
 #
 # Runs:
 #   - bash -n on every skills/apex/scripts/*.sh AND skills/admin-apex/scripts/*.sh
-#   - python3 -m py_compile on every skills/apex/scripts/*.py
+#   - python3 -m py_compile on every skills/apex/scripts/*.py AND
+#     skills/admin-apex/scripts/*.py
 #   - jsonschema parse + $id == basename(path) assertion on every
 #     skills/apex/schemas/*.json AND skills/admin-apex/schemas/*.json
 #
