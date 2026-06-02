@@ -422,41 +422,27 @@ else
   echo "FAIL suite test-content-budget.sh" >&2; failed=$((failed + 1))
 fi
 
-# 16. read-before-work transcript canary fixtures live in a sibling file
-#     (file-health cap); run it and fold its pass/fail into the totals.
+# 16-21. Sibling-fixture suites (each lives in its own file - test-apex-scripts.sh
+# is at the file-health cap); this harness invokes each and folds pass/fail.
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-transcript-step-read.sh"; then
   echo "PASS suite test-transcript-step-read.sh"; pass=$((pass + 1))
-else
-  echo "FAIL suite test-transcript-step-read.sh" >&2; failed=$((failed + 1))
-fi
-
-# 17. B/R3 step-read gate hook fixtures (live read-before-work enforcement) live
-#     in a sibling file (file-health cap); run it and fold pass/fail into totals.
+else echo "FAIL suite test-transcript-step-read.sh" >&2; failed=$((failed + 1)); fi
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-step-gate.sh"; then
   echo "PASS suite test-step-gate.sh"; pass=$((pass + 1))
-else
-  echo "FAIL suite test-step-gate.sh" >&2; failed=$((failed + 1))
-fi
-
-# 18. apex-merge per-iteration reload reminder fixtures (Workstream B item-4) live
-#     in a sibling file (file-health cap); run it and fold pass/fail into totals.
+else echo "FAIL suite test-step-gate.sh" >&2; failed=$((failed + 1)); fi
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-merge-reload.sh"; then
   echo "PASS suite test-merge-reload.sh"; pass=$((pass + 1))
-else
-  echo "FAIL suite test-merge-reload.sh" >&2; failed=$((failed + 1))
-fi
-
-# 19. stamp-merge-result.sh terminal-stamp fixtures (plan F22: resolver=/paths so
-#     step 4.6's apex-fix gate fires) live in a sibling file; fold pass/fail.
+else echo "FAIL suite test-merge-reload.sh" >&2; failed=$((failed + 1)); fi
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-stamp-merge-result.sh"; then
   echo "PASS suite test-stamp-merge-result.sh"; pass=$((pass + 1))
 else echo "FAIL suite test-stamp-merge-result.sh" >&2; failed=$((failed + 1)); fi
-
-# 20. protect-env-hook.sh deny/allow fixtures (now relied on for the Read matcher)
-#     live in a sibling file; fold pass/fail into totals.
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-protect-env.sh"; then
   echo "PASS suite test-protect-env.sh"; pass=$((pass + 1))
 else echo "FAIL suite test-protect-env.sh" >&2; failed=$((failed + 1)); fi
+# 21. Workstream-B item-5 acceptance: real-/apex read-before-work replay fixture.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-replay-acceptance.sh"; then
+  echo "PASS suite test-replay-acceptance.sh"; pass=$((pass + 1))
+else echo "FAIL suite test-replay-acceptance.sh" >&2; failed=$((failed + 1)); fi
 
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"

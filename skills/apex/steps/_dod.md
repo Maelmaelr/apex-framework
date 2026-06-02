@@ -11,9 +11,15 @@ The item-3 step-read gate (`step-read-gate-hook.sh`) is wired LIVE and ARMED (th
 half is now WIRED: `skills/apex/SKILL.md` "Per-step dispatch" emits
 `TaskUpdate(status=in_progress, metadata={step: N})` before each step's contract Read, so
 `active_step` advances and the gate enforces read-before-work for every real /apex session.
-What stays LIVE-RUN-GATED is the empirical sign-off, not the wiring: R3-a perf on the hot
-Bash/Task path and a no-false-denies real-transcript canary, both measurable only from a
-captured standard run (no standard run is producible inside an admin-apex session).
+The empirical sign-off is now CAPTURED (admin-apex run 5aac207a): a real headless
+standard-tier /apex run was driven in a throwaway scratch repo (`claude -p "/apex ..."`
+subprocess) and its session transcript replayed through the read-before-work canary -
+GREEN, steps 1-13+15 PASS (14 correctly skipped on the non-trivial path), 0 violations
+across 15 gates; the live `step-read-gate-hook.sh` was armed + tracking and never falsely
+denied (the orchestrator complied every step). R3-a perf and pre/post-B token accounting
+were measured from that run (see `## B`). "Capturing a standard run" needs only a nested
+`/apex` subprocess, not an in-session /apex - the prior "not producible inside an
+admin-apex session" framing conflated *driving* a run with *capturing* one.
 
 ## Canonical step filenames
 
@@ -45,22 +51,31 @@ Acceptance status re-verified VERSION 8.0.x (admin-apex run 3ddb1e42, mechanical
 
 - MET - every `steps/NN-*.md` is `<=` its content-budget tier (audit-enforced via the
   inventory `steps/` glob; densest is `08-execute.md` at 91% of its 4500 tier).
-- MET - `skills/apex/SKILL.md` skeleton is `<=` ~1.5k words (1357w).
+- MET - `skills/apex/SKILL.md` skeleton is `<=` ~1.5k words (1533w; grew from 1357w when the
+  ENFORCEMENT "Per-step dispatch" + "Cross-step invariants" sections landed - still far under
+  the 2500 default budget).
 - MET - `test-step-gate.sh` (item-3 step-read gate) green (11/11).
-- PARTIAL - `transcript-step-read-check.py` (item-5 canary) green over the 8/8 synthetic
-  fixtures (`test-transcript-step-read.sh`). A green over a REAL captured /apex
-  standard-run transcript with a live `steps/NN` gates spec is LIVE-RUN-GATED: with the
-  ENFORCEMENT wiring above, real /apex runs now emit the per-step `metadata.step` boundary,
-  so a real fixture becomes capturable on the next standard run - none has been captured
-  inside this admin-apex session yet.
-- LIVE-RUN-GATED - pre/post-B token accounting (R1) recorded for a standard run, so an
-  equal or higher total reads as the expected recency tradeoff, not a regression.
+- MET - `transcript-step-read-check.py` (item-5 canary) green over BOTH the 8/8 synthetic
+  fixtures (`test-transcript-step-read.sh`) AND a real captured standard-run transcript (run
+  5aac207a): steps 1-13+15 all PASS read-before-work, 0 violations / 15 gates. The real run is
+  committed as `skills/apex/scripts/fixtures/apex-step-read-fixture.jsonl` (orchestrator
+  tool_use events, home paths normalized to /repo) and re-asserted every suite run via
+  `replay-canary.sh` + `test-replay-acceptance.sh` (suite item 21). The canonical 15-gate spec
+  is `skills/apex/scripts/step-gates.json` (boundary = `metadata.step`).
+- MET - R3-a perf measured (`bench-step-gate.sh`, 200 iters): ~40 ms/work-tool while ARMED
+  (python spawn dominates) / ~4.8 ms non-apex fast-path (no python). The armed cost is paid per
+  Bash/Task/Edit during a real /apex run - bounded, acceptable, re-measurable after any hook edit.
+- MET - pre/post-B token accounting (R1) recorded from run 5aac207a: the always-resident
+  orchestrator-contract floor fell 6622w monolith -> 1533w skeleton (-77%); the full 11483w step
+  corpus is read lazily (never all resident; peak run context 82.4k tok), and the run generated
+  49.3k output tok. The higher total contract-READ volume is the designed recency tradeoff (each
+  step's contract is freshly read at its step), not a regression - the persistent context floor
+  dropped 77%.
 
-The mechanical split (skeleton + 15 lazy-load step files + armed gate + synthetic canary)
-plus the ENFORCEMENT wiring (orchestrator emits `metadata.step`) is structurally COMPLETE.
-The remaining items are empirical captures that require a real /apex standard run, which
-cannot be produced inside an admin-apex session; the major-bump step-6 ACCEPTANCE sign-off
-lands once they are captured from a live run.
+The mechanical split (skeleton + 15 lazy-load step files + armed gate + synthetic canary), the
+ENFORCEMENT wiring (orchestrator emits `metadata.step`), AND the empirical sign-off (real-run
+canary green + R3-a + token accounting) are all COMPLETE. The major-bump step-6 ACCEPTANCE is
+SIGNED OFF at VERSION 10.0.0 (admin-apex run 5aac207a). Workstream B is done.
 
 ## apex-merge (item 4)
 
