@@ -43,6 +43,10 @@ For each `op.kind == edit` operation:
 
 If an Edit tool call fails (string not found, ambiguous match), surface AskUserQuestion (header: "Edit failure on op {N}"; options: `retry-with-context | skip-finding | abort-run`; dismiss = `abort-run`). Never silently move on.
 
+## Citation discipline (always-on)
+
+When an op promotes a reflector-log finding into a guard / rule in a runtime-loaded doc (`skills/apex*/**`, `skills/admin-apex/**`, `agents/**`), cite the cluster slug or nothing - NEVER inline the raw 8-hex session hash. The RULE is the payload; the originating session hash is audit trail that git history + the timestamped `tmp/improvements-archive/` snapshots already preserve. This is UNCONDITIONAL - it holds below 85% of tier, not only on the near-cap tightening path: `SKILL.md` Principle 3 and `plan.md`'s near-cap discipline govern only the >85% band, but hashes accrete on the climb UP to the cap where sub-85% new-guard prose had no citation governance. The `hash-roster` detector (`skills/admin-apex/scripts/audit-detectors.py`; ceiling + doc list in `content-budget.json` -> `hash_roster`) enforces this deterministically at audit + polish: a guard that re-introduces an inline session hash trips it.
+
 ## Step 4b: Structural ops - delegate to admin-apex/evolve.md
 
 For any operation in `{create, rename, split, merge, retire, schema-add, schema-remove, hook-add, hook-remove}`:

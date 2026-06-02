@@ -55,13 +55,20 @@ rm -f "$inv" "$prior" "$out"
 
 # 4. polish mode: every detected item already in prior drift -> diff suppresses -> exit 0.
 #    The lone unreferenced schema entry trips BOTH schema-mismatch and missing-refs,
-#    so the prior must carry both ids for the NEW-only diff to net empty.
-inv=$(mktemp); prior=$(mktemp); out=$(mktemp)
+#    so the prior must carry both ids for the NEW-only diff to net empty. Isolated
+#    root (no content-budget.json) so hash-roster reads no live docs and cannot
+#    inject a spurious NEW cluster from the real tree's citation state.
+inv=$(mktemp); prior=$(mktemp); out=$(mktemp); isoroot=$(mktemp -d)
 printf '%s' "$INV_SCHEMA" > "$inv"
-printf '%s' '{"run":"x","clusters":[{"id":"schema","kind":"inconsistency","items":["skills/apex/schemas/x.schema.json (id=WRONG.json)"]},{"id":"missing","kind":"unused","items":["skills/apex/schemas/x.schema.json"]}]}' > "$prior"
-python3 "$ENG" --inventory "$inv" --mode polish --run abcd1234 --prior-drift "$prior" --out "$out" >/dev/null 2>&1
+{
+  printf '{"run":"x","clusters":['
+  printf '{"id":"schema","kind":"inconsistency","items":["skills/apex/schemas/x.schema.json (id=WRONG.json)"]},'
+  printf '{"id":"missing","kind":"unused","items":["skills/apex/schemas/x.schema.json"]}]}'
+} > "$prior"
+CLAUDE_PROJECT_DIR="$isoroot" python3 "$ENG" --inventory "$inv" --mode polish --run abcd1234 \
+  --prior-drift "$prior" --out "$out" >/dev/null 2>&1
 check "polish no-new-drift exit0" 0 $?
-rm -f "$inv" "$prior" "$out"
+rm -f "$inv" "$prior" "$out"; rm -rf "$isoroot"
 
 # --- per-role content-budget tier + approaching-budget (reads content-budget.json) ---
 RUN=abcd1234
@@ -124,6 +131,36 @@ out=$(CLAUDE_PROJECT_DIR="$fake" python3 "$ENG" --inventory "$t" --mode audit --
 inband "$out" oversized "skills/apex/SKILL.md"; check "detector fallback flags 3000w at 2500" 0 $?
 rm -rf "$fake"
 rm -f "$t"
+
+# --- hash-roster (A4 re-bloat guard): reads docs from disk per content-budget.json
+#     hash_roster.{ceiling,docs}. Fake root so fixtures drive config + targets. ---
+ti=$(mktemp)
+printf '%s' '{"skills":[],"agents":[],"scripts":[],"schemas":[],"hooks":[],"spec_docs":[],"version":"0"}' > "$ti"
+
+# 10. ceiling 0: a doc with reflector-hash citations flags; a citation-free doc does not.
+hr=$(mktemp -d); mkdir -p "$hr/skills/apex/scripts" "$hr/agents"
+cb="$hr/skills/apex/scripts/content-budget.json"
+printf '%s' '{"hash_roster":{"ceiling":0,"docs":["agents/clean.md","agents/dirty.md"]}}' > "$cb"
+printf 'a rule, no cite - a 4-session cluster escalated verbose reasons\n' > "$hr/agents/clean.md"
+printf 'a rule (reflector 5ec98cfc, 33935c17); recurring cluster 006ab516/734e3faf\n' > "$hr/agents/dirty.md"
+out=$(CLAUDE_PROJECT_DIR="$hr" python3 "$ENG" --inventory "$ti" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" hash-roster "agents/dirty.md"; d=$?
+inband "$out" hash-roster "agents/clean.md"; c=$?
+[[ $d -eq 0 && $c -ne 0 ]]; check "hash-roster flags dirty not clean" 0 $?
+rm -rf "$hr"
+
+# 11. ceiling slack: at ceiling N a doc with exactly N citations passes, N+1 flags.
+hr=$(mktemp -d); mkdir -p "$hr/skills/apex/scripts" "$hr/agents"
+cb="$hr/skills/apex/scripts/content-budget.json"
+printf '%s' '{"hash_roster":{"ceiling":2,"docs":["agents/at.md","agents/over.md"]}}' > "$cb"
+printf 'two cites (reflector 5ec98cfc, 33935c17) is at the ceiling\n' > "$hr/agents/at.md"
+printf 'three (reflector 5ec98cfc, 33935c17, 87c0386e) is over ceiling\n' > "$hr/agents/over.md"
+out=$(CLAUDE_PROJECT_DIR="$hr" python3 "$ENG" --inventory "$ti" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" hash-roster "agents/over.md"; ov=$?
+inband "$out" hash-roster "agents/at.md"; at=$?
+[[ $ov -eq 0 && $at -ne 0 ]]; check "hash-roster ceiling slack at vs over" 0 $?
+rm -rf "$hr"
+rm -f "$ti"
 
 echo "test-audit-detectors.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

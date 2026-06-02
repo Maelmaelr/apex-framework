@@ -10,5 +10,21 @@
   },
   "central_prose_members": ["apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"],
   "near_cap_ratio": 0.85,
-  "near_cap_exempt": ["skills/apex/SKILL.md"]
+  "near_cap_exempt": ["skills/apex/SKILL.md"],
+  "hash_roster": {
+    "ceiling": 0,
+    "docs": [
+      "skills/apex/SKILL.md",
+      "skills/apex/execute.md",
+      "agents/executor.md",
+      "agents/discoverer.md",
+      "skills/apex-merge/SKILL.md",
+      "skills/admin-apex/SKILL.md",
+      "skills/admin-apex/evolve.md",
+      "agents/lesson-screener.md",
+      "agents/reflector.md",
+      "agents/documentation.md",
+      "agents/screener.md"
+    ]
+  }
 }

@@ -11,21 +11,27 @@ the prior-drift diff differ by --mode:
 
   --mode audit   Structural pre-scan for audit.md task 3. Runs oversized-files /
                  orphan-refs / missing-refs / schema-mismatch / dead-hook /
-                 approaching-budget with audit.md's cluster vocabulary (ids:
-                 oversized / orphan / missing / schema / dead-hook /
-                 approaching). oversized + approaching resolve per-path word caps
-                 from content-budget.json (cap_for); approaching-budget is
-                 WARN-only (skills/agents .md within the near-cap band, never
-                 blocks; routed to defer at the gate). No prior-drift diff. The
+                 approaching-budget / hash-roster with audit.md's cluster
+                 vocabulary (ids: oversized / orphan / missing / schema /
+                 dead-hook / approaching / hash-roster). oversized + approaching
+                 resolve per-path word caps from content-budget.json (cap_for);
+                 approaching-budget is WARN-only (skills/agents .md within the
+                 near-cap band, never blocks; routed to defer at the gate).
+                 hash-roster flags runtime-loaded docs carrying reflector-hash
+                 citations above content-budget.json hash_roster.ceiling (A4
+                 re-bloat guard - deterministic backstop for the cite-slug-or-
+                 nothing discipline). No prior-drift diff. The
                  LLM-owned stale-spec + user-driven detectors stay in audit.md
                  prose and are merged after the structural clusters via
                  --extra-clusters. Always exits 0 (drift is the normal case; the
                  SKILL task-4 gate, not the exit code, drives keep/apply/defer).
 
   --mode polish  Post-apply mirror for polish-check.sh. Runs orphan-refs /
-                 missing-refs / schema-mismatch / dead-hook / approaching-budget
-                 (NO oversized - line-cap remediation is owned by /apex verify +
-                 file-health, not the post-apply polish gate). Uses polish
+                 missing-refs / schema-mismatch / dead-hook / approaching-budget /
+                 hash-roster (NO oversized - line-cap remediation is owned by
+                 /apex verify + file-health, not the post-apply polish gate). The
+                 hash-roster diff surfaces only docs that newly breach the ceiling
+                 (a guard re-added with a raw session hash). Uses polish
                  vocabulary (kinds: staleness / unused / inconsistency; ids:
                  orphan / missing / schema / dead-hook / approaching - ids match
                  audit mode so --prior-drift diffs line up; approaching-budget
@@ -94,6 +100,7 @@ def load_budget(root):
         "central_prose_members": sorted(PROSE_DOCS),
         "near_cap_ratio": 0.85,
         "near_cap_exempt": [],
+        "hash_roster": {"ceiling": 0, "docs": []},
     }
     try:
         data = json.loads((root / CONTENT_BUDGET_PATH).read_text())
@@ -183,6 +190,52 @@ def detect_approaching(inv, budget):
         cap = cap_for(e["path"], budget)
         if ratio * cap < words <= cap:
             items.append(f'{e["path"]} ({words} words, {round(100 * words / cap)}% of {cap} cap)')
+    return items
+
+
+# Reflector-hash citation matcher (A4 re-bloat guard, context-rot plan). A
+# "citation hash" is an 8-hex token that is either led by a citation keyword
+# (reflector/session/incident/cluster) or sits in a multi-hash roster (joined by
+# / , + &). An isolated keyword-less single hex (command-example token; the
+# {run}/{session}/{cc_session_id} placeholders are not hex) is NOT counted, so
+# false positives stay near zero.
+_HASH = r"(?<![0-9a-z])[0-9a-f]{8}(?![0-9a-z])"
+_KEYWORD_CITE = re.compile(
+    r"\b(?:reflector|reflectors|session|sessions|incident|cluster|clusters)\b[ \t]+"
+    + _HASH + r"(?:[ \t]*[/,+&][ \t]*" + _HASH + r")*"
+)
+_ROSTER_CITE = re.compile(_HASH + r"(?:[ \t]*[/,+&][ \t]*" + _HASH + r")+")
+_HASH_RE = re.compile(_HASH)
+
+
+def count_citation_hashes(text):
+    """Count 8-hex tokens that read as reflector/session audit-trail citations."""
+    spans = []
+    for rx in (_KEYWORD_CITE, _ROSTER_CITE):
+        spans.extend((m.start(), m.end()) for m in rx.finditer(text))
+    return sum(1 for h in _HASH_RE.finditer(text)
+               if any(s <= h.start() < e for s, e in spans))
+
+
+def detect_hash_roster(root, budget):
+    """Runtime-loaded docs carrying reflector-hash citations above the ceiling.
+
+    A4 re-bloat guard: once A1 strips the session-hash rosters, new guards must
+    cite a cluster slug or nothing - never the raw 8-hex. This deterministic gate
+    keeps that discipline enforced rather than relying on a read-once prose rule
+    (which is itself subject to the rot this plan documents). Config in
+    content-budget.json -> hash_roster {ceiling, docs}; a missing/empty config
+    no-ops (docs=[])."""
+    cfg = budget.get("hash_roster") or {}
+    ceiling = cfg.get("ceiling", 0)
+    items = []
+    for rel in cfg.get("docs", []):
+        try:
+            n = count_citation_hashes((root / rel).read_text())
+        except OSError:
+            continue
+        if n > ceiling:
+            items.append(f"{rel} ({n} reflector-hash citation(s) > {ceiling} ceiling)")
     return items
 
 
@@ -297,6 +350,9 @@ _SPEC = {
     "approaching": ("approaching-budget", "approaching-budget",
                     "{n} skills/agents .md within near-cap band (>= 85% of tier; WARN, never blocks)",
                     "{n} skills/agents .md newly within near-cap band post-apply (WARN)"),
+    "hash-roster": ("hash-roster", "hash-roster",
+                    "{n} runtime doc(s) carrying reflector-hash citations above ceiling (A4 re-bloat guard)",
+                    "{n} runtime doc(s) with NEW reflector-hash citations post-apply (A4 re-bloat guard)"),
 }
 
 
@@ -354,11 +410,12 @@ def main():
         "schema": detect_schema_mismatch(inv),
         "dead-hook": detect_dead_hooks(inv, root),
         "approaching": detect_approaching(inv, budget),
+        "hash-roster": detect_hash_roster(root, budget),
     }
     if args.mode == "audit":
         detected = {"oversized": detect_oversized(inv, root, budget), **detected}
 
-    order = ["oversized", "orphan", "missing", "schema", "dead-hook", "approaching"]
+    order = ["oversized", "orphan", "missing", "schema", "dead-hook", "approaching", "hash-roster"]
     clusters = [build_cluster(cid, detected[cid], args.mode)
                 for cid in order if cid in detected and detected[cid]]
 
