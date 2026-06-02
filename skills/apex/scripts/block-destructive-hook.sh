@@ -90,7 +90,7 @@ for s in subcmds:
     # 'pop' is handled by its own block above; listed here so a reordering of
     # blocks cannot accidentally route it through the deny path. 'drop' / 'clear'
     # are destructive stash-entry removal (drop = one entry, clear = all) and are
-    # intentionally NOT allowlisted -> they fall through to deny (apex-core.md:34).
+    # intentionally NOT allowlisted -> they fall through to deny (apex-core.md ## Conventions, block-destructive hook / NEVER stash).
     if sub not in ('list', 'show', 'apply', 'branch', 'pop'):
         print('yes')
         sys.exit(0)

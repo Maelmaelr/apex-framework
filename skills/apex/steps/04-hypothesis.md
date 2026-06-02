@@ -3,8 +3,7 @@
 Lazy-loaded contract for orchestrator step 4. Dispatched from `skills/apex/SKILL.md`
 step 4; Read this file before executing the step so the rule is maximally recent
 (B/R3 read-before-work). The item-3 step-read gate enforces the read once armed;
-until then the dispatch is a soft convention. Full per-step contract (artifacts,
-exit codes, abort paths): `apex-core.md` step 4.
+until then the dispatch is a soft convention. This file is the full per-step contract. Cross-cutting rules: `apex-core.md` ## Conventions; routing summary: `apex-core-overview.md`.
 
 ## Contract
 
