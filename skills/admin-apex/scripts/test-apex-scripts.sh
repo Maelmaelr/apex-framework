@@ -422,6 +422,14 @@ else
   echo "FAIL suite test-content-budget.sh" >&2; failed=$((failed + 1))
 fi
 
+# 16. read-before-work transcript canary fixtures live in a sibling file
+#     (file-health cap); run it and fold its pass/fail into the totals.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-transcript-step-read.sh"; then
+  echo "PASS suite test-transcript-step-read.sh"; pass=$((pass + 1))
+else
+  echo "FAIL suite test-transcript-step-read.sh" >&2; failed=$((failed + 1))
+fi
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1
