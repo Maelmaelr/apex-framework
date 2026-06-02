@@ -85,11 +85,12 @@ while IFS=$'\t' read -r run pid; do
 done
 
 # Orphan-artifact sweep (manifest-stale handled above; this catches {run}-*
-# siblings whose {run}.json is GONE - e.g., apex-improve's session-spanning
-# {run}-deferred-findings.json after the manifest was already swept by an
-# earlier cleanup-run.sh exclusion-list pass). Lives in skills/apex/scripts/
-# because the sweep semantics are identical for apex-active and admin-apex-active;
-# both call sites consume the same helper. Best-effort; never blocks.
+# siblings whose {run}.json is GONE - crash-orphaned inventory / drift-report /
+# trace scratch a cleanup-run.sh abort left behind. {run}-deferred-findings.json
+# is EXEMPT (session-spanning backlog, kept across idle gaps - see the helper's
+# header). Lives in skills/apex/scripts/ because the sweep semantics are identical
+# for apex-active and admin-apex-active; both call sites consume the same helper.
+# Best-effort; never blocks.
 APEX_SWEEP="$HOME/.claude/skills/apex/scripts/sweep-orphan-artifacts.sh"
 if [[ -x "$APEX_SWEEP" ]]; then
   bash "$APEX_SWEEP" --dir "$ADMIN_ACTIVE" --age-hours 24 2>/dev/null || true

@@ -95,13 +95,15 @@ record "static guard: no heredoc-in-process-substitution" $?
 sweep_orphan_reap_b3() {
   local b3="$1" sb err rc=0
   sb=$(mktemp -d)
-  printf 'x\n' > "$sb/aaaabbbb-deferred-findings.json"   # orphan: no {token}.json manifest
+  printf 'x\n' > "$sb/aaaabbbb-inventory.json"           # orphan: no {token}.json manifest -> reap
+  printf 'z\n' > "$sb/eeeeffff-deferred-findings.json"   # orphan backlog -> EXEMPT, must survive
   printf '{}\n' > "$sb/ccccdddd.json"                     # manifest present
   printf 'y\n' > "$sb/ccccdddd-inventory.json"            # owned sibling -> must survive
   python3 -c "import os,time;ts=time.time()-90000;[os.utime('$sb/'+f,(ts,ts)) for f in os.listdir('$sb')]"
   err=$("$b3" "$REPO_ROOT/skills/apex/scripts/sweep-orphan-artifacts.sh" --dir "$sb" --age-hours 24 2>&1 >/dev/null)
   printf '%s' "$err" | grep -q 'bad substitution' && rc=1   # the 3.2 procsub failure signature
-  [[ -e "$sb/aaaabbbb-deferred-findings.json" ]] && rc=1    # orphan must be reaped
+  [[ -e "$sb/aaaabbbb-inventory.json" ]] && rc=1           # non-exempt orphan must be reaped
+  [[ -e "$sb/eeeeffff-deferred-findings.json" ]] || rc=1   # backlog must survive (never reaped)
   [[ -e "$sb/ccccdddd.json" ]] || rc=1                      # manifest must survive
   [[ -e "$sb/ccccdddd-inventory.json" ]] || rc=1            # owned sibling must survive
   rm -rf "$sb"

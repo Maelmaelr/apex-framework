@@ -7,18 +7,22 @@
 #       * {token} is 8-char lowercase hex (openssl rand -hex 4 shape)
 #       * <dir>/{token}.json manifest is absent (orphaned: producer never wrote
 #         the manifest, OR manifest was already swept while a sibling artifact
-#         was kept by a deferred-findings-style exclusion)
+#         was left behind)
 #       * artifact mtime is older than --age-hours threshold (defends against
 #         a still-writing producer that has not yet finalized its manifest)
 #
-# Why this exists (leak modes plugged):
-#   1. apex-improve's {run}-deferred-findings.json is intentionally NOT swept
-#      by cleanup-run.sh (session-spanning). When the run's manifest is later
-#      removed but the deferred-findings file is never consumed, it orphans
-#      indefinitely. Direct evidence in admin-apex audit run 701ef73f:
-#      .claude-tmp/admin-apex-active/{1ea773fd,c8037641}-deferred-findings.json.
-#   2. Crashed CC sessions can leave {session}-* siblings in apex-active when
-#      cleanup-session.sh aborts before reaching every target.
+# EXEMPT (never reaped): {token}-deferred-findings.json. The apex-improve /
+# admin-apex backlog is session-spanning and must persist across arbitrary idle
+# gaps (user decision: keep backlog). analyze.md consumes + consolidates it and
+# finalize.md prunes the consumed originals each run, so it never accumulates
+# unbounded; previously the >24h idle-gap reap dropped it whenever the improve
+# loop paused for a day.
+#
+# Why this exists (leak mode plugged):
+#   - Crashed CC sessions can leave {session}-* siblings (inventory, drift-report,
+#     traces, etc.) in apex-active / admin-apex-active when cleanup-session.sh /
+#     cleanup-run.sh aborts before reaching every target. This sweep drains those
+#     once their manifest is gone and they age past --age-hours.
 #
 # What it does NOT do:
 #   - Does NOT touch {token}.json manifests (that's sweep-stale-runs.sh /
@@ -118,6 +122,14 @@ for n in names:
 for name in names:
     m = pat.match(name)
     if not m:
+        continue
+    # EXEMPT: the session-spanning {token}-deferred-findings.json backlog must
+    # persist across arbitrary idle gaps (user decision: keep backlog, never
+    # reap). analyze.md consumes + consolidates it and finalize.md prunes the
+    # consumed originals every run, so steady state holds at most one file - it
+    # never accumulates unbounded. Skipping it here removes the >24h idle-gap
+    # reap that previously dropped the backlog when the improve loop paused.
+    if name.endswith("-deferred-findings.json"):
         continue
     tok = m.group(1)
     # Manifest still present -> active run owns this artifact; skip.

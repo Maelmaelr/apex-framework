@@ -11,7 +11,7 @@ Spec: `skills/apex-improve/SKILL.md` Step 2.
 
 The three signal files in the SKILL.md "Inputs" table. Read any that exist; tolerate empty / missing per the table contract.
 
-Plus a fourth, session-spanning source: **prior-run `{run}-deferred-findings.json`** files in `.claude-tmp/admin-apex-active/` (see "Prior-run deferred-findings" below). These are findings a past run could not resolve; without this ingestion they orphan and reap (sweep-orphan-artifacts.sh, 24h backstop) instead of being reprocessed.
+Plus a fourth, session-spanning source: **prior-run `{run}-deferred-findings.json`** files in `.claude-tmp/admin-apex-active/` (see "Prior-run deferred-findings" below). These are findings a past run could not resolve; they are EXEMPT from `sweep-orphan-artifacts.sh`, so they persist across arbitrary idle gaps until this step reprocesses them.
 
 ## Output
 
@@ -67,7 +67,7 @@ If `apex-claude-code-version.txt` is missing or older than the current CC versio
 
 ## Prior-run deferred-findings (backlog ingestion)
 
-Past runs write `{run}-deferred-findings.json` (cap-overflow + uncertain-defer) and `cleanup-run.sh` preserves them across SessionEnd, but only this step reprocesses them - otherwise they reap on the 24h orphan backstop, never reaching an op.
+Past runs write `{run}-deferred-findings.json` (cap-overflow + uncertain-defer); `cleanup-run.sh` preserves them across SessionEnd AND they are exempt from `sweep-orphan-artifacts.sh`, so they survive indefinitely until this step reprocesses them. Without this ingestion they would carry forward forever without ever reaching an op.
 
 **Consumable set**: every `.claude-tmp/admin-apex-active/*-deferred-findings.json` where the token != the current run AND the producing `{token}.json` manifest is **absent** (run complete). The manifest-absent guard mirrors `sweep-orphan-artifacts.sh` so a live concurrent run's in-flight deferred file is never consumed. Producer is irrelevant - admin-apex audit deferrals are the same finding class and fold in here.
 
@@ -82,10 +82,10 @@ For each consumable finding:
 **Consolidation outputs** (single backlog-minus-applied invariant):
 
 - `{run}-findings.json` = the top-12 **non-chronic** pool entries by severity (the set Step 3 will plan). Cap is on the plannable set, not the backlog.
-- `{run}-deferred-findings.json` = the FULL deduped pool (carried + fresh, `deferrals` incremented, `chronic` flagged) - i.e. everything ingested this run. `finalize.md` Step 5b prunes whatever Step 4 applied, leaving exactly the unresolved backlog under the live run token (fresh mtime + live manifest -> escapes the reap). Overflow beyond 12 stays here and is never planned this run.
+- `{run}-deferred-findings.json` = the FULL deduped pool (carried + fresh, `deferrals` incremented, `chronic` flagged) - i.e. everything ingested this run. `finalize.md` Step 5b prunes whatever Step 4 applied, leaving exactly the unresolved backlog under the live run token. Overflow beyond 12 stays here and is never planned this run.
 - `{run}-consumed-deferred.txt` = one path per consumed prior file. `finalize.md` deletes these only AFTER the consolidated file is written + pruned (write-new-then-delete-old; a crash before finalize leaves the originals intact).
 
-24h-backstop trade-off: a >24h idle gap with no apex-improve run still reaps the consolidated file. Steady state keeps at most one deferred file (this run's, freshly stamped), so the gap only bites when the improvement loop itself stops running - acceptable degradation, not silent loss in normal operation.
+Backlog durability: the consolidated file is EXEMPT from `sweep-orphan-artifacts.sh` (the deferred-findings exclusion), so an arbitrarily long idle gap with no apex-improve run never drops it - the backlog is kept until a run consumes it. Steady state still keeps at most one deferred file (each run consumes all manifest-absent predecessors, consolidates into one, and `finalize.md` deletes the consumed originals), so the exemption cannot let the backlog accumulate unbounded.
 
 ## Empty case
 

@@ -33,7 +33,7 @@ Track per-file `delta_lines` through Step 4 and surface in Step 6. Growth is **a
 | `~/.claude/tmp/apex-workflow-improvements.md` | reflect-traces.sh + agents/reflector.md (per session) | nothing to consume from session-reflection track |
 | `~/.claude/tmp/tech-updates.md` | apex-tech-watch (weekly cron / launchd) | **missing** or **mtime > 14 days** -> Step 2 emits a `tech-watch never-run / stale` finding with `target_files: []` (Principle 2: weekly currency silently broken otherwise). Both surface in Step 6 report only. See `analyze.md` for finding shape. Otherwise: nothing to consume. |
 | `~/.claude/tmp/apex-claude-code-version.txt` | apex-improve writes on completion | missing -> CC version drift since last run; treat as a soft signal that current best practices may have shifted |
-| `.claude-tmp/admin-apex-active/*-deferred-findings.json` (prior runs) | analyze.md cap-overflow + uncertain-defer + admin-apex audit deferrals | **none consumable** -> no backlog to reprocess. Step 2 ingests the manifest-absent set (run complete), reprocessing findings a past run could not resolve; without this they reap on the 24h orphan backstop. See `analyze.md` "Prior-run deferred-findings". |
+| `.claude-tmp/admin-apex-active/*-deferred-findings.json` (prior runs) | analyze.md cap-overflow + uncertain-defer + admin-apex audit deferrals | **none consumable** -> no backlog to reprocess. Step 2 ingests the manifest-absent set (run complete), reprocessing findings a past run could not resolve. The backlog is EXEMPT from the orphan sweep, so it persists across arbitrary idle gaps until a run consumes it. See `analyze.md` "Prior-run deferred-findings". |
 
 If all three signals empty / current AND no consumable deferred backlog at Step 2 -> exit `apex-improve: no signals to consume`; skip Steps 3-4 (Steps 5-6 still run: archive + truncate + minimal report). A non-empty deferred backlog is NOT a no-signals exit even when the live signals are empty - Step 2 consolidates and carries it forward, and plans any non-chronic survivors.
 
@@ -76,7 +76,7 @@ cd "$HOME/.claude"
 RUN=$(openssl rand -hex 4)
 ROOT="$HOME/.claude/.claude-tmp/admin-apex-active"
 mkdir -p "$ROOT"
-bash "$HOME/.claude/skills/apex/scripts/sweep-orphan-artifacts.sh" --dir "$ROOT" --age-hours 24 2>/dev/null || true  # producer-side orphan drain: mirror of admin-apex SKILL task 1; reaps stale {run}-deferred-findings with no live manifest
+bash "$HOME/.claude/skills/apex/scripts/sweep-orphan-artifacts.sh" --dir "$ROOT" --age-hours 24 2>/dev/null || true  # producer-side orphan drain: reaps crash-orphaned {run}-* siblings (inventory / drift-report / traces) with no live manifest. {run}-deferred-findings.json is EXEMPT - backlog persists across idle gaps
 CC_ID=$(bash "$HOME/.claude/skills/apex/scripts/get-cc-session-id.sh")            # env-then-jsonl resolver; abort on failure
 PID=$(bash "$HOME/.claude/skills/apex/scripts/find-claude-pid.sh" 2>/dev/null || echo "$PPID")  # live claude pid; falls back to $PPID on non-standard launcher
 ```
