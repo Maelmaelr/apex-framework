@@ -430,6 +430,14 @@ else
   echo "FAIL suite test-transcript-step-read.sh" >&2; failed=$((failed + 1))
 fi
 
+# 17. B/R3 step-read gate hook fixtures (live read-before-work enforcement) live
+#     in a sibling file (file-health cap); run it and fold pass/fail into totals.
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-step-gate.sh"; then
+  echo "PASS suite test-step-gate.sh"; pass=$((pass + 1))
+else
+  echo "FAIL suite test-step-gate.sh" >&2; failed=$((failed + 1))
+fi
+
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1
