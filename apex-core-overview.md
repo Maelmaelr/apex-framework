@@ -47,7 +47,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - validate-json.sh hypothesis.schema.json
 
 5. Load lessons + project docs: grep-lessons.sh -> screener gate (K=25)
-   - keywords for grep-lessons.sh extracted deterministically from hypothesis.goals[] (same recipe as step 6: lowercase + tokenize + stopword drop + dedupe). **Narrow-first**: top 4 keys first; widen to top 8 only on 0 matches
+   - keywords for grep-lessons.sh extracted deterministically from hypothesis.goals[] (same recipe as step 6: lowercase + tokenize + stopword drop + dedupe). **Keyword cap**: top 8 keys by document-order; halve to top 4 and re-screen once on screener `truncated=true`
    - **gate**: grep output <= 25 lines -> orchestrator picks kept[] inline (no Haiku hop; screener_reason = "inline-pick: ..."); grep output > 25 lines -> spawn agents/lesson-screener.md (Haiku, single call; subagents do NOT inherit working memory; raw grep output + hypothesis explicit in spawn prompt). Either path writes {session}-lesson-screened.json. update-hit.sh runs on kept line ranges.
    - orchestrator reads kept[] only; raw grep blob never enters working memory
    - project-context.md cached from step 1
@@ -66,8 +66,8 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
 
 7. Economy pre-flight: inline deterministic rule (no AI emit, no subagent)
    - inputs: hypothesis.goals (length + text), main-scope.allowed_files (count)
-   - rule: economy if (len(goals)==1 AND len(allowed_files)<=5 AND no /\b(rewrite|migrate|redesign|new endpoint|new component)\b/i in any goal text) OR (hypothesis.mode==report-only OR every goal a verify/check/audit predicate with no write target -> read-only audit fan-out, Sonnet suffices regardless of goals.length); else standard
-   - output: {session}-tier.json (validated against tier.schema.json; same shape) -> reason "len(goals)=N, allowed_files=M, rewrite_match=<true|false>, report_only=<true|false>"
+   - rule: economy if (len(goals)==1 AND len(allowed_files)<=5 AND no /\b(rewrite|migrate|redesign|new endpoint|new component)\b/i in any goal text) OR (all goals[] reference one shared plan-file coordinate AND no /\b(rewrite|refactor|migrate|redesign|new endpoint|new component)\b/i -> single-plan-file multi-phase exception) OR (hypothesis.mode==report-only OR every goal a verify/check/audit predicate with no write target -> read-only audit fan-out, Sonnet suffices regardless of goals.length); else standard
+   - output: {session}-tier.json (validated against tier.schema.json; same shape) -> reason "len(goals)=N, allowed_files=M, rewrite_match=<true|false>, single_plan_file=<true|false>, report_only=<true|false>"
    - same prompt + scope -> same tier, every run
 
 8. Execute: steps/08-execute.md -> executor.md (per task)
