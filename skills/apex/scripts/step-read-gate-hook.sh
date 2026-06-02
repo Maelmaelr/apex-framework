@@ -26,10 +26,12 @@
 #
 # State (per session, on disk): .claude-tmp/apex-active/{session}-step-progress.json
 #   {"active_step": "NN", "active_since": <epoch>, "read_steps": {"NN": <epoch>}}
-# Its EXISTENCE is the arming sentinel, created by apex SKILL.md Step 0 (post-B).
-# Absent -> every branch no-ops, so this hook is fully DORMANT until B builds
-# skills/apex/steps/ + the Step-0 init. Built ahead of B as its acceptance gate
-# (same build-before-B pattern as the item-5 canary).
+# Its EXISTENCE is the arming sentinel, created by create-session.sh at session
+# mint (step 2). Present from mint -> the hook is ARMED for every apex session
+# but NON-ENFORCING: until B extracts skills/apex/steps/NN-*.md and the
+# orchestrator stamps active_step (TaskUpdate metadata.step), every branch
+# fail-opens. Built ahead of B as its acceptance gate (same build-before-B
+# pattern as the item-5 canary).
 #
 # Failure modes (deliberate): fail-OPEN on unset active_step / missing state / any
 # parse error (never brick a session); fail-CLOSED only when active_step is set but
@@ -45,8 +47,9 @@ APEX_ACTIVE=".claude-tmp/apex-active"
 # Fast-path 1: no apex session here -> nothing to gate (covers all non-/apex calls).
 [[ -d "$APEX_ACTIVE" ]] || exit 0
 
-# Fast-path 2: no step-progress sentinel anywhere -> dormant (pre-B). Keeps the hot
-# path (Bash/Task/Edit) at two shell globs, no python, until B arms it.
+# Fast-path 2: no step-progress sentinel here -> dormant. Keeps the hot path
+# (Bash/Task/Edit) at two shell globs, no python, when no apex session has armed
+# it (non-apex contexts, or before create-session.sh writes the sentinel).
 shopt -s nullglob
 _sp=("$APEX_ACTIVE"/*-step-progress.json)
 shopt -u nullglob

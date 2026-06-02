@@ -12,7 +12,11 @@
 #      "claude"). $PPID is NOT used: when this script is invoked as
 #      `bash create-session.sh ...`, $PPID is the transient zsh subshell that
 #      Claude Code's Bash tool spawned, not claude itself.
-#   4. Echo {session} to stdout for orchestrator capture.
+#   4. Write the Workstream-B item-3 arming sentinel
+#      ({session}-step-progress.json) into the worktree's apex-active dir so the
+#      step-read gate hook leaves its dormant fast-path (fail-open until B's
+#      per-step extraction stamps active_step).
+#   5. Echo {session} to stdout for orchestrator capture.
 #
 # Per-worktree isolation: each apex session lives in its own working tree +
 # index + branch. No concurrent-session conflict surface exists between
@@ -265,6 +269,16 @@ if ! "$SCRIPT_DIR/validate-json.sh" manifest.schema.json "$MANIFEST"; then
   echo "create-session.sh: manifest failed schema validation; aborting" >&2
   exit 1
 fi
+
+# Workstream-B item-3 arming sentinel. The step-read gate hook
+# (step-read-gate-hook.sh) stays on its dormant fast-path until a
+# *-step-progress.json file exists in this worktree's apex-active dir. Writing it
+# here arms the hook for this session; until B's per-step extraction stamps
+# active_step (the orchestrator TaskUpdate metadata.step signal), every gate
+# branch fail-opens, so nothing is denied yet. Best-effort - a sentinel-write
+# failure must never block session mint. Swept with the worktree at
+# cleanup-session.sh (no separate cleanup rule, same as the manifest).
+printf '%s\n' '{"read_steps": {}}' > "$APEX_ACTIVE/$SESSION-step-progress.json" 2>/dev/null || true
 
 echo "$SESSION"
 exit 0

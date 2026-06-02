@@ -6,7 +6,11 @@
     "skills/apex/execute.md": 4000,
     "agents/executor.md": 4000,
     "agents/discoverer.md": 4000,
-    "skills/apex-merge/SKILL.md": 3500
+    "skills/apex-merge/SKILL.md": 3500,
+    "skills/apex/steps/01-analyze.md": 3500,
+    "skills/apex/steps/05-lessons.md": 3000,
+    "skills/apex/steps/06-discovery.md": 3500,
+    "skills/apex/steps/08-execute.md": 4000
   },
   "central_prose_members": ["apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"],
   "near_cap_ratio": 0.85,
