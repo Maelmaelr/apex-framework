@@ -98,18 +98,26 @@ inband "$out" oversized "agents/executor.md"; o=$?
 inband "$out" approaching "agents/executor.md"; a=$?
 [[ $o -ne 0 && $a -eq 0 ]]; check "tier executor.md 3900 pass+approaching" 0 $?
 
-# 5b. near_cap_exempt: apex/SKILL.md 6900 sits in the band (0.85*7000<6900<=7000) but is
-#     exempt (plan-pinned dense) -> NOT approaching, and still NOT oversized.
-mkinv "skills/apex/SKILL.md" 6900
-out=$(python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
-inband "$out" approaching "skills/apex/SKILL.md"; a=$?
-inband "$out" oversized "skills/apex/SKILL.md"; o=$?
-[[ $a -ne 0 && $o -ne 0 ]]; check "exempt SKILL.md 6900 no-approaching" 0 $?
+# 5b. near_cap_exempt (mechanism; isolated fake config so the test survives live-roster
+#     changes - e.g. apex/SKILL.md left near_cap_exempt once it became a small skeleton):
+#     a tiered + exempt file in the band -> NOT approaching, and still NOT oversized.
+ex=$(mktemp -d); mkdir -p "$ex/skills/apex/scripts"
+{
+  printf '{"default":2500,"tiers":{"skills/apex/exempt-fix.md":7000},'
+  printf '"near_cap_ratio":0.85,"near_cap_exempt":["skills/apex/exempt-fix.md"],'
+  printf '"hash_roster":{"ceiling":0,"docs":[]}}'
+} > "$ex/skills/apex/scripts/content-budget.json"
+mkinv "skills/apex/exempt-fix.md" 6900
+out=$(CLAUDE_PROJECT_DIR="$ex" python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" approaching "skills/apex/exempt-fix.md"; a=$?
+inband "$out" oversized "skills/apex/exempt-fix.md"; o=$?
+[[ $a -ne 0 && $o -ne 0 ]]; check "exempt 6900 no-approaching" 0 $?
 
-# 6. tier: apex/SKILL.md 7100 > 7000 tier -> oversized (exempt skips approaching, never oversized).
-mkinv "skills/apex/SKILL.md" 7100
-out=$(python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
-inband "$out" oversized "skills/apex/SKILL.md"; check "tier SKILL.md 7100 oversized" 0 $?
+# 6. exempt suppresses approaching but NEVER oversized: same exempt file over its tier.
+mkinv "skills/apex/exempt-fix.md" 7100
+out=$(CLAUDE_PROJECT_DIR="$ex" python3 "$ENG" --inventory "$t" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" oversized "skills/apex/exempt-fix.md"; check "exempt 7100 still oversized" 0 $?
+rm -rf "$ex"
 
 # 7. default tier: a non-mapped skill .md at 2600 > 2500 default -> oversized.
 mkinv "skills/apex-improve/SKILL.md" 2600
