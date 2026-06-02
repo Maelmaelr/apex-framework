@@ -1,6 +1,6 @@
 ---
 name: admin-apex
-description: APEX expert / associate. Maintains the apex framework itself - syncs spec docs to real files, evolves the skill set (create/rename/split/merge/retire), validates apex-scoped scripts and schemas, bumps VERSION, commits ~/.claude (private), mirrors apex-framework files to /Users/mael/dev/apex-framework (public), pushes both. Manually triggerable. Reflector-log consolidation lives in /apex-improve (called by /apex-eod step 3); weekly tech-watch lives in /apex-tech-watch.
+description: APEX expert / associate. Maintains the apex framework itself - syncs spec docs to real files, evolves the skill set (create/rename/split/merge/retire), validates apex-scoped scripts and schemas, bumps VERSION, commits ~/.claude (private), mirrors apex-framework files to /Users/mael/dev/apex-framework (public), pushes both. Manually triggerable. Reflector-log consolidation lives in /apex-improve; weekly tech-watch lives in /apex-tech-watch.
 ---
 
 # /admin-apex
@@ -148,6 +148,6 @@ After reflector returns, invoke `bash skills/admin-apex/scripts/cleanup-run.sh -
 
 ## Out of scope
 
-Reflector log consolidation (owned by `/apex-improve`, called by `/apex-eod` step 3); weekly tech-watch fetching (owned by `/apex-tech-watch`); project app code/build/lint/tests; full reconciliation between private and public repos (task 10 mirrors only this run's dirty paths, not the whole tree).
+Reflector log consolidation (owned by `/apex-improve`); weekly tech-watch fetching (owned by `/apex-tech-watch`); project app code/build/lint/tests; full reconciliation between private and public repos (task 10 mirrors only this run's dirty paths, not the whole tree).
 
 See `audit.md`, `evolve.md`, `sync-docs.md` for per-task contracts; `schemas/inventory.schema.json` + `schemas/evolve-plan.schema.json` for artifact shapes; `apex-core.md` Conventions for the broader apex conventions admin-apex follows.

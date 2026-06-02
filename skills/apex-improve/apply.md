@@ -71,7 +71,7 @@ If after iterating every op in the plan, **zero** ops were applied (every Step 4
 
 ## What this step does NOT do
 
-- Does NOT commit or push (Steps 7-8 own commit + mirror + push in standalone mode via `sync-git.md`; under apex-eod, the subagent prompt suppresses 7-8 and apex-eod step 4 commits inline). Step 5 here is just archive + version-stamp cleanup, not git.
+- Does NOT commit or push (Steps 7-8 own commit + mirror + push via `sync-git.md`). Step 5 here is just archive + version-stamp cleanup, not git.
 - Does NOT mirror to public repo (Step 8 / `sync-git.md` does).
 - Does NOT decide on its own that a structural op should be downgraded to semantic - that decision lives in `plan.md`.
 - Does NOT bypass the file-health hook to make an oversized edit fit (Principle 3 again: if it doesn't fit, the finding belongs elsewhere).

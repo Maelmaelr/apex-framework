@@ -1,6 +1,6 @@
 ---
 name: apex-improve
-description: Self-improvement engine for the apex framework. Consumes ~/.claude/tmp/apex-workflow-improvements.md (per-session reflector + heuristic signals), ~/.claude/tmp/tech-updates.md (weekly tech-watch fetch), and the apex-claude-code-version.txt stamp. Applies semantic Edit first, escalates to admin-apex/evolve.md only when a structural change is the only honest fit. Slash-invokable; called by apex-eod step 3.
+description: Self-improvement engine for the apex framework. Consumes ~/.claude/tmp/apex-workflow-improvements.md (per-session reflector + heuristic signals), ~/.claude/tmp/tech-updates.md (weekly tech-watch fetch), and the apex-claude-code-version.txt stamp. Applies semantic Edit first, escalates to admin-apex/evolve.md only when a structural change is the only honest fit. Slash-invokable.
 triggers:
   - apex-improve
 ---
@@ -9,7 +9,7 @@ triggers:
 
 Self-improvement engine. Reads accumulated session-reflection signals + weekly tech-watch updates, proposes edits to the apex framework, applies semantic adjustments inline (preferred), delegates structural mutations to `~/.claude/skills/admin-apex/evolve.md`. Out-of-band - not part of /apex hot path; no project app code, no project lint/build.
 
-Shares `.claude-tmp/admin-apex-active/` with admin-apex (8-hex token collisions negligible); Step 4 structural ops produce the same `{run}-applied-ops.json` + `{run}-dirty-paths.txt` shape admin-apex expects. **Standalone runs sync git at session end** (Steps 7+8: VERSION bump + commit + mirror to public repo + push both, mirroring admin-apex tasks 9+10). **Subagent runs under apex-eod skip Steps 7+8** (apex-eod step 4 owns the inline commit; the subagent prompt explicitly instructs the skill to skip).
+Shares `.claude-tmp/admin-apex-active/` with admin-apex (8-hex token collisions negligible); Step 4 structural ops produce the same `{run}-applied-ops.json` + `{run}-dirty-paths.txt` shape admin-apex expects. **Syncs git at session end** (Steps 7+8: VERSION bump + commit + mirror to public repo + push both, mirroring admin-apex tasks 9+10) whenever Step 4 applied at least one op.
 
 ## Guiding principle (Principle 3)
 
@@ -47,8 +47,8 @@ If all three signals empty / current AND no consumable deferred backlog at Step 
 | 3 | `plan.md` | planning + schema validation; produces `{run}-evolve-plan.json` |
 | 4 | `apply.md` | apply ops (4a semantic Edit, 4b delegate to admin-apex/evolve.md) |
 | 5-6 | `finalize.md` | Polish + cleanup + version stamp + structured report |
-| 7-8 | `sync-git.md` | VERSION + commit + mirror + push (standalone-mode only; mirrors admin-apex tasks 9+10) |
-| 9 | this skill | Lessons sweep: spawn `/apex-lessons` if `.claude/lessons.md` exists (standalone-mode only) |
+| 7-8 | `sync-git.md` | VERSION + commit + mirror + push (mirrors admin-apex tasks 9+10) |
+| 9 | this skill | Lessons sweep: spawn `/apex-lessons` if `.claude/lessons.md` exists |
 
 ## Step 0: TaskCreate the chain
 
@@ -58,12 +58,12 @@ If all three signals empty / current AND no consumable deferred backlog at Step 
 3. Plan ops                     - plan.md
 4. Apply ops                    - apply.md
 5-6. Polish + cleanup + stamp + Report - finalize.md
-7. VERSION + commit             - sync-git.md (standalone only)
-8. Mirror + push both           - sync-git.md (standalone only)
-9. Lessons sweep                - inline (standalone only; pre-flight `.claude/lessons.md` exists)
+7. VERSION + commit             - sync-git.md
+8. Mirror + push both           - sync-git.md
+9. Lessons sweep                - inline (pre-flight `.claude/lessons.md` exists)
 ```
 
-Each task `blockedBy` the previous. Steps 3-6 conditional on Step 2 non-empty findings; Steps 7-8 conditional on standalone mode AND >=1 op applied; Step 9 conditional on standalone mode AND `.claude/lessons.md` exists.
+Each task `blockedBy` the previous. Steps 3-6 conditional on Step 2 non-empty findings; Steps 7-8 conditional on >=1 op applied; Step 9 conditional on `.claude/lessons.md` exists.
 
 **Deferred-tool guard.** `TaskCreate` / `TaskUpdate` / `TaskList` / `AskUserQuestion` are deferred - batch-fetch via `ToolSearch select:TaskCreate,TaskUpdate,TaskList,AskUserQuestion` before queuing the chain. If a `TaskCreate` / `TaskUpdate` errors (`InputValidationError` / "schema not sent to the API"), do NOT fire the remaining lines - re-run that ToolSearch load, retry ONCE, then STOP and surface to the user (an empty / flaky ToolSearch return fails every call identically; same contract as apex / admin-apex / apex-merge Step 0 and session 4f42caf5).
 
@@ -101,15 +101,15 @@ If 0 ops applied (every Edit failed and every structural op hit drift), still ru
 
 ## Steps 5-6: Polish + Cleanup + stamp + Report
 
-Read and follow `~/.claude/skills/apex-improve/finalize.md`. Step 5a is the post-implementation polish phase (`scripts/polish-check.sh` - shared with admin-apex/sync-docs.md): staleness / inconsistency / unused check on the post-apply state, escalates new drift to `~/.claude/tmp/apex-workflow-improvements.md` without blocking. Step 5b is the original cleanup + version stamp; Step 6 is the structured report (now includes the polish line). Returns when the report has been printed; resume at Steps 7-8 below (standalone mode only).
+Read and follow `~/.claude/skills/apex-improve/finalize.md`. Step 5a is the post-implementation polish phase (`scripts/polish-check.sh` - shared with admin-apex/sync-docs.md): staleness / inconsistency / unused check on the post-apply state, escalates new drift to `~/.claude/tmp/apex-workflow-improvements.md` without blocking. Step 5b is the original cleanup + version stamp; Step 6 is the structured report (now includes the polish line). Returns when the report has been printed; resume at Steps 7-8 below.
 
 ## Steps 7-8: VERSION + commit + mirror + push
 
-Read and follow `~/.claude/skills/apex-improve/sync-git.md`. Standalone-mode only (skipped under apex-eod and when Step 4 applied zero ops); reuses admin-apex's `admin-apex-finalize.sh` + `mirror-to-dev.sh`.
+Read and follow `~/.claude/skills/apex-improve/sync-git.md`. Skipped when Step 4 applied zero ops; reuses admin-apex's `admin-apex-finalize.sh` + `mirror-to-dev.sh`.
 
-## Step 9: Lessons sweep (standalone only)
+## Step 9: Lessons sweep
 
-Standalone-mode only (skipped under apex-eod; apex-eod step 2 owns this). Pre-flight: only fire if `test -f .claude/lessons.md` (the project may not have lessons captured yet).
+Pre-flight: only fire if `test -f .claude/lessons.md` (the project may not have lessons captured yet).
 
 After Steps 7-8 commit + mirror succeed, spawn `/apex-lessons` as a subagent so its determinism / non-determinism mix runs in a fresh context (separate from this run's Step 4 apply context). The orchestrator runs both extract and analyze phases sequentially:
 
@@ -119,33 +119,20 @@ Spawn subagent (general-purpose, sonnet, bypassPermissions):
   prompt: "ASCII only. No tables, no diagrams. Read and follow all instructions
            in ~/.claude/skills/apex-lessons/SKILL.md. Execute Step 1 (extract
            phase) then Step 2 (analyze phase). You are running as a subagent
-           under apex-improve standalone mode - use deferred routing per the
+           under apex-improve - use deferred routing per the
            analyze phase Route + Finalize subagent restriction. Report the
            extract Step 5 summary line then the analyze Step 9 final summary."
 ```
 
-Skip silently if pre-flight fails (no lessons.md) or subagent mode is active. Errors from /apex-lessons do NOT block the apex-improve report - it has already committed and mirrored.
+Skip silently if pre-flight fails (no lessons.md). Errors from /apex-lessons do NOT block the apex-improve report - it has already committed and mirrored.
 
 This step closes the loop: apex-improve consumes reflector signals (including those produced by the apex-lessons phases' own Reflect + Cleanup) on its NEXT run, and apex-lessons keeps `.claude/lessons.md` lean on every standalone /apex-improve invocation.
-
-## Subagent invocation contract
-
-When `apex-eod` step 3 runs apex-improve as a subagent, the prompt template is:
-
-```
-ASCII only. No tables, no diagrams. Read and follow all instructions in
-~/.claude/skills/apex-improve/SKILL.md. Execute every step. You are running
-as a subagent under apex-eod - do NOT commit or push (apex-eod step 4
-owns the inline commit). Report the Step 6 summary verbatim.
-```
-
-The "do NOT commit or push" line is the explicit signal that suppresses Steps 7+8 AND Step 9 (apex-eod step 2 owns lessons-analyze separately). apex-eod step 4 remains the only commit driver in EOD context; standalone `/apex-improve` runs execute Steps 7+8 (mirrors admin-apex tasks 9+10) and Step 9 (lessons sweep).
 
 ## What this skill does NOT do
 
 - Does NOT discover, dispatch executors, or run /apex's verify-fix loop - this is an out-of-band meta-task on the apex framework itself, not on user code.
 - Does NOT touch project app code, run project lint/build, or modify `.env*`.
-- Does NOT commit or push under apex-eod (Steps 7-8 skipped via subagent-prompt directive); standalone runs DO commit + mirror + push at session end (mirrors admin-apex tasks 9+10).
+- Does NOT commit or push when Step 4 applied zero ops (Steps 7-8 skipped; the `tmp/` housekeeping diff piggybacks on the next framework-evolution commit); otherwise commits + mirrors + pushes at session end (mirrors admin-apex tasks 9+10).
 - Does NOT bypass the file-health hook - if a Step 4 semantic edit would push a file past 400 lines, the hook fires and apex-improve must AskUserQuestion (`split-now | reduce-edit | abort`). Same gate any apex skill respects.
 - Does NOT decide that a tech-update is irrelevant on its own - if uncertain whether to apply a tech-watch finding, defer it (write to `{run}-deferred-findings.json`) rather than guess.
 

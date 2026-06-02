@@ -82,7 +82,7 @@ Step 5 ordering: 5a runs polish DETECTION first so Step 6's report reflects it, 
 
 ## Step 6: Report (inline)
 
-Print a structured summary to stdout (apex-eod step 3 captures and prints this verbatim):
+Print a structured summary to stdout:
 
 ```
 apex-improve run {run} complete.

@@ -1,6 +1,6 @@
 ---
 name: sync-git
-description: apex-improve Steps 7-8 - VERSION + commit + mirror + push at session end. Standalone-mode only (skipped under apex-eod). Reuses admin-apex's admin-apex-finalize.sh + mirror-to-dev.sh as the single source of truth so apex-improve and admin-apex stay byte-for-byte identical on commit + mirror behavior.
+description: apex-improve Steps 7-8 - VERSION + commit + mirror + push at session end. Skipped when Step 4 applied zero ops. Reuses admin-apex's admin-apex-finalize.sh + mirror-to-dev.sh as the single source of truth so apex-improve and admin-apex stay byte-for-byte identical on commit + mirror behavior.
 ---
 
 # sync-git (apex-improve Steps 7-8)
@@ -11,7 +11,6 @@ Spec: `skills/apex-improve/SKILL.md` Steps 7-8.
 
 Run only when ALL of:
 
-- Standalone mode (subagent prompt did NOT contain "do NOT commit or push" - apex-eod always emits this line at Step 3 of apex-eod/SKILL.md).
 - Step 4 produced `>=1` op in `{run}-applied-ops.json` (zero ops -> nothing to commit).
 - Step 5 cleanup completed (the CC version-stamp + workflow-improvements archive happen there; sync-git assumes those files have already settled).
 
@@ -84,9 +83,9 @@ The no-commit branch (Step 7 exit 10) DOES call `cleanup-run.sh` internally via 
 
 ## What this step does NOT do
 
-- Does NOT decide whether to skip standalone mode on its own - that gate lives in `SKILL.md` (the subagent-prompt directive check).
+- Does NOT decide whether to run on its own - the `>=1`-op gate lives in `SKILL.md`.
 - Does NOT overwrite the bump rule with a "compare upstream tags" or "ask the user" step - the rule is byte-for-byte identical to admin-apex SKILL.md task 9 so the two flows produce identical version semantics.
 - Does NOT push only one repo (public OR private) - both push together; on per-repo push failure the script exits 6 or 7 and leaves the other repo untouched (mirror-to-dev.sh's behavior).
-- Does NOT mirror outside the closed allowlist - `skills/apex-eod/**`, `skills/apex-fix/**`, etc. stay private to `~/.claude` regardless of how Step 4 modified them.
+- Does NOT mirror outside the closed allowlist - `skills/apex-fix/**`, `skills/apex-git/**`, etc. stay private to `~/.claude` regardless of how Step 4 modified them.
 
 See `skills/admin-apex/SKILL.md` tasks 9-10 for the canonical contract; `skills/admin-apex/scripts/admin-apex-finalize.sh` and `skills/admin-apex/scripts/mirror-to-dev.sh` for the implementation; `skills/apex-improve/SKILL.md` Steps 7-8 stub for the apex-improve entry point.
