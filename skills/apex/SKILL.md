@@ -59,6 +59,13 @@ Step 13 reflector is **background** in non-trivial paths (economy + standard); t
 14. **Cleanup session (trivial-only)** - lazy step. Read `skills/apex/steps/14-cleanup.md` before executing. Runs ONLY when step 13 was skipped (trivial path; non-trivial cleanup comes from the step-13 reflector); `cleanup-session.sh`, idempotent, worktree-only.
 15. **Inline summary** - lazy step. Read `skills/apex/steps/15-summary.md` before executing. 15.0 cd-back sweep first; emit the fixed deterministic sections (Original request / Hypothesis vs reality / Root cause / Per-goal status / Mid-run notes / Result); then close task 15.
 
+## Cross-step invariants
+
+Coordination that spans steps - the orchestrator owns these because no single step file does; each step file holds its own mechanics, this is the canonical map (do NOT re-state the coupling per step file).
+- **Scope is seeded up-front, never grown at the tail (steps 1/6 -> 8/11/12).** Step 1 pre-coordinates the doc-touch surface (`code-only-no-docs`, report-only deliverable paths) and step 6 folds the doc-surface + co-located test files into `allowed_files` at scope-finalization - so steps 8/11/12 act inside a fixed scope and never reactively expand it. A reactive step-12 doc/scope expand means step 1/6 under-populated `allowed_files`.
+- **Doc-fold feeds the tail (step 6 -> 11/12).** The doc-surface files step 6 folds into `allowed_files` are exactly what step 11's documentation agent edits and step 12 stages; a doc edit stranded outside `allowed_files` at step 12 is an under-populated step 6, not a step-12 bug.
+- **Tier drives the tail (step 7 -> 8/9/11).** The step-7 tier selects the step-8 executor model (Sonnet economy / main-model standard) and gates step-9 polish + step-11 learn (economy skips both) - see the Tier matrix above; step files must not re-derive the tier.
+
 ## Mid-flow abort cleanup
 
 Any orchestrator exit bypassing step 14 runs `bash skills/apex/scripts/session-end-hook.sh {session}` inline. Triggers:
