@@ -4,11 +4,15 @@ Acceptance checklist for the apex context-rot structural split (Workstream B) an
 its prerequisites. Relocated from the apex-context-rot-optimization plan
 (item-5 deliverable 1) to its post-B home.
 
-This file also establishes `skills/apex/steps/` - the directory that will hold one
-lazy-loaded contract per orchestrator step once extraction (B step 2) lands. Until
-then only this checklist lives here; no step contract has been extracted yet, so the
-item-3 step-read gate (`step-read-gate-hook.sh`) finds no `steps/NN-*.md` to gate and
-fail-opens on every work tool.
+`skills/apex/steps/` now holds all 15 lazy-loaded step contracts (`01-analyze.md` ...
+`15-summary.md`; B step-2 extraction complete - runs 74cb182f / 9101979a / c982c195).
+The item-3 step-read gate (`step-read-gate-hook.sh`) is wired LIVE and ARMED (the
+`{session}-step-progress.json` sentinel is created at every session mint), but still
+fail-opens on every work tool because the orchestrator does not yet emit `metadata.step`
+on its per-step `TaskUpdate`, so `active_step` never advances. Wiring that emission (the
+ENFORCEMENT half) is the remaining step that turns the soft dispatch into a hard
+read-before-work gate; it must be validated under a real /apex standard run (R3-a perf +
+no false-denies) before it ships.
 
 ## Canonical step filenames
 
@@ -36,14 +40,23 @@ Step 8 absorbed `execute.md` (tier 4500); step 10 absorbed `review.md` (10.5) in
 
 ## B (the structural split)
 
-- Every `steps/NN-*.md` is `<=` its content-budget tier.
-- `skills/apex/SKILL.md` skeleton is `<=` ~1.5k words.
-- `test-step-gate.sh` (item-3 step-read gate) green.
-- `transcript-step-read-check.py` (item-5 canary) green over a captured /apex
-  standard-run transcript with a real `steps/NN` gates spec - read-before-work
-  asserted per step from the session JSONL.
-- Pre/post-B token accounting (R1) recorded for a standard run, so an equal or
-  higher total reads as the expected recency tradeoff, not a regression.
+Acceptance status re-verified VERSION 8.0.x (admin-apex run 3ddb1e42, mechanical pass):
+
+- MET - every `steps/NN-*.md` is `<=` its content-budget tier (audit-enforced via the
+  inventory `steps/` glob; densest is `08-execute.md` at 91% of its 4500 tier).
+- MET - `skills/apex/SKILL.md` skeleton is `<=` ~1.5k words (1357w).
+- MET - `test-step-gate.sh` (item-3 step-read gate) green (11/11).
+- PARTIAL - `transcript-step-read-check.py` (item-5 canary) green over the 8/8 synthetic
+  fixtures (`test-transcript-step-read.sh`). A green over a REAL captured /apex
+  standard-run transcript with a live `steps/NN` gates spec is LIVE-RUN-GATED: today's
+  flows emit no per-step `metadata.step` boundary, so no real fixture exists yet.
+- LIVE-RUN-GATED - pre/post-B token accounting (R1) recorded for a standard run, so an
+  equal or higher total reads as the expected recency tradeoff, not a regression.
+
+The mechanical split (skeleton + 15 lazy-load step files + armed gate + synthetic canary)
+is structurally COMPLETE. The two open items both require a real /apex standard run, which
+cannot be produced inside an admin-apex session; the major-bump step-6 ACCEPTANCE sign-off
+lands once they are captured from a live run (alongside the ENFORCEMENT wiring above).
 
 ## apex-merge (item 4)
 
