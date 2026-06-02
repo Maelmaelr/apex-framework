@@ -88,8 +88,10 @@ for s in subcmds:
     # every flag form (-p / -u / -k / -m / --include-untracked ...) all CREATE a
     # stash. Allow only read-only + non-destructive recovery sub-commands.
     # 'pop' is handled by its own block above; listed here so a reordering of
-    # blocks cannot accidentally route it through the deny path.
-    if sub not in ('list', 'show', 'apply', 'branch', 'pop', 'drop', 'clear'):
+    # blocks cannot accidentally route it through the deny path. 'drop' / 'clear'
+    # are destructive stash-entry removal (drop = one entry, clear = all) and are
+    # intentionally NOT allowlisted -> they fall through to deny (apex-core.md:34).
+    if sub not in ('list', 'show', 'apply', 'branch', 'pop'):
         print('yes')
         sys.exit(0)
 " 2>/dev/null || echo "")

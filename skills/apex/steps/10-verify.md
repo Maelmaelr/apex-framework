@@ -61,7 +61,7 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 
 4. **Attempt counter**: maintain `.claude-tmp/apex-active/{session}-review-attempts.json` (cap 2 reviews + 1 fix = max 3 hops total). On `attempt=2` returning `fix-needed` again (the fix did not resolve), the orchestrator MUST escalate (no third attempt; force AskUserQuestion).
 
-5. **Trace path**: agent writes to `.claude-tmp/apex-active/{session}-traces/review/result-{attempt}.md` ONLY when `action != pass`. Fix-dispatch trace lives at the executor's standard fix-loop path: `.claude-tmp/apex-active/{session}-traces/verify/fix-{attempt-N}.md` with attempt-N offset by step-10's fix-attempts counter (review-fixes share the verify fix-loop trace tree by convention so reflectors see one fix-attempt timeline).
+5. **Trace path**: agent writes to `.claude-tmp/apex-active/{session}-traces/review/result-{attempt}.md` when `action != pass`, OR when `action == pass` WITH advisory findings (kind=`pattern-following` severity=`advisory`); skip ONLY when `action == pass` AND `findings == []` (silent green) - matches `agents/reviewer.md`. Fix-dispatch trace lives at the executor's standard fix-loop path: `.claude-tmp/apex-active/{session}-traces/verify/fix-{attempt-N}.md` with attempt-N offset by step-10's fix-attempts counter (review-fixes share the verify fix-loop trace tree by convention so reflectors see one fix-attempt timeline).
 
 ## Fix-dispatch contract (when action == fix-needed)
 

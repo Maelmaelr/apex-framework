@@ -41,7 +41,7 @@ Spec: `skills/admin-apex/SKILL.md` task 7.
       - `Read` the file at the hit line.
       - `Edit` with `old_string` = surrounding context (enough to be unique) and `new_string` = same context with `<old-token>` replaced by `<new-token>`.
       - Append the file path to `{run}-docs-changed.txt`.
-   3. Hits inside `skills/` or `agents/` are NOT touched here - those were rewritten by `evolve.md` task 6 already.
+   3. Hits inside `skills/` or `agents/` are NOT rewritten here - those were rewritten by `evolve.md` task 6 already. But task 7 MUST still append every `.md` file edited this run under `skills/**` + `agents/` (the `.md` subset of `{run}-dirty-paths.txt`) to `{run}-docs-changed.txt` alongside the spec-doc hits, so task-9 staging + task-10 mirror traceability covers all edited skill/agent docs - not just README/apex-core/overview/CLAUDE.md (SKILL.md task 7).
 
 4. **For `retire` / `*-remove`**: read the line containing the old-token, decide if it is a list item / table row / paragraph sentence, and `Edit` to drop it (preserve surrounding markdown structure). When in doubt, leave a single-line marker:
    ```

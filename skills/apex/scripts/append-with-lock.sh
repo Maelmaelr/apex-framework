@@ -3,7 +3,7 @@
 # guard. Spec: agents/reflector.md output contract.
 #
 # Centralizes the lock-and-append idiom that scripts/reflect-traces.sh
-# implements inline (around lines 144-185) so the reflector agent can use a
+# previously implemented inline (pre-extraction) so the reflector agent can use a
 # single helper call instead of re-deriving the lock logic per invocation.
 #
 # Why a helper exists: macOS lacks `flock(1)`. A literal `flock <lockfile> -c

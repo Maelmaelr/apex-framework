@@ -67,8 +67,14 @@ const AGENT_SCHEMA = {
 
 const ASCII = 'ASCII only. No tables, no diagrams. Your final message IS the structured return value, not a human-facing report.'
 
-const units = (args && Array.isArray(args.units)) ? args.units : []
-const MAX_FLEET = (args && Number.isInteger(args.maxFleet) && args.maxFleet > 0) ? args.maxFleet : 16
+// The Workflow runtime delivers `args` as a JSON STRING (verified by probe, run
+// 248bdf47), not the object the tool's "verbatim" contract implies; a caller that
+// reads `args.units` directly off the string gets undefined and silently no-ops
+// (units=0, the recurring fall-back-to-serial defect). Normalize defensively so
+// both string and object delivery resolve identically.
+const A = (typeof args === 'string') ? JSON.parse(args) : (args || {})
+const units = Array.isArray(A.units) ? A.units : []
+const MAX_FLEET = (Number.isInteger(A.maxFleet) && A.maxFleet > 0) ? A.maxFleet : 16
 
 if (units.length === 0) {
   log('semantic-drift: no units supplied; nothing to check')

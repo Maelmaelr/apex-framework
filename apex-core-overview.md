@@ -92,7 +92,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - staleness / inconsistency / unused check
    - lessons context advisory
 
-10. Verify: verify-build.sh --with-tests --in-scope-only (apex hot path; apex-fix omits both flags)
+10. Verify: verify-build.sh --session {session} --with-tests --in-scope-only (apex hot path; apex-fix omits --with-tests / --in-scope-only but still passes --session)
     - lint + typecheck + build (project-aware, first-fail-stop)
     - --with-tests delegates to verify-tests.sh after build: derives modified files from manifest base_branch via merge-base, runs project test runner on related-only set (auto-skip when no manifest / no test runner / zero related)
     - if errors: executor.md (always Sonnet for fix-loop, regardless of step 8's tier; cap 3)

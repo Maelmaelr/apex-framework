@@ -23,4 +23,4 @@ The content resolver only handles `<<<<`-marked UU/AA hunks. Remaining content c
 
 ## Decision (per file)
 
-Then AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = reject-edit). Per-option `description` carries a one-line diff sketch + recommendation only; full rationale lives in `<run>-merge-result.json`. On accept: write file, `git add P`. On reject: user manual edit, then `git add P`. On abort: `git merge --abort`, skip cleanup, continue.
+Then AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = reject-edit-manually). Per-option `description` carries a one-line diff sketch + recommendation only; full rationale lives in `<run>-merge-result.json`. On accept: write file, `git add P`. On reject: user manual edit, then `git add P`. On abort: `git merge --abort`, skip cleanup, continue.

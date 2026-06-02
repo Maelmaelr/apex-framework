@@ -18,7 +18,7 @@
 #        - Then sweep stale sibling worktrees (manifest-less crash orphans +
 #          dead-owner fully-merged leftovers) via sweep_stale_worktrees
 #   2. Manual mode (positional arg = apex {session} token):
-#        - Trusted own-session caller (mid-/apex abort: step 1 / 6
+#        - Trusted own-session caller (mid-/apex abort: step 6
 #          cascade-empty / 10 verify cap-3 / unexpected error). Target the
 #          supplied token directly.
 #
@@ -154,7 +154,7 @@ sweep_stale_worktrees() {
 run_cleanup() {
   # Forwards cleanup-session.sh's stdout (the main-worktree path on every
   # branch where it resolves) to our own stdout so manual-mode callers (apex
-  # mid-flow abort, e.g., step 1/2/6/8/10 cascade) can capture and `cd` out
+  # mid-flow abort, e.g., step 6/8/10 cascade) can capture and `cd` out
   # of the (possibly removed) worktree. SessionEnd-hook callers (CC harness)
   # do not consume stdout - the inherited CC session is ending anyway - but
   # forwarding is harmless and keeps the hook contract symmetric with manual

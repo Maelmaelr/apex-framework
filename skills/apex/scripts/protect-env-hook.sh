@@ -14,7 +14,7 @@ FILE_PATH=$(echo "$INPUT" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 ti = data.get('tool_input', {})
-print(ti.get('file_path', ''))
+print(ti.get('file_path', '') or ti.get('notebook_path', ''))
 " 2>/dev/null || echo "")
 
 # No file_path means nothing to check

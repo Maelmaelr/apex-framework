@@ -52,4 +52,4 @@ When SKILL.md Step 3's 256 KB hard cap is exceeded, Step 3 invokes this same rot
 # the Step-1 rotation block above, re-run with cutoff = now - timedelta(days=7) (see implementation note below)
 ```
 
-Implementation note: the canonical rotation block above uses a fixed 30-day cutoff. The aggressive variant changes only the `cutoff = ... timedelta(days=30)` line to `timedelta(days=7)`. Keep both variants in this file rather than parameterising at the SKILL.md call site.
+Implementation note: the canonical rotation block above uses a fixed 30-day cutoff. The aggressive variant is NOT a second runnable block - it is that same block with only the `cutoff = ... timedelta(days=30)` line swapped to `timedelta(days=7)`. Apply the swap inline at the SKILL.md Step 3 call site rather than maintaining a duplicate copy here.
