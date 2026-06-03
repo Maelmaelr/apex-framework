@@ -6,7 +6,7 @@
 # The screener (Haiku, agents/lesson-screener.md) emits kept[] as
 # {line_range, section_title, screener_reason} only -- it never re-emits
 # section bodies (verbatim content re-emission in a cold Haiku context was
-# ~81% of step-5 wall in run 6b038dd5). The orchestrator runs THIS script
+# ~81% of step-5 wall). The orchestrator runs THIS script
 # over kept[].line_range after the screen to recover the bodies
 # deterministically (plain sed), then back-fills kept[].content for the
 # downstream-spawn role (steps 6/8/9/10/11 subagents do not inherit working

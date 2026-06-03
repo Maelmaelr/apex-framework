@@ -327,7 +327,7 @@ session_end_manual_clean_fixture() {
 run_fixture "apex session-end-hook.sh manual" 0 session_end_manual_clean_fixture
 
 # 4k. block-destructive-hook.sh: `-c X=Y` and `-C path` prefix-flags before `reset --hard` must
-#     deny (reflectors ac85c725 + 5b218a81: regex hardening landed without coverage).
+#     deny.
 block_destructive_reset_prefix_fixture() {
   local hook="$REPO_ROOT/skills/apex/scripts/block-destructive-hook.sh" out
   for cmd in 'git -c user.email=t@t reset --hard HEAD~1' 'git -C /tmp reset --hard'; do

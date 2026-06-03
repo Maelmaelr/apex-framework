@@ -148,7 +148,7 @@ case "$PROJECT_TYPE" in
     # through to the single-package path that follows.
     if [[ "$PM" == "pnpm" && -f pnpm-workspace.yaml ]]; then
       # Workspace grouping logic lives in verify-tests-pnpm-groups.py
-      # (extracted at apex-improve d58fe183 to keep verify-tests.sh <= 400L).
+      # (extracted to keep verify-tests.sh <= 400L).
       # Emits one tab-separated line per (package, runner, pkg_dir, files).
       SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
       WS_GROUPS=$(python3 "$SCRIPT_DIR/verify-tests-pnpm-groups.py" "$EXISTING")
@@ -163,8 +163,8 @@ case "$PROJECT_TYPE" in
         # cwd-confused environment (.env.test resolution drifts).
         case "$runner" in
           vitest|vitest-v2)
-            # vitest 3.2.4 crashes on `run --related` (reflector c4b6d57b +
-            # e1827632); vitest 2.x never supported --related. Both variants
+            # vitest 3.2.4 crashes on `run --related`; vitest 2.x never
+            # supported --related. Both variants
             # receive test-file paths already expanded by verify-tests-pnpm-
             # groups.py and run `vitest run <test-files>` directly - parity
             # with the single-package path below.
@@ -263,9 +263,7 @@ PY
     }
 
     if [[ "$RUNNER" == "vitest" ]]; then
-      # vitest@3.2.4 crashes on `run --related` (reflector c4b6d57b: the crash
-      # was logged out-of-scope to git-agent-errors.log and the related run's
-      # true pass/fail was never gated). Route v3+ through the same
+      # vitest@3.2.4 crashes on `run --related`. Route v3+ through the same
       # deterministic derived-test-files path as vitest-v2 so run_or_fail
       # stays a meaningful pass/fail gate instead of a swallowed CLI crash.
       DERIVED=$(derive_test_files)

@@ -81,11 +81,8 @@ The Step 8 post-success `cleanup-run.sh --post-success` invocation sweeps `{run}
 
 The no-commit branch (Step 7 exit 10) DOES call `cleanup-run.sh` internally via `admin-apex-finalize.sh` - that branch leaves no commit context to defer, so eager cleanup is correct there. SessionEnd (manifest `cc_session_id` match in `session-end-hook.sh`) remains the safety net for runs that crashed or were interrupted before Step 8 success.
 
-## What this step does NOT do
+## Invariants
 
-- Does NOT decide whether to run on its own - the `>=1`-op gate lives in `SKILL.md`.
-- Does NOT overwrite the bump rule with a "compare upstream tags" or "ask the user" step - the rule is byte-for-byte identical to admin-apex SKILL.md task 9 so the two flows produce identical version semantics.
-- Does NOT push only one repo (public OR private) - both push together; on per-repo push failure the script exits 6 or 7 and leaves the other repo untouched (mirror-to-dev.sh's behavior).
-- Does NOT mirror outside the closed allowlist - `skills/apex-fix/**`, `skills/apex-git/**`, etc. stay private to `~/.claude` regardless of how Step 4 modified them.
+The `>=1`-op run gate lives in `SKILL.md`. The bump rule is byte-for-byte identical to admin-apex SKILL.md task 9, so the two flows produce identical version semantics. Both repos push together; on per-repo push failure the script exits 6 or 7 and leaves the other repo untouched (mirror-to-dev.sh's behavior). The closed allowlist keeps `skills/apex-fix/**`, `skills/apex-git/**`, etc. private to `~/.claude` regardless of how Step 4 modified them.
 
 See `skills/admin-apex/SKILL.md` tasks 9-10 for the canonical contract; `skills/admin-apex/scripts/admin-apex-finalize.sh` and `skills/admin-apex/scripts/mirror-to-dev.sh` for the implementation; `skills/apex-improve/SKILL.md` Steps 7-8 stub for the apex-improve entry point.

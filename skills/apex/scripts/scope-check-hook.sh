@@ -27,9 +27,8 @@
 #   - any README* file at any depth
 #   - any VERSION file at any depth (consumed by the project-side deploy skill
 #     on the final integration commit, and by orchestrator post-agent inline
-#     bumps in non-/apex contexts; step 12 of /apex no longer bumps VERSION -
-#     it persists `bump_hint` into the manifest; reflector 00bac875 surfaced
-#     the gate denial)
+#     bumps in non-/apex contexts; step 12 of /apex persists `bump_hint` into
+#     the manifest rather than bumping VERSION directly)
 #
 # Never includes .env* or .git/ regardless of scope contents (those are gated
 # by separate hooks / settings deny rules).
@@ -46,7 +45,7 @@ deny() {
 
 is_safety_path() {
   local target="$1"
-  # Same-session self-allow (reflector 42f24a1c): when CWD is inside an apex
+  # Same-session self-allow: when CWD is inside an apex
   # worktree (.../.apex-worktrees/<OWN>/...), an absolute-path Write into THAT
   # same worktree's .claude-tmp/ is the caller's own session - allow it. The
   # cross-worktree guard below still blocks paths reaching into OTHER sessions'

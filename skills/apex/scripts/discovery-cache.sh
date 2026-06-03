@@ -12,9 +12,7 @@
 #       stdout: absolute path to cached main-scope.json on hit; nothing on miss.
 #       stderr: explicit `CACHE_HIT <path>` / `CACHE_MISS <reason>` marker line.
 #               Callers parse stderr (or rely on exit code) to disambiguate a
-#               miss from a script error - exit-status alone treats both as 1
-#               (reflector b69d28ba: "discovery-cache.sh protocol lacks hit/miss
-#               signal for callers (silent-treated as miss)").
+#               miss from a script error - exit-status alone treats both as 1.
 #       exit:   0 = hit (path on stdout, marker on stderr);
 #               1 = miss / expired / corrupt (marker on stderr).
 #   write <prompt> <project_root> <main_scope_path>
@@ -62,17 +60,14 @@ normalize_prompt() {
   # separately from generic path-bearing prompts.
   # Generic prompts (no plan pointer): strip absolute / relative path tokens
   # so the same conceptual task with different casing / spacing / temp path
-  # hashes to one key (4-session collision fix 734e3faf / 72734118 /
-  # 494203ff / 23c32b7e where the absolute plan path dominated the prompt
-  # and the rest was identical).
+  # hashes to one key (the absolute plan path otherwise dominated the prompt
+  # while the rest was identical).
   # Plan-pointer prompts ("continue: <plan.md>", "implement <plan.md>"):
   # the prompt text carries no per-run identity - the plan file does. Two
   # invocations of the same continue: prompt are NOT the same task when the
   # plan evolved between runs. Preserve the plan path AND salt with the
-  # plan file's current sha so each plan snapshot hashes distinctly (4+
-  # session false-positive cluster e0e0ed8f / b1fc7845 / c72920ee /
-  # ba0e61e7 on model-inventory-audit-plan.md, each touching different
-  # file sets yet colliding on the path-stripped prompt).
+  # plan file's current sha so each plan snapshot hashes distinctly (plans that
+  # evolve between runs otherwise collide on the path-stripped prompt).
   local lc plan_path abs_plan plan_sha
   lc=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')
   plan_path=$(printf '%s' "$lc" |

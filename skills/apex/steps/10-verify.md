@@ -22,11 +22,11 @@ Fires ONLY when ALL hold:
 
 1. tier == "standard" (read from `{session}-tier.json`). Economy tier always skips (mirrors step 9 polish-skip rule; tiny scope rarely produces CLAUDE.md-rule violations worth the hop).
 2. step 10 verify exited 0 (a broken build is not the reviewer's concern; step 10's fix-loop owns that).
-3. `len(touched_files) >= 3` where touched = `(git diff --name-only {diff_anchor}; git ls-files --others --exclude-standard) | sort -u` INTERSECTED with `allowed_files`. Small diffs (1-2 files) skip - the cost-vs-coverage trade does not justify the hop. **Docs-only branch**: when every touched file matches `^docs/` OR `\.(md|markdown|txt)$` OR `^README` OR `^CHANGELOG`, the threshold drops to `>= 1` - 2-file documentation diffs still warrant a cross-link / pattern-integrity pass (reflector a2181263).
+3. `len(touched_files) >= 3` where touched = `(git diff --name-only {diff_anchor}; git ls-files --others --exclude-standard) | sort -u` INTERSECTED with `allowed_files`. Small diffs (1-2 files) skip - the cost-vs-coverage trade does not justify the hop. **Docs-only branch**: when every touched file matches `^docs/` OR `\.(md|markdown|txt)$` OR `^README` OR `^CHANGELOG`, the threshold drops to `>= 1` - 2-file documentation diffs still warrant a cross-link / pattern-integrity pass.
 4. ANY of:
    - `hypothesis.complexity_hint == "high"`, OR
    - ANY `hypothesis.goals[]` matches `/\b(rewrite|migrate|redesign|refactor|new endpoint|new component|new feature)\b/i`, OR
-   - `git diff --shortstat {diff_anchor}` deletions across `allowed_files` >= 200 lines (large structural-deletion clause - full component / file removals warrant review even when complexity_hint is medium and the verb regex misses; reflector cef8604f).
+   - `git diff --shortstat {diff_anchor}` deletions across `allowed_files` >= 200 lines (large structural-deletion clause - full component / file removals warrant review even when complexity_hint is medium and the verb regex misses).
 
 **Doc-consistency carve-out** (overrides 3-4; conditions 1-2 still required): even when conditions 3 and 4 do not both hold, the gate fires when the in-scope set (touched INTERSECT `allowed_files`) contains >= 1 doc/spec path (`*.md` / `docs/**` / `CLAUDE.md` / `.claude/rules/**`) AND >= 1 non-doc code path. This catches small (often 2-file) doc+code co-changes the >= 3 size gate would otherwise skip, so a change cannot silently leave an in-scope doc contradicting the new code. Standard tier only for v1 (economy / trivial unaffected - preserves the economy-skip invariant; economy coverage is a noted future extension).
 
@@ -55,7 +55,7 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 
 3. **Branch on `action`**:
    - `pass` -> proceed to step 11 (no trace; silent green).
-   - `fix-needed` -> dispatch `agents/executor.md` ONCE (Sonnet, cap 1, no retry). Spawn-prompt carries the findings list as the fix scope (no `goal` field; this is a fix-only invocation analogous to step 10's fix-loop). After the executor returns, spawn `agents/reviewer.md` again with `attempt=2` + `prior_findings_path` to confirm fixes landed. **Mechanical-fix inline allowance**: when every finding is a zero-ambiguity surgical edit (dead-code delete, void-pattern early-return, unused-import strip) AND finding count <= 2, the orchestrator MAY inline-Edit the fix instead of dispatching the executor; on inline-edit it MUST append a synthetic entry to `.claude-tmp/apex-active/{session}-fix-attempts.json` `{kind: "review-inline", files: [<paths>], count: N}` BEFORE step 11 so the learn difficulty gate (`attempts >= 1`) observes the rollup and learn runs (mirrors step-8 cross-scope-inline pattern landed in commit 06a9090; reflector 213a7c3c: review attempt-1 fix dead-assertion delete was inline-handled and learn-skipped because no fix-attempts.json existed).
+   - `fix-needed` -> dispatch `agents/executor.md` ONCE (Sonnet, cap 1, no retry). Spawn-prompt carries the findings list as the fix scope (no `goal` field; this is a fix-only invocation analogous to step 10's fix-loop). After the executor returns, spawn `agents/reviewer.md` again with `attempt=2` + `prior_findings_path` to confirm fixes landed. **Mechanical-fix inline allowance**: when every finding is a zero-ambiguity surgical edit (dead-code delete, void-pattern early-return, unused-import strip) AND finding count <= 2, the orchestrator MAY inline-Edit the fix instead of dispatching the executor; on inline-edit it MUST append a synthetic entry to `.claude-tmp/apex-active/{session}-fix-attempts.json` `{kind: "review-inline", files: [<paths>], count: N}` BEFORE step 11 so the learn difficulty gate (`attempts >= 1`) observes the rollup and learn runs (mirrors the step-8 cross-scope-inline pattern).
    - `escalate` -> AskUserQuestion (`accept-and-proceed` | `apply-fix-manually` | `abort`). Dismiss / cancel = `accept-and-proceed`. `abort` triggers `bash skills/apex/scripts/session-end-hook.sh {session}` inline; `apply-fix-manually` surfaces the findings to the user and proceeds to step 11 with no auto-fix.
 
 4. **Attempt counter**: maintain `.claude-tmp/apex-active/{session}-review-attempts.json` (cap 2 reviews + 1 fix = max 3 hops total). On `attempt=2` returning `fix-needed` again (the fix did not resolve), the orchestrator MUST escalate (no third attempt; force AskUserQuestion).
@@ -80,12 +80,9 @@ Same agent spawn as attempt 1 with `attempt=2` + `prior_findings_path`. Agent:
 - A still-present finding gets prefixed `STILL-PRESENT-AFTER-FIX:` and forces `action: "escalate"`.
 - A clean re-review returns `action: "pass"` and proceeds to step 11.
 
-## What this sub-step does NOT do
+## Bounds
 
-- Does NOT run lint / build / test (step 10 owns that).
-- Does NOT touch project files itself; reviewer.md never edits, executor.md does the fix dispatch.
-- Does NOT loop indefinitely; cap is hard at 2 reviews + 1 fix.
-- Does NOT escalate to a different agent on persistent failure; AskUserQuestion is the only escalation.
+Read-only on the review side (reviewer.md never edits; executor.md does the fix dispatch), hard-capped at 2 reviews + 1 fix - no indefinite loop. On persistent failure the only escalation is AskUserQuestion.
 
 ## Reflector visibility
 

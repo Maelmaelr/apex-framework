@@ -137,7 +137,7 @@ fi
 
 # Step 1: Conditional VERSION bump.
 if [[ "$BUMP" != "none" ]]; then
-  # Idempotency guard (reflector 3f0eb405): if this RUN already produced a
+  # Idempotency guard: if this RUN already produced a
   # commit (orchestrator double-fired finalize.sh, or a partial restart re-
   # entered after the bump landed), refuse the second bump. The canonical
   # commit-message convention is `admin-apex $RUN: ...` (mirrored by apex-
@@ -202,8 +202,7 @@ fi
 # Step 2: Stage evolve dirty paths + docs + private-tracked roots.
 # DIRTY entries may carry a trailing " (deleted)" suffix when retire ops paste
 # from `git status` output; xargs would otherwise split each such line into
-# {path, (deleted)} and silently drop the path from staging (reflector 00d40528
-# stranded the VERSION-bump in a 3-commit split). Strip the suffix first; use
+# {path, (deleted)} and silently drop the path from staging. Strip the suffix first; use
 # `git add -A` so deletions in DIRTY are staged correctly alongside additions
 # and modifications.
 if [[ -s "$DIRTY" ]]; then
@@ -244,7 +243,7 @@ fi
 # friction signals).
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 # Strip a leading "bump=<tier>" token if the caller embedded one in --body, so the
-# summary prints bump= exactly once (reflector 3022de5d / 00db0685: "bump=none bump=none").
+# summary prints bump= exactly once.
 BODY_SUMMARY="$(printf '%s' "$BODY" | sed -E 's/^bump=[^ ]*( |$)//')"
 echo "task-9: bump=$BUMP $BODY_SUMMARY, commit $SHA" >> "$SUMMARY"
 

@@ -91,9 +91,6 @@ Backlog durability: the consolidated file is EXEMPT from `sweep-orphan-artifacts
 
 If all three signal sources produce zero findings AND the consumable deferred-findings set is empty, write `findings.json` as `[]` and let SKILL Step 2 surface the no-signals exit. Do NOT skip the file write - SKILL needs a deterministic artifact to read. A non-empty deferred backlog is NOT a no-signals exit: write the consolidated `{run}-deferred-findings.json` + `{run}-consumed-deferred.txt` even when the live signals are empty, so the backlog carries forward (and, if any survivors are non-chronic, populate `findings.json` so Step 3 can plan them).
 
-## What this step does NOT do
+## Deferral + crash-safe ordering
 
-- Does NOT write `evolve-plan.json` - that is `plan.md` (Step 3).
-- Does NOT mutate any apex file - that is `apply.md` (Step 4).
-- Does NOT decide on its own that a tech-update is irrelevant - if uncertain, defer (write to `{run}-deferred-findings.json`) rather than guess.
-- Does NOT delete the consumed prior deferred-findings files - it only records their paths in `{run}-consumed-deferred.txt`. `finalize.md` Step 5b deletes them, after the consolidated file is written and pruned (crash-safe ordering).
+When uncertain whether a tech-update is relevant, defer it (write to `{run}-deferred-findings.json`) rather than guess. This step records consumed prior deferred-findings paths in `{run}-consumed-deferred.txt`; `finalize.md` Step 5b deletes those files after the consolidated file is written and pruned (crash-safe ordering). Planning is `plan.md` (Step 3); op application is `apply.md` (Step 4).

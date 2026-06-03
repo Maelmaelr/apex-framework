@@ -33,14 +33,14 @@
 set -euo pipefail
 
 # Interpreter: bash 3.2-compatible (macOS default /bin/bash is 3.2.57). A prior
-# bash-4 hard-fail guard was removed (reflector f8b08fb5): its cited reason -
+# bash-4 hard-fail guard was removed: its cited reason -
 # heredocs inside process substitutions - does not exist in this file (no `<(`
 # procsub anywhere; the only heredoc is the plain `python3 - ... <<'PY'` below,
 # which runs fine on 3.2). No bash-4 construct is used, so the guard only broke
 # /apex mint on stock macOS unless a brew bash happened to precede /bin/bash in
 # PATH. `bash -n` parses this script clean on 3.2.57; keep it 3.2-safe.
 
-# CWD=PROJECT_ROOT fail-fast guard (reflector c5ea7797): this script writes the
+# CWD=PROJECT_ROOT fail-fast guard: this script writes the
 # manifest to the RELATIVE path .claude-tmp/apex-active, so it MUST run from the
 # project root. Invoked from the apex skill dir (or any non-root CWD) it would
 # silently create a manifest under the wrong .claude-tmp and strand the session.
@@ -196,8 +196,7 @@ for _cache in node_modules .venv venv target .gradle .next .nuxt .turbo; do
     ln -s "$_WT_COMMON_RES/$_cache" "$_cache" 2>/dev/null || true
   fi
 done
-# Monorepo subpackage cache symlinks (reflectors 84d59286 / 991f2792 / c73f7ca6
-# 7-session recurrence): top-level node_modules alone is insufficient for pnpm
+# Monorepo subpackage cache symlinks: top-level node_modules alone is insufficient for pnpm
 # workspaces - per-subpackage node_modules + built dist/ live under packages/*,
 # apps/*, services/*. Detect a monorepo by pnpm-workspace.yaml OR a top-level
 # package.json carrying a "workspaces" field, then symlink each subpackage's

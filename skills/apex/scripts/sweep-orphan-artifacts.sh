@@ -32,8 +32,8 @@
 #   - Does NOT touch artifacts younger than --age-hours (defends against
 #     in-flight producers that have not yet written their manifest).
 #   - Does NOT wipe a co-running run's live artifacts: the manifest-absent
-#     branch re-checks {token}.json on disk just before deletion (TOCTOU close;
-#     reflector 1af83649). This guard still matters for admin-apex-active
+#     branch re-checks {token}.json on disk just before deletion (TOCTOU
+#     close). This guard still matters for admin-apex-active
 #     where concurrent CC sessions can interleave; apex hot-path is worktree-
 #     resident so the surface is narrow but the guard is cheap.
 #
@@ -146,7 +146,7 @@ for name in names:
     # Just-in-time manifest re-check: a co-running run may write its
     # {token}.json between listdir() above and this point. Without this
     # re-stat a concurrent sweep wiped a live run's artifacts mid-flow
-    # (reflector 1af83649). Re-check on disk closes the TOCTOU window so a
+    # Re-check on disk closes the TOCTOU window so a
     # live run that just armed its manifest is never swept.
     if os.path.exists(os.path.join(d, tok + ".json")):
         continue

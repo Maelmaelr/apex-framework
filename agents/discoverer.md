@@ -116,11 +116,4 @@ JSON paths only: `{main_scope: "<path>", screened: "<path>", cache_hit: <bool>, 
 
 When all layers exhaust with zero validated paths (empty LSP + empty `candidates[]`), return `{cascade_empty: true}` with no scope JSON written. The orchestrator (caller) owns the AskUserQuestion (`abort` | `proceed-with-discovered-or-prompt-paths`).
 
-## What this agent does NOT do
-
-- Does NOT spawn executors (step 8 / `agents/executor.md`).
-- Does NOT call verify-build (step 10).
-- Does NOT touch any project file outside the screener trace and the produced scope JSONs.
-- Does NOT inherit working memory; all inputs flow through the spawn prompt.
-
 See `skills/apex/scripts/discovery-expand.sh` for the deterministic-expansion clause inventory + caps; `agents/screener.md` for the screener-side contract.

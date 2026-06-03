@@ -116,7 +116,7 @@ sweep_stale_worktrees() {
   #       never written, but the worktree directory survived). Removed inline;
   #       cleanup-session.sh would no-op without a manifest. Without this the
   #       next /apex create-session re-encounters the orphan and blocks on user
-  #       interaction (reflector b623b673: orphan 41eac60c needed manual cleanup).
+  #       interaction.
   #   (b) manifest-PRESENT dirs whose owning session is no longer live (recorded
   #       pid dead OR recycled to a non-claude process). Re-run the
   #       cleanup-session.sh keep/remove decision so a fully-merged worktree
@@ -158,7 +158,7 @@ run_cleanup() {
   # of the (possibly removed) worktree. SessionEnd-hook callers (CC harness)
   # do not consume stdout - the inherited CC session is ending anyway - but
   # forwarding is harmless and keeps the hook contract symmetric with manual
-  # mode (user-driven 35679220).
+  # mode.
   local session="$1"
   local target_active="${2:-}"
   [[ -z "$session" ]] && return 0

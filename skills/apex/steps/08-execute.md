@@ -92,11 +92,4 @@ Under `report-only` mode no executor is dispatched (step 1 contract); the orches
 - Per-task trace files (only on failure or split)
 - Modified scope files (touched-by-executor set; consumed by step 9 polish via `git diff` against `{diff_anchor}`)
 
-## What this skill does NOT do
-
-- Does NOT decide tier (step 7 owns that)
-- Does NOT run lint / build (step 10 verify owns that)
-- Does NOT commit (step 12 owns that)
-- Does NOT spawn screener / documentation / learn / reflector
-
 This file is the full step-8 contract. See `agents/executor.md` for executor behavior; safety paths + hook gating enforced at the hook layer; goal-coupling vocabulary defined in 8.2 above.

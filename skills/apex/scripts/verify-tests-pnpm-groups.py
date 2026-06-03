@@ -124,8 +124,8 @@ def expand(files_in_pkg, pkg_rel):
 
 for (rel, name, runner, has_test), fs in groups.items():
     # jest accepts source files via --findRelatedTests (runner resolves
-    # related internally). vitest v3.2.4 crashes on `run --related` (reflector
-    # c4b6d57b + e1827632), so both vitest variants now go through the expand
+    # related internally). vitest v3.2.4 crashes on `run --related`, so both
+    # vitest variants now go through the expand
     # path - parity with the single-package path in verify-tests.sh. adonis
     # needs explicit test files via --files. Other/empty runners use heuristic
     # expansion since we fall back to the package's `test` script.

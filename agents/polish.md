@@ -44,9 +44,6 @@ Intersected set is the cap; the scope-check PreToolUse hook is the outer guard. 
 
 One-line summary: `polished: N files (M changes)` or `no-op (nothing actionable)`. NEVER per-file diffs.
 
-## What this agent does NOT do
+## Scope guardrail
 
-- Does NOT touch files outside the touched-INTERSECT-scope set.
-- Does NOT introduce new public symbols, abstractions, or refactor signatures.
-- Does NOT run lint / build / test (that's step 10).
-- Does NOT inherit working memory; all inputs flow through the spawn prompt.
+Polish makes no behavioral change: it introduces no new public symbols, abstractions, or signature refactors - only the in-scope cleanups above. The touched-INTERSECT-scope set is the cap (lint / build / test is step 10).

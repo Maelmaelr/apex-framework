@@ -87,13 +87,12 @@ fi
 mkdir -p "$ACTIVE_DIR"
 # Append-or-init: preserve prior per-branch entries on conflict-interrupted resume
 # (re-invoking the script after a manual conflict resolution must not erase the
-# already-recorded clean-merge results; reflector 4c827a2b: orchestrator restitched
-# inline because unconditional truncation wiped sibling entries on re-entry).
+# already-recorded clean-merge results).
 [[ -f "$RESULT" ]] || echo '[]' > "$RESULT"
 
 # Append a step-4 summary line per SKILL.md step 4 contract. Clean-merge /
 # trivial-union / merge-refused cases write here directly so the orchestrator
-# does not back-fill (reflector 492224ba). The conflict-exit-20 path stays with
+# does not back-fill. The conflict-exit-20 path stays with
 # the orchestrator - it owns the resolver decision and writes the line after
 # the AskUserQuestion outcome.
 append_summary() {
@@ -108,8 +107,7 @@ with open(path, encoding="utf-8") as f:
     data = json.load(f)
 entry = {"branch": branch, "base": base, "status": status}
 # Omit empty detail per SKILL.md step 4 contract (mirrors Step 2 omit-empty
-# discipline; reflector 32455372: clean-merge entries emitted "detail": ""
-# as downstream parse noise without information value).
+# discipline).
 if detail:
     entry["detail"] = detail
 data.append(entry)
@@ -179,9 +177,9 @@ for ENTRY in "${ENTRIES[@]}"; do
     # Trivial-union skip: deterministically resolve single-hunk additive
     # conflicts whose combined span is small (<=50 lines), in bracket/backtick-
     # balanced files, by inline union of both sides' adds; saves the ~5-10k-token
-    # resolver spawn on the common docs-pile + balanced-code case (reflectors
-    # c946e283 + 6ed86029: gate the conflicted hunk span, not whole-file size, so
-    # big append-only files like lessons.md with a one-line conflict still qualify).
+    # resolver spawn on the common docs-pile + balanced-code case (gate the
+    # conflicted hunk span, not whole-file size, so big append-only files like
+    # lessons.md with a one-line conflict still qualify).
     # Files this predicate rejects fall through to the resolver-spawn path below.
     REMAINING=""
     TRIVIAL_COUNT=0
@@ -198,7 +196,7 @@ if len(hunks) != 1:
 ours, theirs = hunks[0]
 if not ours.splitlines() and not theirs.splitlines():
     sys.exit(1)
-# Hunk-span gate (reflector 6ed86029): bound the CONFLICTED span, not the whole
+# Hunk-span gate: bound the CONFLICTED span, not the whole
 # file - a large append-only file (lessons.md) with a one-line date-bump conflict
 # was rejected by the prior whole-file <=20kb gate and always spawned the resolver.
 # Cap the single hunk's combined add-span so big files with a tiny conflict qualify

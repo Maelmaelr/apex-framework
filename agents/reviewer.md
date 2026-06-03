@@ -36,11 +36,11 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 4. **Hard cap 5 findings** (most-important-first; order them by likely user impact: security > pattern-violation > over-engineering > doc-consistency > i18n > complexity). Surface every issue you actually find - including low-severity and lower-confidence ones - then let this cap + the impact ordering be the downstream filter; do NOT self-censor uncertain findings upstream (this cap IS the rank-and-trim step). If you would have emitted 6+, retain the top 5 and append a sixth synthetic finding `{kind: "additional", file: "(synthetic)", line: 0, summary: "N additional issues elided; re-run /review for full report"}`.
 
 5. **Decide action**:
-   - `pass`: zero findings, or all findings are advisory (kind=`pattern-following` with `severity=advisory` flag). Orchestrator proceeds to step 11. **A `severity=actionable` finding NEVER permits `pass`** - it forces `fix-needed` (or `escalate` per the rules below); `pass` + an actionable finding is a contradiction that ships un-tracked debt past the gate (reflector 7c41c440: a shared-hook extraction flagged actionable yet passed, leaving the debt invisible post-merge). If a finding is genuinely pass-worthy, emit it as `severity=advisory`, not actionable.
+   - `pass`: zero findings, or all findings are advisory (kind=`pattern-following` with `severity=advisory` flag). Orchestrator proceeds to step 11. **A `severity=actionable` finding NEVER permits `pass`** - it forces `fix-needed` (or `escalate` per the rules below); `pass` + an actionable finding is a contradiction that ships un-tracked debt past the gate. If a finding is genuinely pass-worthy, emit it as `severity=advisory`, not actionable.
    - `fix-needed`: 1+ finding of kind `over-engineering`, `security-at-boundaries` (EXCEPT a fail-open sub-case, which escalates per (b) below - escalate takes precedence), `i18n-completeness`, `cognitive-complexity > 15`, OR `doc-consistency` with `authority=doc-stale`. Orchestrator dispatches ONE executor (Sonnet, cap 1, no retry) with the findings as the fix scope (the executor updates the in-scope doc, which is already editable - no new scope).
    - `escalate`: only emit when (a) `attempt == 2` AND a fix dispatch already ran AND findings remain, (b) a finding describes a CLAUDE.md "non-negotiable" violation (security-at-boundaries fail-open, secret commit) that the agent judges should not be auto-fix-dispatched without user awareness, OR (c) a `doc-consistency` finding with `authority=code-suspect` (the change contradicts an authoritative contract/spec; the code may be wrong, so a human decides). Orchestrator presents AskUserQuestion at escalate.
 
-6. **Write trace** at `{session}-traces/review/result-{attempt}.md` (executor trace format: decision rationale, dropped candidates, finding context). Skip ONLY when `action == pass` AND `findings == []` - silent green stays silent. On `action == pass` WITH advisory findings (kind=`pattern-following` severity=`advisory`), still write the trace so step-13 reflector + downstream `/apex-improve` see the recurring advisory pattern; without the trace these findings vanish silently and the same pattern violation recurs across sessions (reflector af9b4738: /index-suffix import-path advisory passed twice in one review without surfacing for lessons or auto-fix routing).
+6. **Write trace** at `{session}-traces/review/result-{attempt}.md` (executor trace format: decision rationale, dropped candidates, finding context). Skip ONLY when `action == pass` AND `findings == []` - silent green stays silent. On `action == pass` WITH advisory findings (kind=`pattern-following` severity=`advisory`), still write the trace so step-13 reflector + downstream `/apex-improve` see the recurring advisory pattern; without the trace these findings vanish silently and the same pattern violation recurs across sessions.
 
 7. **On `attempt=2`**: cross-check `prior_findings_path` - confirm each prior finding is either (a) absent from the new diff (fixed) or (b) still present (the fix did not land). Surface still-present-after-fix findings explicitly in the new findings list with `kind` unchanged + `summary` prefixed `STILL-PRESENT-AFTER-FIX:`. A `STILL-PRESENT-AFTER-FIX` finding forces `action: "escalate"`.
 
@@ -73,12 +73,6 @@ Producer-validate against `skills/apex/schemas/review-result.schema.json` via `b
 - NEVER review files outside the diff-INTERSECT-allowed-files set. Pre-existing code in untouched files is out of scope.
 - NEVER speculate about future code paths; only review what the diff actually introduced or modified.
 - Cap individual finding `summary` at 240 chars (deterministic emit; the orchestrator surfaces them verbatim).
-
-## What this agent does NOT do
-
-- Does NOT run lint / build / test (that's step 10).
-- Does NOT touch the file-health hook surface (no Edit / Write).
-- Does NOT inherit working memory; all inputs flow through the spawn prompt.
-- Does NOT review the executor's own internal style choices outside CLAUDE.md rules - reviewer is a CLAUDE.md enforcer, not a style critic.
+- Reviewer enforces the CLAUDE.md rule set, not general style - no findings on internal style choices outside those rules.
 
 See `skills/apex/steps/10-verify.md` for the full contract; `$HOME/.claude/CLAUDE.md` for the rule set.

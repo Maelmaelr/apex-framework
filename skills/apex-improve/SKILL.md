@@ -22,7 +22,7 @@ Edit hierarchy (smallest-first):
 3. **Extract** - a file is too large; split a separable concern out (lines move, total grows minimally).
 4. **Additive** - net new lines for genuinely new capability. Only when 1-3 cannot express the improvement.
 
-**Near-cap tightening (proactive leanness)**: when an edit touches a skills/agents .md already above 85% of its content-budget tier (`skills/apex/scripts/content-budget.json`; flagged by the `approaching-budget` audit / polish detector), tighten existing prose in the SAME pass for a net-negative word delta - do not merely avoid growth. Caveman house style: drop articles / copulas / connective filler, collapse redundant restatement; keep every numeric threshold, MUST / SHOULD / conditional. When a finding warrants an incident citation, name the cluster slug or drop it - NEVER inline a raw `reflector <hex>` session hash (the `hash-roster` detector enforces this; see `apply.md` Citation discipline). This is the standing-pressure complement to the hard file-health hook (which gates at 100% of tier).
+**Near-cap tightening (proactive leanness)**: when an edit touches a skills/agents .md already above 85% of its content-budget tier (`skills/apex/scripts/content-budget.json`; flagged by the `approaching-budget` audit / polish detector), tighten existing prose in the SAME pass for a net-negative word delta - do not merely avoid growth. Caveman house style: drop articles / copulas / connective filler, collapse redundant restatement; keep every numeric threshold, MUST / SHOULD / conditional. When a finding warrants an incident citation, name the cluster slug or drop it - NEVER inline a raw `reflector <hex>` session hash, a `What X does NOT do` disclaimer section, or an incident-narrative justification (apex-core.md Conventions **Lean prose**; the `hash-roster` detector enforces the hash half; see `apply.md` Lean-prose discipline). This is the standing-pressure complement to the hard file-health hook (which gates at 100% of tier).
 
 Track per-file `delta_lines` through Step 4 and surface in Step 6. Growth is **advisory, not blocking**; visible accretion lets future runs correct it. Reaching for "additive" twice in one run is a signal the finding belongs in a *different* file.
 
@@ -127,13 +127,5 @@ Spawn subagent (general-purpose, sonnet, bypassPermissions):
 Skip silently if pre-flight fails (no lessons.md). Errors from /apex-lessons do NOT block the apex-improve report - it has already committed and mirrored.
 
 This step closes the loop: apex-improve consumes reflector signals (including those produced by the apex-lessons phases' own Reflect + Cleanup) on its NEXT run, and apex-lessons keeps `.claude/lessons.md` lean on every standalone /apex-improve invocation.
-
-## What this skill does NOT do
-
-- Does NOT discover, dispatch executors, or run /apex's verify-fix loop - this is an out-of-band meta-task on the apex framework itself, not on user code.
-- Does NOT touch project app code, run project lint/build, or modify `.env*`.
-- Does NOT commit or push when Step 4 applied zero ops (Steps 7-8 skipped; the `tmp/` housekeeping diff piggybacks on the next framework-evolution commit); otherwise commits + mirrors + pushes at session end (mirrors admin-apex tasks 9+10).
-- Does NOT bypass the file-health hook - if a Step 4 semantic edit would push a file past 400 lines, the hook fires and apex-improve must AskUserQuestion (`split-now | reduce-edit | abort`). Same gate any apex skill respects.
-- Does NOT decide that a tech-update is irrelevant on its own - if uncertain whether to apply a tech-watch finding, defer it (write to `{run}-deferred-findings.json`) rather than guess.
 
 See `analyze.md`, `plan.md`, `apply.md`, `finalize.md` for per-step contracts; `~/.claude/skills/admin-apex/evolve.md` for the structural-ops engine; `~/.claude/skills/admin-apex/scripts/admin-apex-finalize.sh` + `mirror-to-dev.sh` for the shared commit + mirror drivers; `~/.claude/apex-core.md` Conventions for safety paths and JSON-Schema validation; `~/.claude/skills/apex-tech-watch/SKILL.md` for the upstream tech-updates fetcher.

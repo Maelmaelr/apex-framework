@@ -153,7 +153,6 @@ TaskCreate "7. Self-reflect"
 
    After reflector returns, sweep: `rm -f "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}"*`. Reflector failure does NOT block cleanup. SessionEnd-hook is the orphan fallback (see `skills/admin-apex/scripts/session-end-hook.sh`).
 
-## Out of scope
+## Scope
 
-- merging across non-apex/* branches - user pre-renames anything they want preserved.
-- multi-base coordination - each branch lands on its own recorded base; cross-base conflicts surface as merge conflicts on the second branch. See spec: `tmp/worktree-migration-spec.md`.
+Merges `apex/*` branches only - pre-rename anything else you want preserved. No multi-base coordination: each branch lands on its own recorded base; cross-base conflicts surface as merge conflicts on the second branch. See spec: `tmp/worktree-migration-spec.md`.

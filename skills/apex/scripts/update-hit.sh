@@ -68,7 +68,7 @@ SED_INPLACE=(-i "")
 
 # Pre-expand range tokens (`s-e` from grep-lessons.sh `--- LINES s-e ---`
 # markers) into individual line numbers before the main loop. Removes the
-# friction of orchestrator-side range expansion (reflector 00bac875).
+# friction of orchestrator-side range expansion.
 EXPANDED=()
 for ARG in "$@"; do
   if [[ "$ARG" =~ ^([0-9]+)-([0-9]+)$ ]]; then

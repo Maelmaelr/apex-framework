@@ -43,9 +43,9 @@ For each `op.kind == edit` operation:
 
 If an Edit tool call fails (string not found, ambiguous match), surface AskUserQuestion (header: "Edit failure on op {N}"; options: `retry-with-context | skip-finding | abort-run`; dismiss = `abort-run`). Never silently move on.
 
-## Citation discipline (always-on)
+## Lean-prose discipline (always-on)
 
-When an op promotes a reflector-log finding into a guard / rule in a runtime-loaded doc (`skills/apex*/**`, `skills/admin-apex/**`, `agents/**`) or the mirrored central spec `apex-core.md`, cite the cluster slug or nothing - NEVER inline the raw 8-hex session hash. The RULE is the payload; the originating session hash is audit trail that git history + the timestamped `tmp/improvements-archive/` snapshots already preserve. This is UNCONDITIONAL - it holds below 85% of tier, not only on the near-cap tightening path: `SKILL.md` Principle 3 and `plan.md`'s near-cap discipline govern only the >85% band, but hashes accrete on the climb UP to the cap where sub-85% new-guard prose had no citation governance. The `hash-roster` detector (`skills/admin-apex/scripts/audit-detectors.py`; ceiling + doc list in `content-budget.json` -> `hash_roster`) enforces this deterministically at audit + polish: a guard that re-introduces an inline session hash trips it.
+Apply edits per apex-core.md Conventions **Lean prose**. When promoting a reflector-log finding into a guard / rule in a runtime-loaded doc (`skills/apex*/**`, `skills/admin-apex/**`, `agents/**`) or the mirrored central spec `apex-core.md`, state the rule positively and keep it lean: do NOT add a `What X does NOT do` / `Out of scope` disclaimer section, a scope-negative bullet, or an incident-narrative justification (the bug story behind the rule). Cite the cluster slug or nothing - NEVER inline the raw 8-hex session hash. The RULE is the payload; the originating hash + incident are audit trail that git history + the timestamped `tmp/improvements-archive/` snapshots already preserve. This is UNCONDITIONAL - it holds below 85% of tier, not only on the near-cap tightening path: `SKILL.md` Principle 3 and `plan.md`'s near-cap discipline govern only the >85% band, but noise accretes on the climb UP to the cap where sub-85% new-guard prose had no governance. The `hash-roster` detector (`skills/admin-apex/scripts/audit-detectors.py`; ceiling + doc list in `content-budget.json` -> `hash_roster`) enforces the hash half deterministically at audit + polish: a guard that re-introduces an inline session hash trips it.
 
 ## Step 4b: Structural ops - delegate to admin-apex/evolve.md
 
@@ -69,9 +69,4 @@ If a Step 4a semantic edit would push the target past its file-health budget (do
 
 If after iterating every op in the plan, **zero** ops were applied (every Step 4a Edit failed AND every Step 4b structural op hit drift -> rollback / restart), still proceed to Step 5 (archive + truncate + stamp + minimal report) and skip Steps 7-8. Signals were *seen* by analyze + plan - the failure was in apply, not the signal track - so consumed inputs reset normally; deferred findings live on in `{run}-deferred-findings.json` (preserved across SessionEnd by `cleanup-run.sh`) for the next run. Exit message: `apex-improve: 0 ops applied; consumed signals archived, deferred preserved`.
 
-## What this step does NOT do
-
-- Does NOT commit or push (Steps 7-8 own commit + mirror + push via `sync-git.md`). Step 5 here is just archive + version-stamp cleanup, not git.
-- Does NOT mirror to public repo (Step 8 / `sync-git.md` does).
-- Does NOT decide on its own that a structural op should be downgraded to semantic - that decision lives in `plan.md`.
-- Does NOT bypass the file-health hook to make an oversized edit fit (Principle 3 again: if it doesn't fit, the finding belongs elsewhere).
+Commit + mirror + push live in Steps 7-8 (`sync-git.md`); the structural-vs-semantic op decision lives in `plan.md`. Step 5 here is archive + version-stamp cleanup, not git.

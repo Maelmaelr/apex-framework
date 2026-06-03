@@ -32,7 +32,7 @@ The apex framework documents one mandatory mirror pair (per `skills/apex/SKILL.m
 
 - `apex-core.md` (full behavioral contract) <-> `apex-core-overview.md` (light-read skeleton + skip matrix)
 
-When any op in the plan targets one half of the pair, auto-pair the same `kind` against the other half and emit it as a second op in the same `ops` array (same `rationale`, suffixed `mirror-pair:`). The LLM may drop the auto-paired op only with an explicit per-op `rationale` prefixed `mirror-drop:` justifying scoped divergence (e.g., `mirror-drop: change is overview-only formatting; contract surface unaffected`); silent drops are not permitted. The pre-fix prototype was run 611349f4 -> follow-up run 2bfc8904 (a one-line addition to apex-core-overview.md that should have shipped atomically with the apex-core.md edit).
+When any op in the plan targets one half of the pair, auto-pair the same `kind` against the other half and emit it as a second op in the same `ops` array (same `rationale`, suffixed `mirror-pair:`). The LLM may drop the auto-paired op only with an explicit per-op `rationale` prefixed `mirror-drop:` justifying scoped divergence (e.g., `mirror-drop: change is overview-only formatting; contract surface unaffected`); silent drops are not permitted.
 
 Future mirror pairs plug in by extending the list above. Do NOT generalize prematurely to a registry / detector while the list is one entry - one extra bullet is cheaper than a new mechanism (Principle 3).
 
@@ -70,8 +70,6 @@ bash skills/apex/scripts/validate-json.sh --admin evolve-plan {path}
 
 Exit 0 = valid; exit 1 = malformed -> abort with explicit error (the plan is malformed; do NOT silently fall back).
 
-## What this step does NOT do
+## doc_only classification
 
-- Does NOT apply ops - that is `apply.md` (Step 4).
-- Does NOT touch findings.json beyond reading it.
-- Does NOT decide doc_only based on intent - it is mechanical: true iff every modified file is in `{README.md, apex-core.md, apex-core-overview.md, CLAUDE.md}`.
+`doc_only` is mechanical, not intent-based: true iff every modified file is in `{README.md, apex-core.md, apex-core-overview.md, CLAUDE.md}`. Op application is `apply.md` (Step 4); this step only reads findings.json.

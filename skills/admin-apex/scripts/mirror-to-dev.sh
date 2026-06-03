@@ -83,9 +83,9 @@ DOCS="$ACTIVE/${RUN}-docs-changed.txt"
 
 # Static allowlist + dynamic extension: any skills/* or agents/* path created or
 # renamed during THIS run is auto-added so a newly-created public-eligible skill
-# is mirrored on the first run that introduced it. Reflector 5df5c184 saw the
-# manual-allowlist-only model omit skills/apex-merge/ in the run that created
-# it; the auto-extend below reads {run}-applied-ops.json for create/rename ops
+# is mirrored on the first run that introduced it. The manual-allowlist-only
+# model would otherwise omit a skill dir in the run that created it; the
+# auto-extend below reads {run}-applied-ops.json for create/rename ops
 # and unions their target paths into a per-run dynamic allowlist. The denylist
 # (settings.json / CLAUDE.md / skills/apex-fix / apex-git / apex-init
 # / apex-file-health / apex-lessons / README.md / plugins / statusline / tmp)

@@ -40,10 +40,10 @@
 #                       debt and the script exits 0 (errors file removed).
 #                       Defends step 10 against sibling baseline-dirty lint
 #                       failures that would otherwise abort the in-scope
-#                       verify on first-fail-stop. Recurring 2-session
-#                       request: 6689bc2b (xai_image_helpers complexity 24),
-#                       51b2f54a (canvas_stitch_worker_client cogcomplexity
-#                       17). No main-scope.json / no jq -> falls back to the
+#                       verify on first-fail-stop. Recurring request:
+#                       xai_image_helpers (complexity 24) and
+#                       canvas_stitch_worker_client (cogcomplexity 17). No
+#                       main-scope.json / no jq -> falls back to the
 #                       normal (no-flag) behavior so the flag is safe to pass
 #                       universally.
 #
@@ -164,7 +164,7 @@ run_or_fail() {
   fi
 }
 
-# F2 (reflector cluster 0c22bd50 / 8309ce2e / 9401d64d / 00b95640): a lint
+# F2: a lint
 # failure that implicates NO in-scope allowed_file is foreign / pre-existing
 # debt in an unmodified package, not what this session's executor produced.
 # We still first-fail-stop (never fail open - silently masking a real
@@ -216,8 +216,7 @@ has_bin() { command -v "$1" >/dev/null 2>&1; }
 # (*.md / *.markdown / *.txt under docs/** or top-level README/CHANGELOG),
 # there is nothing to lint or build. Skips the eslint/clippy/ruff binary
 # lookup + the foreign-error noise that a docs-only diff would otherwise
-# trip (reflector a2181263: docs-only session ran eslint and emitted a
-# foreign-parked error against a TS file outside the session's diff).
+# trip.
 MANIFEST_JSON="$APEX_ACTIVE/${SESSION}.json"
 if [[ -f "$MANIFEST_JSON" ]] && command -v jq >/dev/null 2>&1; then
   BASE_BRANCH=$(jq -r .base_branch "$MANIFEST_JSON" 2>/dev/null || true)

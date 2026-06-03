@@ -48,13 +48,4 @@ The DAG is the deliverable. The optional `estimate` (tool_calls / tokens) is ADV
 
 JSON path + a one-line status: `subtasks: N (M independent, K chained)` OR `indivisible: <reason>`. NEVER the DAG body - keeps orchestrator context small (the orchestrator reads the validated artifact to dispatch).
 
-## What this agent does NOT do
-
-- Does NOT spawn executors - the orchestrator owns dispatch at step 8.3 (one small executor per independent sub-task, `depends_on` chains serialized).
-- Does NOT write / edit ANY project file. Read-only; the only artifact it writes is the subtask-plan JSON under `.claude-tmp/apex-active/`.
-- Does NOT widen scope (`subtasks[].files` subset of `allowed_files`) and does NOT merge this goal with any other goal - it can only ADD splits.
-- Does NOT gate dispatch on its numeric `estimate` (advisory only; Open risk 1).
-- Does NOT fire on economy / trivial tiers or on coupled / B2-serialized tasks. Fires on a >8-file task ONLY when it carries a high-cost signal (then BEFORE B1, so the DAG pre-empts the mechanical chunk); a plain >8 set with no high-cost signal goes straight to B1's chunk. The orchestrator gate at step 8.2 B0.7 decides whether to spawn it.
-- Does NOT inherit working memory; all inputs flow through the spawn prompt.
-
 See `skills/apex/steps/08-execute.md` 8.2 B0.7 for the per-task gate; `agents/executor.md` for the executor the sub-tasks dispatch to.

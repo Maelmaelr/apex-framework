@@ -45,7 +45,7 @@ Rotate before fetching so the target file's footprint stays bounded. Read and fo
 
 ## Step 2: Fetch + summarize each source
 
-Read `sources.json`. For each entry in the `sources` array (prepend `Today is {date portion of TS}. ` to the entry's `summarize_prompt` at invocation so date-bounded windows resolve on the first pass - runtime-only, NEVER persisted back to sources.json; reflector 6290a807: changelog sources double-fetched without a date anchor):
+Read `sources.json`. For each entry in the `sources` array (prepend `Today is {date portion of TS}. ` to the entry's `summarize_prompt` at invocation so date-bounded windows resolve on the first pass - runtime-only, NEVER persisted back to sources.json):
 
 ### kind == webfetch
 
@@ -140,13 +140,8 @@ After reflector returns, sweep this run's artifacts: `rm -f "$RUNDIR/${RUN}"*` (
 
 See `~/.claude/skills/apex-tech-watch/automation.md` for the manual `/apex-tech-watch` slash-command path, the macOS launchd plist, the cron alternative, and why Anthropic's `/schedule` remote-trigger does not fit this skill's local-output contract.
 
-## What this skill does NOT do
+## Boundaries
 
-- Does NOT process or interpret the fetched content beyond summarization - consumption is `/apex-improve`'s job.
-- Does NOT modify any apex framework file beyond the in-place `sources.json` stale-URL refresh (Step 2 redirect handling) - otherwise writes only `~/.claude/tmp/tech-updates.md` and the archive directory.
-- Does NOT cache fetch results - every run re-fetches. The 7-day cron cadence + WebFetch's own caching is the cost-bound.
-- Does NOT push or commit - output lives under `~/.claude/tmp/` which is `.gitignored`.
-- Does NOT validate URLs against a denylist - the source list is closed and editable; trust the operator.
-- Does NOT extract scope or run any apex-active session machinery - this is a standalone fetcher.
+Summarizes fetched content only - consumption is `/apex-improve`'s job. Writes only `~/.claude/tmp/tech-updates.md` + the archive dir (plus the in-place `sources.json` stale-URL refresh from Step 2 redirect handling); that output is `.gitignored`, so the skill neither pushes nor commits. Every run re-fetches (no result cache - the 7-day cron cadence + WebFetch caching is the cost bound). The source list is closed and operator-trusted (no URL denylist). Standalone fetcher: no scope extraction, no apex-active session machinery.
 
 See `sources.json` for the editable source list; `~/.claude/skills/apex-improve/SKILL.md` for the consumer.

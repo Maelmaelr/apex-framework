@@ -49,7 +49,7 @@ Spec: `skills/admin-apex/SKILL.md` task 7.
    ```
    so the next audit surfaces a `dead comment` cleanup.
 
-5. **Write `docs-changed.txt`** even if empty - SKILL task 9 expects the file to exist. Dedup the accumulated paths before the final write (`sort -u`, or equivalent): a file edited N times in step 3 must appear exactly once. Duplicate entries waste downstream git-add reads and make the audit trail misleading (reflectors 130a8c9f + 19826768: apex-core.md listed twice across two runs).
+5. **Write `docs-changed.txt`** even if empty - SKILL task 9 expects the file to exist. Dedup the accumulated paths before the final write (`sort -u`, or equivalent): a file edited N times in step 3 must appear exactly once. Duplicate entries waste downstream git-add reads and make the audit trail misleading.
 
 6. **Polish (post-implementation check)**: `bash scripts/polish-check.sh --run {run}`. Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch / dead-hook / approaching-budget detectors (mirrors `audit.md`), diffs against `{run}-drift-report.json` so only NEW drift introduced by evolve apply + sync-docs surfaces. Skipped automatically when 0 ops applied.
    - Exit `0` -> clean; continue.
@@ -75,20 +75,10 @@ For every Edit call:
 - Run `Read` on the file before composing `old_string` so the line snippet is verbatim (the file-health hook + scope-check hook fire on Edit; reading first matches apex orchestrator convention).
 - Use `replace_all: false` (default). If multiple identical lines need rewriting in one file, expand `old_string` with surrounding context to make each match unique.
 
-## Doc surfaces NOT in scope
-
-- Project app docs under `docs/` - those are documentation.md territory (apex step 11), not admin-apex.
-- Lesson files (`.claude/lessons*.md`) - owned by the future `/apex-improve` workflow.
-- Reflector log (`~/.claude/tmp/apex-workflow-improvements.md`) - same.
-
 ## Doc-only ops
 
 If task 5 emitted any op with `doc_only: true` and it survived the gate, this skill is the executor. Treat it like a `rename` whose old/new tokens are user-supplied via the gate prompt; no `evolve.md` artifact change.
 
-## What this skill does NOT do
-
-- Does NOT touch `skills/` or `agents/` files; those were already rewritten in evolve.md task 6.
-- Does NOT bump VERSION or commit; SKILL task 9 owns that.
-- Does NOT add new sections to docs; only rewrites existing references. New-section drafting is out of scope (would require human review).
+This skill rewrites existing references only - new-section drafting needs human review. Skill/agent files were already rewritten in evolve.md task 6; VERSION bump + commit is SKILL task 9.
 
 See `skills/admin-apex/SKILL.md` for the orchestrator chain and gate semantics; `apex-core.md` Conventions for safety paths and Edit-tool conventions.

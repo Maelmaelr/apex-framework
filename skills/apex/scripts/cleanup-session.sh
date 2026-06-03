@@ -19,8 +19,7 @@
 # <worktree>/.claude-tmp/apex-active/<session>-side-effects.jsonl (logged by
 # step 8 state-mutating commands; replayed by apex-merge step 4.5 BEFORE the
 # branch's worktree is removed at apex-merge step 5). No separate cleanup
-# rule needed for side-effects.jsonl - the worktree-remove path covers it
-# (reflector 742e1387).
+# rule needed for side-effects.jsonl - the worktree-remove path covers it.
 #
 # Args:
 #   --session <token>       required, 8-char lowercase hex
@@ -36,7 +35,7 @@
 #         worktree on the last line. Callers (apex orchestrator step 13/14,
 #         session-end-hook.sh manual mode) capture this and `cd` there so the
 #         shell leaves the (possibly removed) worktree subdirectory and is
-#         back on the main worktree / base branch (user-driven 35679220).
+#         back on the main worktree / base branch.
 #         Derived from manifest's worktree_path via dirname-twice (no git
 #         dependency - works even when the worktree subtree is already gone).
 #         Early-exit branches (manifest missing, malformed token, worktree_path

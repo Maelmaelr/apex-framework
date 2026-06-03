@@ -13,9 +13,8 @@
 #   it cleanly, so check_bash (bash -n) in test-apex-scripts.sh is blind to it.
 #   The only faithful guard is to RUN the script under bash 3.2 and assert it
 #   actually sweeps - plus a portable static guard that forbids reintroducing
-#   the construct (apex-improve bddf6173: this was the root cause of the
-#   ~19-orphan deferred-findings leak; sweep-orphan was fixed to a pipe, but the
-#   identical construct lingered in sweep-stale-runs.sh working only by paren-luck).
+#   the construct (the same construct once lingered in sweep-stale-runs.sh
+#   working only by paren-luck after sweep-orphan was fixed to a pipe).
 #
 # Kept separate from test-apex-scripts.sh (past the 400-line file-health cap),
 # which folds this suite's result. Also runnable standalone. Mirrors the
