@@ -1,54 +1,23 @@
 #!/usr/bin/env python3
 """Shared deterministic detector engine for the apex framework.
 
-Spec: skills/admin-apex/audit.md (task 3 structural pre-scan) +
-      skills/admin-apex/scripts/polish-check.sh (post-apply NEW-only diff).
+Spec: skills/admin-apex/audit.md (task 3) + scripts/polish-check.sh (post-apply
+NEW-only diff). The audit.md drift-kind table is the source of truth for each
+detector's rule; this module is its implementation. The detector core is shared;
+--mode differs only in cluster vocabulary, the oversized inclusion, and the diff:
 
-Consumes a {run}-inventory.json (schemas/inventory.schema.json) and emits a
-clusters JSON envelope ({run, clusters, _meta}). The detector core is identical
-across both callers - only the cluster vocabulary, the oversized inclusion, and
-the prior-drift diff differ by --mode:
+  --mode audit   Pre-scan: oversized-files / orphan-refs / missing-refs /
+                 schema-mismatch / dead-hook / approaching-budget / hash-roster /
+                 negative-scope. LLM-owned stale-spec + user-driven merge in via
+                 --extra-clusters. Always exits 0 (the SKILL task-4 gate decides).
+  --mode polish  Post-apply NEW-only mirror: same detectors minus oversized,
+                 relabeled (staleness / unused / inconsistency; approaching +
+                 hash-roster + negative-scope keep their kinds). Diffs against
+                 --prior-drift; exits 1 when any NEW cluster remains.
 
-  --mode audit   Structural pre-scan for audit.md task 3. Runs oversized-files /
-                 orphan-refs / missing-refs / schema-mismatch / dead-hook /
-                 approaching-budget / hash-roster with audit.md's cluster
-                 vocabulary (ids: oversized / orphan / missing / schema /
-                 dead-hook / approaching / hash-roster). oversized + approaching
-                 resolve per-path word caps from content-budget.json (cap_for);
-                 approaching-budget is WARN-only (skills/agents .md within the
-                 near-cap band, never blocks; routed to defer at the gate).
-                 hash-roster flags runtime-loaded docs carrying reflector-hash
-                 citations above content-budget.json hash_roster.ceiling (A4
-                 re-bloat guard - deterministic backstop for the cite-slug-or-
-                 nothing discipline). No prior-drift diff. The
-                 LLM-owned stale-spec + user-driven detectors stay in audit.md
-                 prose and are merged after the structural clusters via
-                 --extra-clusters. Always exits 0 (drift is the normal case; the
-                 SKILL task-4 gate, not the exit code, drives keep/apply/defer).
-
-  --mode polish  Post-apply mirror for polish-check.sh. Runs orphan-refs /
-                 missing-refs / schema-mismatch / dead-hook / approaching-budget /
-                 hash-roster (NO oversized - line-cap remediation is owned by
-                 /apex verify + file-health, not the post-apply polish gate). The
-                 hash-roster diff surfaces only docs that newly breach the ceiling
-                 (a guard re-added with a raw session hash). Uses polish
-                 vocabulary (kinds: staleness / unused / inconsistency; ids:
-                 orphan / missing / schema / dead-hook / approaching - ids match
-                 audit mode so --prior-drift diffs line up; approaching-budget
-                 keeps its own WARN kind). Diffs against --prior-drift so only
-                 NEW items introduced by the apply surface. Exits 1 when any NEW
-                 cluster remains (caller surfaces to user), else 0.
-
-CLI:
-  audit-detectors.py --inventory <path> --mode {audit|polish} --run <RUN>
-                     [--prior-drift <path>]    # polish NEW-only diff source
-                     [--extra-clusters <path>] # audit: LLM stale-spec/user-driven to append
-                     [--out <path>]            # write here; else stdout
-
-Exit codes:
-  0  audit mode (always), or polish mode with no NEW drift
-  1  polish mode with NEW drift introduced by the apply
-  2  bad args / unreadable inventory (argparse or explicit)
+CLI: --inventory <p> --mode {audit|polish} --run <RUN> [--prior-drift <p>]
+[--extra-clusters <p>] [--out <p>] (argparse help below). Exit: 0 audit (always)
+or polish-no-NEW; 1 polish-NEW; 2 bad args / unreadable inventory.
 """
 
 import argparse
@@ -61,16 +30,10 @@ from pathlib import Path
 
 PROSE_DOCS = {"apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"}
 
-# File-health content-budget caps. Docs gate on words (physical newline count is
-# gamed by one-paragraph-per-line markdown); scripts gate on physical lines plus
-# the longest single line. The per-role word caps live in
-# skills/apex/scripts/content-budget.json (one shared source with
-# file-health-hook.sh - no duplicated-constant drift); load_budget() reads it and
-# cap_for() resolves a path's cap. DOC_WORD_CAP / PROSE_WORD_CAP are the fail-safe
-# fallback used ONLY when that file is missing or unparseable (never block on a
-# read error); the flat 2500 alone was mis-anchored (it assumed ~14 words/line but
-# apex house style runs 25-45 words/line, so legitimately-dense hot-path files
-# tripped it), which the per-role tier replaces.
+# File-health content-budget caps. Docs gate on words (newline count is gamed by
+# one-paragraph-per-line markdown); scripts gate on physical lines + longest line.
+# Per-role word caps live in content-budget.json (shared with file-health-hook.sh);
+# DOC_WORD_CAP / PROSE_WORD_CAP are the fail-safe fallback when it is unreadable.
 DOC_WORD_CAP = 2500            # fallback default skills/agents .md content budget
 PROSE_WORD_CAP = 11400         # fallback central-prose (apex-core/overview/README/CLAUDE) budget
 SCRIPT_LINE_CAP = 500          # scripts: physical-line cap (source text, not prose)
@@ -88,11 +51,9 @@ HOOK_RE = re.compile(
 
 
 def load_budget(root):
-    """Read the shared per-role content-budget tier data.
-
-    Fail-safe: returns the hardcoded DOC_WORD_CAP / PROSE_WORD_CAP defaults when
-    content-budget.json is missing or unparseable (never block on a read error).
-    A partial file still resolves every key (merged over the fallback)."""
+    """Per-role content-budget tiers; fail-safe to hardcoded caps when
+    content-budget.json is missing/unparseable (a partial file merges over the
+    fallback, so every key still resolves)."""
     fallback = {
         "default": DOC_WORD_CAP,
         "central_prose": PROSE_WORD_CAP,
@@ -145,13 +106,8 @@ def _max_line_len(path):
 
 
 def detect_oversized(inv, root, budget):
-    """audit-only oversized gate.
-
-    Docs (skills/agents .md + central-prose spec docs) gate on a per-role CONTENT
-    BUDGET (words) resolved via cap_for(); raw line count is demoted to an
-    informational annotation because physical newline count is gamed by
-    one-paragraph-per-line markdown. Scripts gate on physical lines (<=
-    SCRIPT_LINE_CAP) PLUS longest line (<= MAX_LINE_LEN)."""
+    """Audit-only oversized gate: docs over their per-role word cap (cap_for);
+    scripts over SCRIPT_LINE_CAP lines or MAX_LINE_LEN longest line. See audit.md."""
     items = []
     for e in inv.get("skills", []) + inv.get("agents", []) + inv.get("spec_docs", []):
         words = e.get("words", 0)
@@ -171,15 +127,9 @@ def detect_oversized(inv, root, budget):
 
 
 def detect_approaching(inv, budget):
-    """skills/agents .md within the near-cap band (near_cap_ratio*cap, cap].
-
-    WARN-only proactive pressure (never blocks): a file this close to its tier cap
-    gets a 'tighten next' signal so leanness is enforced continuously, before the
-    hard oversized gate fires. Scripts + central-prose docs are out of band scope
-    (the band is the skills/agents .md leanness discipline). Paths in
-    near_cap_exempt are skipped: deliberately-dense, plan-pinned files (e.g.
-    apex/SKILL.md) whose tier was policy-set at current+~10% headroom sit
-    permanently inside the band, so the WARN would fire every run as noise."""
+    """skills/agents .md in the near-cap band (near_cap_ratio*cap, cap] - WARN-only
+    leanness pressure before the hard oversized gate. near_cap_exempt paths
+    (plan-pinned dense files) are skipped. See audit.md."""
     items = []
     ratio = budget["near_cap_ratio"]
     exempt = set(budget.get("near_cap_exempt", []))
@@ -193,12 +143,10 @@ def detect_approaching(inv, budget):
     return items
 
 
-# Reflector-hash citation matcher (A4 re-bloat guard, context-rot plan). A
-# "citation hash" is an 8-hex token that is either led by a citation keyword
-# (reflector/session/incident/cluster) or sits in a multi-hash roster (joined by
-# / , + &). An isolated keyword-less single hex (command-example token; the
-# {run}/{session}/{cc_session_id} placeholders are not hex) is NOT counted, so
-# false positives stay near zero.
+# Reflector-hash citation matcher (re-bloat guard). A "citation hash" is an 8-hex
+# token led by a citation keyword (reflector/session/incident/cluster) or in a
+# multi-hash roster (joined by / , + &); an isolated keyword-less hex is NOT
+# counted, so false positives stay near zero.
 _HASH = r"(?<![0-9a-z])[0-9a-f]{8}(?![0-9a-z])"
 _KEYWORD_CITE = re.compile(
     r"\b(?:reflector|reflectors|session|sessions|incident|cluster|clusters)\b[ \t]+"
@@ -217,15 +165,39 @@ def count_citation_hashes(text):
                if any(s <= h.start() < e for s, e in spans))
 
 
-def detect_hash_roster(root, budget):
-    """Runtime-loaded docs carrying reflector-hash citations above the ceiling.
+# Negative-scope disclaimer matcher (re-bloat guard for the section/bullet half of
+# apex-core.md Lean prose; hash-roster covers the inline-hash half). Flags a
+# dedicated "What X does NOT do" / "Out of scope" / "Non-goals" HEADING or a
+# THIRD-PERSON "Does NOT ..." bullet. Operational negatives that govern current
+# behavior (imperative "Do not run X", "never blind-edit") read as second-person
+# and never match - the anchored patterns are zero-false-positive.
+_NEG_HEADING = re.compile(
+    r"(?im)^#{1,6}[ \t]+(?:out[- ]of[- ]scope|non[- ]goals?"
+    r"|what[ \t].+?does(?:n't| not)[ \t]+do)[ \t]*:?[ \t]*$")
+_NEG_BULLET = re.compile(r"(?im)^[ \t]*[-*][ \t]+(?:does not|doesn't)[ \t]+")
 
-    A4 re-bloat guard: once A1 strips the session-hash rosters, new guards must
-    cite a cluster slug or nothing - never the raw 8-hex. This deterministic gate
-    keeps that discipline enforced rather than relying on a read-once prose rule
-    (which is itself subject to the rot this plan documents). Config in
-    content-budget.json -> hash_roster {ceiling, docs}; a missing/empty config
-    no-ops (docs=[])."""
+
+def detect_negative_scope(inv, root):
+    """skills/agents/spec .md carrying a negative-scope disclaimer (any hit is
+    drift; zero-FP anchored patterns -> no roster/ceiling config). See audit.md."""
+    items = []
+    for e in inv.get("skills", []) + inv.get("agents", []) + inv.get("spec_docs", []):
+        if not e["path"].endswith(".md"):
+            continue
+        try:
+            text = (root / e["path"]).read_text()
+        except OSError:
+            continue
+        n = len(_NEG_HEADING.findall(text)) + len(_NEG_BULLET.findall(text))
+        if n:
+            items.append(f'{e["path"]} ({n} negative-scope disclaimer(s))')
+    return items
+
+
+def detect_hash_roster(root, budget):
+    """Runtime-loaded docs (content-budget.json hash_roster.docs) carrying
+    reflector-hash citations above hash_roster.ceiling - re-bloat guard for the
+    inline-hash half of apex-core.md Lean prose. Missing/empty config no-ops."""
     cfg = budget.get("hash_roster") or {}
     ceiling = cfg.get("ceiling", 0)
     items = []
@@ -240,14 +212,9 @@ def detect_hash_roster(root, budget):
 
 
 def detect_orphans(inv_paths, bodies, root):
-    """Spec-doc refs that resolve to neither an inventory entry nor a real file.
-
-    A ref is an orphan only when nothing in the inventory matches it (after the
-    shorthand/glob/dir exceptions) AND no file exists at that path on disk. The
-    inventory is a curated subset that intentionally skips committed data
-    artifacts (e.g. scripts/fixtures/*.jsonl), so a ref to a real-but-untracked
-    file is a valid reference, not drift - this gate flags dead references, not
-    inventory-membership gaps (those are missing-refs' job)."""
+    """Spec-doc refs resolving to neither an inventory entry nor an on-disk file
+    (after shorthand/glob/dir exceptions). Flags dead references, not inventory-
+    membership gaps (missing-refs' job). See audit.md."""
     orphans = set()
     for body in bodies.values():
         for m in REF_RE.findall(body):
@@ -340,8 +307,7 @@ def detect_dead_hooks(inv, root):
     return dead
 
 
-# (id, audit-kind, polish-kind, audit-summary, polish-summary) per structural detector.
-_SPEC = {
+_SPEC = {  # id -> (audit-kind, polish-kind, audit-summary, polish-summary)
     "oversized": ("oversized-files", None,
                   "{n} file(s) over content/size budget", None),
     "orphan": ("orphan-refs", "staleness",
@@ -362,6 +328,9 @@ _SPEC = {
     "hash-roster": ("hash-roster", "hash-roster",
                     "{n} runtime doc(s) carrying reflector-hash citations above ceiling (A4 re-bloat guard)",
                     "{n} runtime doc(s) with NEW reflector-hash citations post-apply (A4 re-bloat guard)"),
+    "negative-scope": ("negative-scope", "negative-scope",
+                       "{n} doc(s) carrying a negative-scope disclaimer section/bullet (re-bloat guard)",
+                       "{n} doc(s) with a NEW negative-scope disclaimer post-apply (re-bloat guard)"),
 }
 
 
@@ -373,9 +342,8 @@ def build_cluster(cid, items, mode):
 
 
 def _diff_key(item):
-    """NEW-diff identity: leading path/label, minus the volatile count detail
-    (word/hash/id). Keying the diff on the full string mis-reports a count delta
-    on an unchanged path as NEW; items without ' (' key on the whole string."""
+    """NEW-diff identity: path/label before ' (', dropping the volatile count
+    detail so a count delta on an unchanged path is not mis-reported as NEW."""
     return item.split(" (", 1)[0]
 
 
@@ -427,11 +395,13 @@ def main():
         "dead-hook": detect_dead_hooks(inv, root),
         "approaching": detect_approaching(inv, budget),
         "hash-roster": detect_hash_roster(root, budget),
+        "negative-scope": detect_negative_scope(inv, root),
     }
     if args.mode == "audit":
         detected = {"oversized": detect_oversized(inv, root, budget), **detected}
 
-    order = ["oversized", "orphan", "missing", "schema", "dead-hook", "approaching", "hash-roster"]
+    order = ["oversized", "orphan", "missing", "schema", "dead-hook",
+             "approaching", "hash-roster", "negative-scope"]
     clusters = [build_cluster(cid, detected[cid], args.mode)
                 for cid in order if cid in detected and detected[cid]]
 

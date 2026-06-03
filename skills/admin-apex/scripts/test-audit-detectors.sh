@@ -173,6 +173,21 @@ inband "$out" hash-roster "agents/at.md"; at=$?
 rm -rf "$hr"
 rm -f "$ti"
 
+# --- negative-scope (re-bloat guard): reads skills/agents/spec .md from the
+#     inventory, flags disclaimer headings + third-person "Does NOT" bullets;
+#     imperative rules + phrases quoted in prose do NOT match. Fake root = bodies. ---
+ns=$(mktemp -d); mkdir -p "$ns/agents"
+printf '## What this agent does NOT do\n- Does NOT touch project code\n' > "$ns/agents/disc.md"
+printf '%s\n' '- Do not run X in parallel' '- never blind-edit; no `Out of scope` here' > "$ns/agents/rules.md"
+nsi=$(mktemp)
+{ printf '{"skills":[],"agents":[{"path":"agents/disc.md"},{"path":"agents/rules.md"}],'
+  printf '"scripts":[],"schemas":[],"hooks":[],"spec_docs":[],"version":"0"}'; } > "$nsi"
+out=$(CLAUDE_PROJECT_DIR="$ns" python3 "$ENG" --inventory "$nsi" --mode audit --run "$RUN" 2>/dev/null)
+inband "$out" negative-scope "agents/disc.md"; nd=$?
+inband "$out" negative-scope "agents/rules.md"; nr=$?
+[[ $nd -eq 0 && $nr -ne 0 ]]; check "negative-scope flags disclaimer not imperative-rules" 0 $?
+rm -rf "$ns"; rm -f "$nsi"
+
 # --- approaching NEW-diff path-keying (regression: recurred runs that nudged an
 #     in-band file's word count). The polish NEW-only diff must key on FILE PATH,
 #     not the volatile count-string, so a word delta (up OR down) on a file already

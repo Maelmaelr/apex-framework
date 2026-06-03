@@ -239,8 +239,7 @@ if ! git commit -m "$MESSAGE" -m "$BODY" >/dev/null; then
 fi
 
 # Audit trail: surface bump tier + body summary + commit SHA in summary.md
-# (previously only in {run}-applied-ops.json; reflector reads summary.md for
-# friction signals).
+# (reflector reads summary.md for friction signals).
 SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 # Strip a leading "bump=<tier>" token if the caller embedded one in --body, so the
 # summary prints bump= exactly once.

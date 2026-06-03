@@ -30,7 +30,7 @@ Empty `clusters: []` -> "clean" (SKILL task 4 prints report path, exits 0; soft-
 
 ## Drift kinds
 
-Seven **structural** kinds are detected deterministically by `scripts/audit-detectors.py --mode audit` - the shared engine `polish-check.sh` also runs, so audit and polish cannot diverge. The engine's module docstring + per-detector functions are the source of truth for the exact rules; the slug `id` is what the `--prior-drift` diff and evolve.md's cluster->op table key on:
+Eight **structural** kinds are detected deterministically by `scripts/audit-detectors.py --mode audit` - the shared engine `polish-check.sh` also runs, so audit and polish cannot diverge. The engine's module docstring + per-detector functions are the source of truth for the exact rules; the slug `id` is what the `--prior-drift` diff and evolve.md's cluster->op table key on:
 
 | Kind (slug id) | Flags |
 |------|---------|
@@ -41,6 +41,7 @@ Seven **structural** kinds are detected deterministically by `scripts/audit-dete
 | `dead-hook` (`dead-hook`) | `hooks[]` command referencing a script absent on disk. |
 | `approaching-budget` (`approaching`) | skills/agents `.md` within the near-cap band (`near_cap_ratio * cap < words <= cap`; default 85%), EXCLUDING paths in `near_cap_exempt` (plan-pinned dense files whose tier was set at current+~10% headroom - they sit permanently in-band so the WARN would be every-run noise; currently empty). WARN only - never blocks; routed to `defer` at the gate as standing leanness pressure below the hard oversized cap. Fires in `--mode polish` too (escalated, not blocking). |
 | `hash-roster` (`hash-roster`) | Runtime-loaded docs (the `content-budget.json` `hash_roster.docs` list) carrying inline 8-hex reflector/session citations above `hash_roster.ceiling` (default 0; matcher counts keyword-led or rostered hashes, ignores isolated non-citation hex). Re-bloat guard: once the session-hash rosters are stripped, new guards cite a cluster slug or nothing - the deterministic backstop for that discipline. WARN-class at the gate (strip = `edit` op, or `defer`). Fires in `--mode polish` too (NEW-only diff: a doc that newly breaches the ceiling). |
+| `negative-scope` (`negative-scope`) | Any skills/agents/spec `.md` (whole inventory, no roster needed) carrying a negative-scope disclaimer: a dedicated `What X does NOT do` / `Out of scope` / `Non-goals` section heading, or a third-person `Does NOT ...` / `Doesn't ...` scope-disclaimer bullet. The other half of the `apex-core.md` Lean-prose re-bloat guard (hash-roster covers inline hashes). Anchored zero-false-positive patterns - imperative operational rules (`Do not run X`, `never blind-edit`) and the banned phrases quoted inside prose do NOT match. WARN-class at the gate (strip the disclaimer = `edit` op, or `defer`). Fires in `--mode polish` too (NEW-only diff: a doc that newly grows a disclaimer). |
 
 Two **judgment** kinds stay LLM-owned here (NOT in the engine), merged AFTER the structural clusters via `--extra-clusters`:
 
