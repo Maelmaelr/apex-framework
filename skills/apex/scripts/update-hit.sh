@@ -101,9 +101,9 @@ for LINE_NUM in "$@"; do
     continue
 
   elif echo "$CURRENT_LINE" | grep -qE '\[anti-pattern, unverified, last-hit: [0-9]{4}-[0-9]{2}-[0-9]{2}\]'; then
-    sed "${SED_INPLACE[@]}" \
-      "${LINE_NUM}s/\[anti-pattern, unverified, last-hit: [0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\]/[anti-pattern, last-hit: ${TODAY}]/g" \
-      "$LESSONS_FILE"
+    sed_expr="${LINE_NUM}s/\[anti-pattern, unverified, last-hit: "
+    sed_expr+="[0-9]\{4\}-[0-9]\{2\}-[0-9]\{2\}\]/[anti-pattern, last-hit: ${TODAY}]/g"
+    sed "${SED_INPLACE[@]}" "$sed_expr" "$LESSONS_FILE"
     UPDATED=$((UPDATED + 1))
 
   elif echo "$CURRENT_LINE" | grep -qE '\[anti-pattern, last-hit: [0-9]{4}-[0-9]{2}-[0-9]{2}\]'; then

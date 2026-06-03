@@ -52,14 +52,18 @@ _CSH_PWD="$(pwd -P)"
 _CSH_HOME_CLAUDE="$(cd "$HOME/.claude" 2>/dev/null && pwd -P || echo "$HOME/.claude")"
 case "$_CSH_PWD/" in
   "$_CSH_HOME_CLAUDE"/*)
-    echo "create-session.sh: refusing to run from inside the apex install tree ($_CSH_PWD); cd to the project root first" >&2
+    msg="create-session.sh: refusing to run from inside the apex install tree ($_CSH_PWD); "
+    msg+="cd to the project root first"
+    echo "$msg" >&2
     exit 1
     ;;
 esac
 if _CSH_TOPLEVEL="$(git rev-parse --show-toplevel 2>/dev/null)"; then
   _CSH_TOPLEVEL="$(cd "$_CSH_TOPLEVEL" 2>/dev/null && pwd -P || echo "$_CSH_TOPLEVEL")"
   if [[ "$_CSH_PWD" != "$_CSH_TOPLEVEL" ]]; then
-    echo "create-session.sh: CWD ($_CSH_PWD) is not the git toplevel ($_CSH_TOPLEVEL); run from the project root so the manifest lands in the right .claude-tmp" >&2
+    msg="create-session.sh: CWD ($_CSH_PWD) is not the git toplevel ($_CSH_TOPLEVEL); run from the "
+    msg+="project root so the manifest lands in the right .claude-tmp"
+    echo "$msg" >&2
     exit 1
   fi
 fi
@@ -123,7 +127,9 @@ MANIFEST="$APEX_ACTIVE/$SESSION.json"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CLAUDE_PID="$(bash "$SCRIPT_DIR/find-claude-pid.sh" 2>/dev/null)"
 if [[ -z "$CLAUDE_PID" || ! "$CLAUDE_PID" =~ ^[0-9]+$ ]]; then
-  echo "create-session.sh: find-claude-pid.sh found no claude ancestor; falling back to \$PPID=$PPID (non-standard launcher; manifest.pid may not survive the run)" >&2
+  msg="create-session.sh: find-claude-pid.sh found no claude ancestor; falling back to "
+  msg+="\$PPID=$PPID (non-standard launcher; manifest.pid may not survive the run)"
+  echo "$msg" >&2
   CLAUDE_PID="$PPID"
 fi
 
@@ -145,7 +151,9 @@ fi
 # worktree (e.g., another apex/<session> worktree). The user must cd to the
 # main worktree first; nesting apex worktrees produces unowned branch graphs.
 if [[ "$_WT_TOP_RES" != "$_WT_COMMON_RES" ]]; then
-  echo "create-session.sh: refuses to start from a secondary worktree (cwd=$_WT_TOP_RES, main=$_WT_COMMON_RES); cd to the main worktree and retry" >&2
+  msg="create-session.sh: refuses to start from a secondary worktree "
+  msg+="(cwd=$_WT_TOP_RES, main=$_WT_COMMON_RES); cd to the main worktree and retry"
+  echo "$msg" >&2
   exit 1
 fi
 BASE_BRANCH="$(git symbolic-ref --short HEAD 2>/dev/null || echo "")"
@@ -156,7 +164,9 @@ fi
 WORKTREE_PATH="$_WT_COMMON_RES/.apex-worktrees/$SESSION"
 BRANCH="apex/$SESSION"
 if [[ -e "$WORKTREE_PATH" ]]; then
-  echo "create-session.sh: worktree dir already exists at $WORKTREE_PATH; run 'git worktree remove $WORKTREE_PATH --force' first" >&2
+  msg="create-session.sh: worktree dir already exists at $WORKTREE_PATH; "
+  msg+="run 'git worktree remove $WORKTREE_PATH --force' first"
+  echo "$msg" >&2
   exit 1
 fi
 if git show-ref --verify --quiet "refs/heads/$BRANCH"; then

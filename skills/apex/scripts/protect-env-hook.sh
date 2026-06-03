@@ -9,7 +9,10 @@
 set -euo pipefail
 
 ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-deny() { echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$1\"}}"; }
+deny() {
+  local head='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"'
+  printf '%s,"permissionDecisionReason":"%s"}}\n' "$head" "$1"
+}
 
 INPUT=$(cat)
 

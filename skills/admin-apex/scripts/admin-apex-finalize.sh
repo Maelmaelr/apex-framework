@@ -127,7 +127,9 @@ print(tier)
     case "$required" in patch) rank_required=1 ;; minor) rank_required=2 ;; major) rank_required=3 ;; esac
     case "$BUMP"     in patch) rank_chosen=1   ;; minor) rank_chosen=2   ;; major) rank_chosen=3   ;; esac
     if (( rank_chosen < rank_required )); then
-      echo "admin-apex-finalize.sh: --bump=$BUMP but applied ops require at least --bump=$required (bump rule misapplied)" >&2
+      msg="admin-apex-finalize.sh: --bump=$BUMP but applied ops require at least --bump=$required "
+      msg+="(bump rule misapplied)"
+      echo "$msg" >&2
       exit 1
     fi
   fi
@@ -143,7 +145,9 @@ if [[ "$BUMP" != "none" ]]; then
   # producer-tag + this run's token; any hit means a commit for THIS run is
   # already on HEAD - second bump would force a rollback amend cycle.
   if git log --oneline -20 2>/dev/null | grep -qE "^[0-9a-f]+ (admin-apex|apex-improve) $RUN:"; then
-    echo "admin-apex-finalize.sh: run $RUN already has a commit in recent git log; refusing second bump (idempotency guard; if this is intentional invoke with --bump=none or re-mint $RUN)" >&2
+    msg="admin-apex-finalize.sh: run $RUN already has a commit in recent git log; refusing second "
+    msg+="bump (idempotency guard; if this is intentional invoke with --bump=none or re-mint $RUN)"
+    echo "$msg" >&2
     exit 1
   fi
   # Drift pre-check: working-tree VERSION must match git HEAD:VERSION before
@@ -153,7 +157,9 @@ if [[ "$BUMP" != "none" ]]; then
   WT_VERSION_PRE="$(cat VERSION 2>/dev/null || true)"
   HEAD_VERSION="$(git show HEAD:VERSION 2>/dev/null || true)"
   if [[ -n "$WT_VERSION_PRE" && -n "$HEAD_VERSION" && "$WT_VERSION_PRE" != "$HEAD_VERSION" ]]; then
-    echo "admin-apex-finalize.sh: VERSION drift detected (working-tree=$WT_VERSION_PRE, HEAD=$HEAD_VERSION); reset working-tree VERSION and re-run, or invoke with --bump=none" >&2
+    msg="admin-apex-finalize.sh: VERSION drift detected (working-tree=$WT_VERSION_PRE, HEAD=$HEAD_VERSION); "
+    msg+="reset working-tree VERSION and re-run, or invoke with --bump=none"
+    echo "$msg" >&2
     exit 1
   fi
   # Compute expected post-bump value (mirrors _bump-version.sh: patch +1 on
@@ -184,7 +190,10 @@ print(f'{maj}.{min_}.{pat}')
   fi
   WT_VERSION_POST="$(cat VERSION 2>/dev/null || true)"
   if [[ -n "$EXPECTED" && "$WT_VERSION_POST" != "$EXPECTED" ]]; then
-    echo "admin-apex-finalize.sh: post-bump drift detected (working-tree=$WT_VERSION_POST, expected=$EXPECTED); a parallel sibling bumped VERSION between the pre-check and _bump-version.sh - reset working-tree VERSION, git pull, and re-run" >&2
+    msg="admin-apex-finalize.sh: post-bump drift detected (working-tree=$WT_VERSION_POST, "
+    msg+="expected=$EXPECTED); a parallel sibling bumped VERSION between the pre-check and "
+    msg+="_bump-version.sh - reset working-tree VERSION, git pull, and re-run"
+    echo "$msg" >&2
     exit 1
   fi
   echo VERSION >> "$DIRTY"

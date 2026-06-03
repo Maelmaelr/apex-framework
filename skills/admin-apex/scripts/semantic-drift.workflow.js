@@ -1,8 +1,11 @@
 export const meta = {
   name: 'admin-apex-semantic-drift',
-  description: 'admin-apex audit task 3 (A3): per-unit semantic-drift detection - spec prose that contradicts a script flag/behavior, cross-doc contradiction, or SKILL.md behavior absent from its scripts. One Explore agent per skill unit, as a barrier fan-out.',
+  description: 'admin-apex audit task 3 (A3): per-unit semantic-drift detection - spec prose that \
+contradicts a script flag/behavior, cross-doc contradiction, or SKILL.md behavior absent from its \
+scripts. One Explore agent per skill unit, as a barrier fan-out.',
   phases: [
-    { title: 'Drift', detail: 'one Explore agent per skill unit reads its SKILL.md + scripts and judges spec-vs-code contradiction' },
+    { title: 'Drift', detail: 'one Explore agent per skill unit reads its SKILL.md + scripts and \
+judges spec-vs-code contradiction' },
   ],
 }
 
@@ -67,7 +70,8 @@ const AGENT_SCHEMA = {
   },
 }
 
-const ASCII = 'ASCII only. No tables, no diagrams. Your final message IS the structured return value, not a human-facing report.'
+const ASCII = 'ASCII only. No tables, no diagrams. Your final message IS the structured return ' +
+  'value, not a human-facing report.'
 
 // The Workflow runtime delivers `args` as a JSON STRING (verified by probe, run
 // 248bdf47), not the object the tool's "verbatim" contract implies; a caller that
@@ -90,7 +94,8 @@ let dropped = []
 if (units.length > MAX_FLEET) {
   active = units.slice(0, MAX_FLEET)
   dropped = units.slice(MAX_FLEET).map((u) => u.name)
-  log(`semantic-drift: ${units.length} units > cap ${MAX_FLEET}; deferring ${dropped.length} to serial tail: ${dropped.join(', ')}`)
+  log(`semantic-drift: ${units.length} units > cap ${MAX_FLEET}; deferring ${dropped.length} ` +
+    `to serial tail: ${dropped.join(', ')}`)
 }
 
 function driftPrompt(unit) {
@@ -101,12 +106,17 @@ function driftPrompt(unit) {
     fileList,
     '',
     'Flag ONLY these three classes of genuine contradiction:',
-    '  1. Spec prose that contradicts a script\'s actual flags/behavior (e.g. doc says --foo but the script has no such flag, or describes an exit code the script never returns).',
+    '  1. Spec prose that contradicts a script\'s actual flags/behavior (e.g. doc says --foo but ' +
+      'the script has no such flag, or describes an exit code the script never returns).',
     '  2. Cross-doc contradiction (two docs describing the same thing differently).',
     '  3. Behavior a SKILL.md / doc claims to invoke that is ABSENT from the scripts it names.',
     '',
-    'Do NOT flag: style, naming, TODO/FIXME markers, aspirational or future-tense prose, line-count, or anything a path/symbol grep already catches (orphan refs, dead hooks, schema-id mismatch). A clean unit returns findings: [].',
-    'Every finding MUST cite spec_ref = "<file>:<line> \'<quoted spec text>\'" AND code_ref = "<file>:<line> \'<quoted code/behavior>\'". confidence = "high" ONLY when both refs are concrete and the contradiction is unambiguous; otherwise "low".',
+    'Do NOT flag: style, naming, TODO/FIXME markers, aspirational or future-tense prose, ' +
+      'line-count, or anything a path/symbol grep already catches (orphan refs, dead hooks, ' +
+      'schema-id mismatch). A clean unit returns findings: [].',
+    'Every finding MUST cite spec_ref = "<file>:<line> \'<quoted spec text>\'" AND code_ref = ' +
+      '"<file>:<line> \'<quoted code/behavior>\'". confidence = "high" ONLY when both refs are ' +
+      'concrete and the contradiction is unambiguous; otherwise "low".',
     ASCII,
     '',
     'Return { findings: [ { summary, spec_ref, code_ref, confidence } ] }.',
@@ -137,7 +147,8 @@ const findings = checked.flatMap((u) =>
 const highN = findings.filter((f) => f.confidence === 'high').length
 
 log(
-  `semantic-drift: ${checked.length}/${active.length} units checked; ${findings.length} findings (${highN} high-confidence)` +
+  `semantic-drift: ${checked.length}/${active.length} units checked; ` +
+    `${findings.length} findings (${highN} high-confidence)` +
     (dropped.length ? `; ${dropped.length} deferred to serial tail` : '')
 )
 

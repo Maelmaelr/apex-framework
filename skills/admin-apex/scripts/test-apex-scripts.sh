@@ -245,8 +245,9 @@ apex_session_end_clean_fixture() {
   local token="feedface" wt=".apex-worktrees/feedface"
   git worktree add -q -b "apex/$token" "$wt" HEAD >/dev/null
   mkdir -p "$wt/.claude-tmp/apex-active"
-  printf '{"session":"%s","pid":1,"cc_session_id":"FIXTURE-CC1","worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n' \
-    "$token" "$PWD/$wt" "$token" \
+  local fmt='{"session":"%s","pid":1,"cc_session_id":"FIXTURE-CC1",'
+  fmt+='"worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n'
+  printf "$fmt" "$token" "$PWD/$wt" "$token" \
     > "$wt/.claude-tmp/apex-active/$token.json"
   CLAUDE_PROJECT_DIR="$PWD" \
     bash -c 'printf "{\"session_id\":\"FIXTURE-CC1\"}" | bash "$1"' \
@@ -325,7 +326,8 @@ session_end_manual_clean_fixture() {
 }
 run_fixture "apex session-end-hook.sh manual" 0 session_end_manual_clean_fixture
 
-# 4k. block-destructive-hook.sh: `-c X=Y` and `-C path` prefix-flags before `reset --hard` must deny (reflectors ac85c725 + 5b218a81: regex hardening landed without coverage).
+# 4k. block-destructive-hook.sh: `-c X=Y` and `-C path` prefix-flags before `reset --hard` must
+#     deny (reflectors ac85c725 + 5b218a81: regex hardening landed without coverage).
 block_destructive_reset_prefix_fixture() {
   local hook="$REPO_ROOT/skills/apex/scripts/block-destructive-hook.sh" out
   for cmd in 'git -c user.email=t@t reset --hard HEAD~1' 'git -C /tmp reset --hard'; do
@@ -378,8 +380,14 @@ run_fixture "verify-build.sh --with-tests no-manifest" 0 \
 # 10a. review-result.schema.json: a step-10.5 doc-consistency finding with authority validates.
 review_result_doc_consistency_fixture() {
   local inst; inst=$(mktemp)
-  printf '%s' '{"session":"abcdef01","attempt":1,"findings":[{"kind":"doc-consistency","file":"README.md","line":12,"summary":"doc describes superseded flag","authority":"doc-stale"}],"action":"fix-needed"}' > "$inst"
-  bash "$REPO_ROOT/skills/apex/scripts/validate-json.sh" review-result.schema.json "$inst"; local rc=$?; rm -f "$inst"; return $rc
+  local doc_json='{"session":"abcdef01","attempt":1,"findings":[{"kind":"doc-consistency",'
+  doc_json+='"file":"README.md","line":12,"summary":"doc describes superseded flag",'
+  doc_json+='"authority":"doc-stale"}],"action":"fix-needed"}'
+  printf '%s' "$doc_json" > "$inst"
+  bash "$REPO_ROOT/skills/apex/scripts/validate-json.sh" review-result.schema.json "$inst"
+  local rc=$?
+  rm -f "$inst"
+  return $rc
 }
 run_fixture "review-result.schema.json doc-consistency+authority" 0 review_result_doc_consistency_fixture
 

@@ -45,8 +45,9 @@ seed_worktree() {
   git -c user.email=t@t -c user.name=t commit -q -m init >/dev/null
   git worktree add -q -b "apex/$token" "$wt" HEAD >/dev/null
   mkdir -p "$wt/.claude-tmp/apex-active"
-  printf '{"session":"%s","pid":%s,"cc_session_id":"%s","worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n' \
-    "$token" "$pid" "$sid" "$PWD/$wt" "$token" \
+  local fmt='{"session":"%s","pid":%s,"cc_session_id":"%s",'
+  fmt+='"worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n'
+  printf "$fmt" "$token" "$pid" "$sid" "$PWD/$wt" "$token" \
     > "$wt/.claude-tmp/apex-active/$token.json"
   echo "$wt"
 }

@@ -39,7 +39,10 @@
 set -euo pipefail
 
 ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-deny() { echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$1\"}}"; }
+deny() {
+  local head='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"'
+  printf '%s,"permissionDecisionReason":"%s"}}\n' "$head" "$1"
+}
 
 is_safety_path() {
   local target="$1"
@@ -178,10 +181,14 @@ print('no')
 " "$TARGET" "$ACTIVE_SCOPE" 2>/dev/null || echo "error")
     [[ "$ALLOWED" == "yes" ]] && continue
     if [[ "$ALLOWED" == "error" ]]; then
-      deny "Scope check (subagent fallback): could not read main-scope file $ACTIVE_SCOPE. Investigate apex session state."
+      msg="Scope check (subagent fallback): could not read main-scope file $ACTIVE_SCOPE. "
+      msg+="Investigate apex session state."
+      deny "$msg"
       exit 0
     fi
-    deny "Scope violation (subagent fallback): $TARGET not in apex main-scope allowed_files. Spawned subagent must respect parent session scope."
+    msg="Scope violation (subagent fallback): $TARGET not in apex main-scope allowed_files. "
+    msg+="Spawned subagent must respect parent session scope."
+    deny "$msg"
     exit 0
   done
   echo "$ALLOW"

@@ -6,7 +6,10 @@
 set -euo pipefail
 
 ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-deny() { echo "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionDecision\":\"deny\",\"permissionDecisionReason\":\"$1\"}}"; }
+deny() {
+  local head='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny"'
+  printf '%s,"permissionDecisionReason":"%s"}}\n' "$head" "$1"
+}
 
 INPUT=$(cat)
 
@@ -54,13 +57,18 @@ for s in subcmds:
 " 2>/dev/null || echo "")
 
 if [[ "$CHECKOUT_BYPASS" == "yes" ]]; then
-  deny "GUARDRAIL: Extracting file contents from git history with redirection is equivalent to git checkout -- and can overwrite uncommitted changes. Ask user via AskUserQuestion before proceeding."
+  msg="GUARDRAIL: Extracting file contents from git history with redirection is equivalent to "
+  msg+="git checkout -- and can overwrite uncommitted changes. Ask user via AskUserQuestion before proceeding."
+  deny "$msg"
   exit 0
 fi
 
 # git stash pop (applies stash and drops it; can overwrite working-tree changes; loses safety net)
 if [[ "$COMMAND" =~ git[[:space:]]+stash[[:space:]]+pop ]]; then
-  deny "GUARDRAIL: git stash pop applies the stash and drops it -- can overwrite working-tree changes and loses the stash safety net. Use 'git stash apply' (keeps stash) instead, or ask user via AskUserQuestion before proceeding."
+  msg="GUARDRAIL: git stash pop applies the stash and drops it -- can overwrite working-tree changes "
+  msg+="and loses the stash safety net. Use 'git stash apply' (keeps stash) instead, or ask user via "
+  msg+="AskUserQuestion before proceeding."
+  deny "$msg"
   exit 0
 fi
 
@@ -90,14 +98,19 @@ for s in subcmds:
     # 'pop' is handled by its own block above; listed here so a reordering of
     # blocks cannot accidentally route it through the deny path. 'drop' / 'clear'
     # are destructive stash-entry removal (drop = one entry, clear = all) and are
-    # intentionally NOT allowlisted -> they fall through to deny (apex-core.md ## Conventions, block-destructive hook / NEVER stash).
+    # intentionally NOT allowlisted -> they fall through to deny
+    # (apex-core.md ## Conventions, block-destructive hook / NEVER stash).
     if sub not in ('list', 'show', 'apply', 'branch', 'pop'):
         print('yes')
         sys.exit(0)
 " 2>/dev/null || echo "")
 
 if [[ "$STASH_CREATE" == "yes" ]]; then
-  deny "GUARDRAIL: git stash (push/save/bare) is never allowed for apex agents -- co-resident subagents inside one worktree share a single working tree, and a stash captures every agent's uncommitted work into a single ref that looks like work loss to parallel siblings. Commit your work instead, or ask the user via AskUserQuestion."
+  msg="GUARDRAIL: git stash (push/save/bare) is never allowed for apex agents -- co-resident "
+  msg+="subagents inside one worktree share a single working tree, and a stash captures every "
+  msg+="agent's uncommitted work into a single ref that looks like work loss to parallel siblings. "
+  msg+="Commit your work instead, or ask the user via AskUserQuestion."
+  deny "$msg"
   exit 0
 fi
 
@@ -132,7 +145,9 @@ for s in subcmds:
 " 2>/dev/null || echo "")
 
 if [[ "$RESET_DESTRUCTIVE" == "yes" ]]; then
-  deny "GUARDRAIL: git reset with --hard/--keep/--merge discards or rewrites uncommitted work. Ask user via AskUserQuestion before proceeding."
+  msg="GUARDRAIL: git reset with --hard/--keep/--merge discards or rewrites uncommitted work. "
+  msg+="Ask user via AskUserQuestion before proceeding."
+  deny "$msg"
   exit 0
 fi
 
@@ -156,7 +171,8 @@ fi
 
 # Catch: cat .env, head .env, tail .env, source .env, . .env, less .env, grep .env, rg .env, etc.
 # But allow .env.example, .env.sample, .env.template
-if [[ "$COMMAND" =~ (cat|head|tail|less|more|source|\.|grep|rg|awk|sed)[[:space:]]+(.*\.env)([[:space:]]|$|[^.a-zA-Z]) ]]; then
+env_re='(cat|head|tail|less|more|source|\.|grep|rg|awk|sed)[[:space:]]+(.*\.env)([[:space:]]|$|[^.a-zA-Z])'
+if [[ "$COMMAND" =~ $env_re ]]; then
   if ! [[ "$COMMAND" =~ \.env\.(example|sample|template) ]]; then
     deny "GUARDRAIL: Cannot read .env files via shell -- they contain secrets. Use .env.example instead."
     exit 0
@@ -178,7 +194,9 @@ if re.match(r'^(/\*?|~/?(\*?)|\.\./?\*?|\./?\*?)$', target):
 " 2>/dev/null || echo "")
 
 if [[ "$DANGEROUS_RM" == "yes" ]]; then
-  deny "GUARDRAIL: Dangerous rm command targets root, home, or project root. Ask user via AskUserQuestion before proceeding."
+  msg="GUARDRAIL: Dangerous rm command targets root, home, or project root. "
+  msg+="Ask user via AskUserQuestion before proceeding."
+  deny "$msg"
   exit 0
 fi
 

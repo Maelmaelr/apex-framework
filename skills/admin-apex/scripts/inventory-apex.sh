@@ -65,7 +65,9 @@ fi
 # the framework dir).
 REPO_ROOT="$HOME/.claude"
 if [[ -n "${CLAUDE_PROJECT_DIR:-}" && "$CLAUDE_PROJECT_DIR" != "$REPO_ROOT" ]]; then
-  echo "inventory-apex.sh: ignoring CLAUDE_PROJECT_DIR='$CLAUDE_PROJECT_DIR' (admin-apex always operates on framework root $REPO_ROOT)" >&2
+  msg="inventory-apex.sh: ignoring CLAUDE_PROJECT_DIR='$CLAUDE_PROJECT_DIR' "
+  msg+="(admin-apex always operates on framework root $REPO_ROOT)"
+  echo "$msg" >&2
 fi
 cd "$REPO_ROOT"
 
@@ -246,7 +248,10 @@ inventory = {
     "spec_docs": collect_spec_docs(),
     "version": read_version(),
     "_meta": {
-        "generated_at": datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
+        "generated_at": datetime.datetime.now(datetime.timezone.utc)
+        .replace(microsecond=0)
+        .isoformat()
+        .replace("+00:00", "Z"),
         "warnings": warnings,
     },
 }

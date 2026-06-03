@@ -140,7 +140,9 @@ run_or_fail() {
       echo "verify-build.sh: $label FAILED (lint warnings; warn-as-error); errors -> $ERRORS_FILE" >&2
       if (( scope_annotate == 1 )); then
         if ! annotate_foreign_lint && (( IN_SCOPE_ONLY == 1 )); then
-          echo "verify-build.sh: $label foreign-only (no in-scope file implicated); --in-scope-only treats as clean, continuing to next phase" >&2
+          local msg="verify-build.sh: $label foreign-only (no in-scope file implicated); "
+          msg+="--in-scope-only treats as clean, continuing to next phase"
+          echo "$msg" >&2
           rm -f "$ERRORS_FILE"
           return 0
         fi
@@ -179,7 +181,10 @@ annotate_foreign_lint() {
   while IFS= read -r f; do
     [[ -n "$f" ]] && grep -Fq -- "$f" "$TMP_OUT" && return 0
   done < <(jq -r '.allowed_files[]?' "$scope_json" 2>/dev/null || true)
-  printf '## NOTE: no in-scope allowed_file implicated - lint failure appears foreign/pre-existing; orchestrator should verify in-scope lint/typecheck/build separately before treating the run as blocked (apex-core.md step 10).\n' >> "$ERRORS_FILE"
+  local note='## NOTE: no in-scope allowed_file implicated - lint failure appears foreign/pre-existing; '
+  note+='orchestrator should verify in-scope lint/typecheck/build separately before treating the '
+  note+='run as blocked (apex-core.md step 10).'
+  printf '%s\n' "$note" >> "$ERRORS_FILE"
   return 1
 }
 
@@ -219,7 +224,10 @@ if [[ -f "$MANIFEST_JSON" ]] && command -v jq >/dev/null 2>&1; then
   if [[ -n "$BASE_BRANCH" && "$BASE_BRANCH" != "null" ]]; then
     DIFF_ANCHOR=$(git merge-base "$BASE_BRANCH" HEAD 2>/dev/null || true)
     if [[ -n "$DIFF_ANCHOR" ]]; then
-      CHANGED=$( { git diff --name-only "$DIFF_ANCHOR" 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+      CHANGED=$( {
+        git diff --name-only "$DIFF_ANCHOR" 2>/dev/null
+        git ls-files --others --exclude-standard 2>/dev/null
+      } | sort -u)
       if [[ -n "$CHANGED" ]] && ! printf '%s\n' "$CHANGED" \
           | grep -vE '\.(md|markdown|txt|MD)$|^docs/|^CHANGELOG|^README' >/dev/null 2>&1; then
         echo "verify-build.sh: docs-only diff (no lint/build surface); skipping" >&2
@@ -290,7 +298,8 @@ case "$PROJECT_TYPE" in
         bun)  INSTALL_CMD="bun install --frozen-lockfile" ;;
       esac
       echo "verify-build.sh: node_modules missing; running $INSTALL_CMD" >&2
-      bash -c "$INSTALL_CMD" >/dev/null 2>&1 || echo "verify-build.sh: $INSTALL_CMD failed (continuing; lint/build will surface the real error)" >&2
+      bash -c "$INSTALL_CMD" >/dev/null 2>&1 \
+        || echo "verify-build.sh: $INSTALL_CMD failed (continuing; lint/build will surface the real error)" >&2
     fi
 
     load_npm_scripts

@@ -75,7 +75,9 @@ normalize_prompt() {
   # file sets yet colliding on the path-stripped prompt).
   local lc plan_path abs_plan plan_sha
   lc=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -s '[:space:]' ' ' | sed 's/^ //;s/ $//')
-  plan_path=$(printf '%s' "$lc" | grep -oE '\b(continue|implement)[: ]+\.?/[a-z0-9_./-]+\.md\b' | grep -oE '\.?/[a-z0-9_./-]+\.md' | head -1 || true)
+  plan_path=$(printf '%s' "$lc" |
+    grep -oE '\b(continue|implement)[: ]+\.?/[a-z0-9_./-]+\.md\b' |
+    grep -oE '\.?/[a-z0-9_./-]+\.md' | head -1 || true)
   if [[ -n "$plan_path" ]]; then
     [[ "$plan_path" = /* ]] && abs_plan="$plan_path" || abs_plan="$REPO_ROOT/$plan_path"
     if [[ -f "$abs_plan" ]]; then
@@ -111,14 +113,22 @@ cmd_check() {
     mtime=$(stat -c %Y "$entry")
   fi
   age_days=$(( ($(date +%s) - mtime) / 86400 ))
-  (( age_days < TTL_DAYS )) || { rm -f "$entry" "$head_file"; echo "CACHE_MISS expired age=${age_days}d ttl=${TTL_DAYS}d" >&2; exit 1; }
+  (( age_days < TTL_DAYS )) || {
+    rm -f "$entry" "$head_file"
+    echo "CACHE_MISS expired age=${age_days}d ttl=${TTL_DAYS}d" >&2
+    exit 1
+  }
 
   # HEAD divergence (only if we have both a then-HEAD and a git repo now).
   if [[ -f "$head_file" ]] && head_now=$(cd "$root" && git rev-parse HEAD 2>/dev/null); then
     head_then=$(cat "$head_file")
     if [[ -n "$head_then" && "$head_then" != "$head_now" ]]; then
       divergence=$(cd "$root" && git rev-list --count "$head_then..$head_now" 2>/dev/null || echo 0)
-      (( divergence <= HEAD_DIVERGE_LIMIT )) || { rm -f "$entry" "$head_file"; echo "CACHE_MISS head-diverged commits=${divergence} limit=${HEAD_DIVERGE_LIMIT}" >&2; exit 1; }
+      (( divergence <= HEAD_DIVERGE_LIMIT )) || {
+        rm -f "$entry" "$head_file"
+        echo "CACHE_MISS head-diverged commits=${divergence} limit=${HEAD_DIVERGE_LIMIT}" >&2
+        exit 1
+      }
     fi
   fi
 

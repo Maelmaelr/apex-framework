@@ -25,8 +25,11 @@ check() {  # label expected-exit got-exit
 
 # Synthetic inventory exercising the structural detectors without disk reads
 # (oversized = doc word-budget compare; schema-mismatch = pure id-vs-basename).
-INV_DRIFT='{"skills":[{"path":"skills/apex/big.md","lines":222,"words":3000}],"agents":[],"scripts":[],"schemas":[{"path":"skills/apex/schemas/x.schema.json","id":"WRONG.json"}],"hooks":[],"spec_docs":[],"version":"0"}'
-INV_SCHEMA='{"skills":[],"agents":[],"scripts":[],"schemas":[{"path":"skills/apex/schemas/x.schema.json","id":"WRONG.json"}],"hooks":[],"spec_docs":[],"version":"0"}'
+INV_DRIFT='{"skills":[{"path":"skills/apex/big.md","lines":222,"words":3000}],"agents":[],'
+INV_DRIFT+='"scripts":[],"schemas":[{"path":"skills/apex/schemas/x.schema.json","id":"WRONG.json"}],'
+INV_DRIFT+='"hooks":[],"spec_docs":[],"version":"0"}'
+INV_SCHEMA='{"skills":[],"agents":[],"scripts":[],"schemas":[{"path":"skills/apex/schemas/x.schema.json",'
+INV_SCHEMA+='"id":"WRONG.json"}],"hooks":[],"spec_docs":[],"version":"0"}'
 
 # 1. Missing --mode -> argparse usage error, exit 2.
 python3 "$ENG" --inventory /tmp/x --run abcd1234 >/dev/null 2>&1

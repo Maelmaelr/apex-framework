@@ -124,7 +124,9 @@ if [[ -n "$DIRTY" ]]; then
 fi
 if [[ -n "$COMMITS_PAST_BASE" ]]; then
   n_commits="$(echo "$COMMITS_PAST_BASE" | grep -c . || true)"
-  warn "session $SESSION: branch $WT_BRANCH has $n_commits commits past $WT_BASE in $WT_PATH; run /apex-merge to integrate"
+  msg="session $SESSION: branch $WT_BRANCH has $n_commits commits past $WT_BASE in $WT_PATH; "
+  msg+="run /apex-merge to integrate"
+  warn "$msg"
   [[ -n "$MAIN_FROM_MANIFEST" ]] && echo "$MAIN_FROM_MANIFEST"
   exit 0
 fi
@@ -138,7 +140,8 @@ if [[ -z "$MAIN_TOP_RES" ]]; then
   warn "session $SESSION: could not resolve main worktree from $WT_PATH; skipping worktree remove"
   exit 0
 fi
-(cd "$MAIN_TOP_RES" && git worktree remove "$WT_PATH" --force 2>/dev/null) || warn "git worktree remove failed for $WT_PATH"
+(cd "$MAIN_TOP_RES" && git worktree remove "$WT_PATH" --force 2>/dev/null) \
+  || warn "git worktree remove failed for $WT_PATH"
 (cd "$MAIN_TOP_RES" && git branch -D "$WT_BRANCH" 2>/dev/null)            || warn "git branch -D failed for $WT_BRANCH"
 echo "$MAIN_TOP_RES"
 exit 0

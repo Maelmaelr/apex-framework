@@ -81,7 +81,9 @@ def _load_plan(path: str) -> dict | None:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate per-task scopes are pairwise disjoint and bounded by main scope.")
+    parser = argparse.ArgumentParser(
+        description="Validate per-task scopes are pairwise disjoint and bounded by main scope."
+    )
     parser.add_argument("--plan", required=True, help="path to task-plan JSON")
     parser.add_argument("--main-scope", default=None, help="path to main-scope JSON; enables subset check")
     parser.add_argument("--session", default=None, help="apex {session} token (8-hex)")

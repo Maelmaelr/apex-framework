@@ -144,7 +144,11 @@ sweep_stale_dead_pid_case() {
     && printf '{"run":"deadbe03","cc_session_id":"X","pid":%d,"producer":"admin-apex"}\n' "$(dead_pid)" \
          > .claude-tmp/admin-apex-active/deadbe03.json \
     && printf 'inv\n' > .claude-tmp/admin-apex-active/deadbe03-inventory.json \
-    && python3 -c "import os,time;ts=time.time()-120;[os.utime('.claude-tmp/admin-apex-active/'+f,(ts,ts)) for f in os.listdir('.claude-tmp/admin-apex-active')]" \
+    && python3 -c "
+import os,time
+ts=time.time()-120
+[os.utime('.claude-tmp/admin-apex-active/'+f,(ts,ts)) for f in os.listdir('.claude-tmp/admin-apex-active')]
+" \
     && APEX_ADMIN_ACTIVE_DIR="$tmp/.claude-tmp/admin-apex-active" \
        bash "$REPO_ROOT/skills/admin-apex/scripts/sweep-stale-runs.sh" \
     && [[ ! -e .claude-tmp/admin-apex-active/deadbe03.json ]] \

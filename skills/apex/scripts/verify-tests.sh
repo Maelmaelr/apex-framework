@@ -62,13 +62,19 @@ get_modified_files() {
   local manifest="$APEX_ACTIVE/${SESSION}.json"
   [[ -f "$manifest" ]] || return 1
   local base_branch
-  base_branch=$(python3 -c "import json; print(json.load(open('$manifest')).get('base_branch',''))" 2>/dev/null) || return 1
+  base_branch=$(python3 -c "
+import json
+print(json.load(open('$manifest')).get('base_branch',''))
+" 2>/dev/null) || return 1
   [[ -n "$base_branch" ]] || return 1
   local anchor
   anchor=$(git merge-base "$base_branch" HEAD 2>/dev/null) || return 1
   [[ -n "$anchor" ]] || return 1
   local raw
-  raw=$({ git diff --name-only "$anchor" -- . 2>/dev/null; git ls-files --others --exclude-standard 2>/dev/null; } | sort -u)
+  raw=$( {
+    git diff --name-only "$anchor" -- . 2>/dev/null
+    git ls-files --others --exclude-standard 2>/dev/null
+  } | sort -u)
   local scope="$APEX_ACTIVE/${SESSION}-main-scope.json"
   if [[ -f "$scope" ]]; then
     printf '%s\n' "$raw" | python3 -c "
@@ -165,11 +171,13 @@ case "$PROJECT_TYPE" in
             run_or_fail "$pkg_name vitest run" "pnpm --filter $pkg_name exec -- vitest run $files_str"
             ;;
           jest)
-            run_or_fail "$pkg_name jest --findRelatedTests" "pnpm --filter $pkg_name exec -- jest --findRelatedTests $files_str"
+            run_or_fail "$pkg_name jest --findRelatedTests" \
+              "pnpm --filter $pkg_name exec -- jest --findRelatedTests $files_str"
             ;;
           adonis)
             # AdonisJS ace test --files supports a space-separated pattern list.
-            run_or_fail "$pkg_name ace test --files" "pnpm --filter $pkg_name exec -- node --env-file=.env.test ace test --files \"$files_str\""
+            run_or_fail "$pkg_name ace test --files" \
+              "pnpm --filter $pkg_name exec -- node --env-file=.env.test ace test --files \"$files_str\""
             ;;
           *)
             # Unknown runner: fall back to the package's own `test` script
@@ -280,7 +288,8 @@ PY
       fi
     elif [[ "$RUNNER" == "jest" ]]; then
       if [[ "$PM" == "pnpm" ]]; then
-        run_or_fail "jest --findRelatedTests (pnpm exec)" "pnpm exec jest --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
+        run_or_fail "jest --findRelatedTests (pnpm exec)" \
+          "pnpm exec jest --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
       else
         run_or_fail "jest --findRelatedTests" "$RUN_PREFIX test -- --findRelatedTests $(echo "$EXISTING" | tr '\n' ' ')"
       fi

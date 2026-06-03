@@ -14,7 +14,8 @@
 #   - skills/apex/**
 #   - skills/admin-apex/**
 #   - skills/apex-improve/**            (self-improvement engine; closes the reflector loop)
-#   - skills/apex-merge/**              (worktree-mode integration skill; merges apex/<session> branches into recorded base)
+#   - skills/apex-merge/**              (worktree-mode integration skill; merges apex/<session>
+#                                        branches into recorded base)
 #   - skills/apex-tech-watch/**         (weekly tech-watch fetcher; produces tech-updates.md)
 #   - agents/**
 #   - VERSION
@@ -126,7 +127,8 @@ denied_by_static() {
 allowed() {
   if denied_by_static "$1"; then return 1; fi
   case "$1" in
-    skills/apex/*|skills/admin-apex/*|skills/apex-improve/*|skills/apex-merge/*|skills/apex-tech-watch/*|agents/*|VERSION|apex-core.md|apex-core-overview.md)
+    skills/apex/*|skills/admin-apex/*|skills/apex-improve/*|skills/apex-merge/*|\
+    skills/apex-tech-watch/*|agents/*|VERSION|apex-core.md|apex-core-overview.md)
       return 0 ;;
   esac
   if [[ -n "$DYNAMIC_ALLOWED" ]]; then
