@@ -51,7 +51,7 @@ When an op promotes a reflector-log finding into a guard / rule in a runtime-loa
 
 For any operation in `{create, rename, split, merge, retire, schema-add, schema-remove, hook-add, hook-remove}`:
 
-1. **Read and follow** `~/.claude/skills/admin-apex/evolve.md` task 6 ("Apply ops"). Inputs are already in place: `{run}-evolve-plan.json` (Step 3 wrote it; same schema).
+1. **Read and follow** `~/.claude/skills/admin-apex/evolve.md` from its `## Task 6` heading onward ("Apply ops") - skip `## Task 5` (lines above the Task 6 heading): apex-improve's `plan.md` already composed the plan, so the ~38-line Task 5 plan-compose block is dead weight here; reading the whole file pulls it for nothing. Inputs are already in place: `{run}-evolve-plan.json` (Step 3 wrote it; same schema).
 2. The Step-4 pre-flight (above) already wrote `{run}-inventory.json`; evolve.md task 6 reads it for re-snapshot drift detection. (Re-run `inventory-apex.sh --out` only if it is somehow absent.)
 3. evolve.md handles per-op re-snapshot, applies via Edit / Write / Bash with `grep-apex-refs.sh` ref-rewriting, appends to `{run}-applied-ops.json` + `{run}-dirty-paths.txt`.
 4. Mid-flight drift -> evolve.md surfaces `restart | commit-partial | rollback`. apex-improve maps:

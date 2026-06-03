@@ -25,7 +25,7 @@ The caller (step 8 / step 10) injects the trace path into the spawn prompt. Writ
 - `goal` - single goal string from `hypothesis.goals[]` for this invocation (step 8 only; absent under step 10 fix). When `goals.length == 1` the orchestrator passes that one goal; when `goals.length > 1` step 8.2 spawns N executors with one goal each.
 - per-task scope (`allowed_files` subset for this invocation; for goals-driven splits the orchestrator narrows to the file subset implicated by the goal's nouns)
 - step 5 lessons hits relevant to the task (best-effort)
-- project-context paths (architecture entry-point excerpts)
+- project-context paths (architecture entry-point pointers - file paths, NOT inlined bodies; read on demand per the Architecture-context conditions below)
 - one-line task description (step 8) OR errors-file path (step 10 fix)
 - trace path (resolved per the table above)
 
@@ -65,7 +65,7 @@ Skip the read for:
 - Test additions to an existing test pattern.
 - Step 10 fix-attempts (the errors file already names the failure surface).
 
-The orchestrator already pre-biased your spawn prompt with relevant `project-context.md` excerpts at step 1. The on-demand read covers only the gap above.
+The orchestrator passes relevant `project-context.md` PATHS (pointers, not file bodies - step 8 E3.1 forbids pre-loading their content) in your spawn prompt. The on-demand read above covers only the gap when one of the conditions holds.
 
 ## Trace structure (failure / split only)
 
