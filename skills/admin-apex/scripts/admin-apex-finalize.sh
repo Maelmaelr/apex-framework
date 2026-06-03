@@ -20,8 +20,8 @@
 # Args:
 #   --run     <8-hex>                 required
 #   --bump    patch|minor|major|none  required (decided by caller per SKILL.md task 9 bump rule)
-#   --message <one-liner>             required when bump != none OR commit will fire
-#   --body    <op-list>               required when bump != none OR commit will fire
+#   --message <one-liner>             required when the commit fires (non-empty staged diff)
+#   --body    <op-list>               required when the commit fires (non-empty staged diff)
 #
 # Defensive validation against {run}-applied-ops.json (catches caller-side
 # bump-rule misapplication). Required tier per applied-op kinds:
@@ -84,10 +84,15 @@ esac
 DIRTY="$ADMIN_ACTIVE/${RUN}-dirty-paths.txt"
 DOCS="$ADMIN_ACTIVE/${RUN}-docs-changed.txt"
 APPLIED="$ADMIN_ACTIVE/${RUN}-applied-ops.json"
+PLAN="$ADMIN_ACTIVE/${RUN}-evolve-plan.json"
 SUMMARY="$ADMIN_ACTIVE/${RUN}-summary.md"
 
-# Defensive validation: --bump must match the tier required by the applied-ops
-# kinds. Catches caller-side mistake where bump rule was misapplied.
+# Defensive validation: --bump must match the tier required by the applied ops.
+# Catches caller-side mistake where the bump rule was misapplied. Authoritative
+# op kinds live in {run}-evolve-plan.json (applied-ops.json is kind-free and
+# references plan ops by index, per evolve.md plan-is-authoritative); resolve each
+# applied op's kind via plan_op_index, falling back to an inline `kind` only when
+# the index is unresolvable (legacy / test fixtures).
 #   any of {rename, split, merge, retire, schema-remove, hook-remove}  -> major
 #   else any of {create, schema-add, hook-add}                          -> minor
 #   else (only edit ops, or empty)                                      -> patch
@@ -98,25 +103,36 @@ if [[ -s "$APPLIED" ]]; then
   required=$(python3 -c "
 import json, sys
 try:
-    ops = json.load(open(sys.argv[1], encoding='utf-8'))
+    applied = json.load(open(sys.argv[1], encoding='utf-8'))
 except Exception:
     sys.exit(0)
-if not isinstance(ops, list) or not ops:
+if not isinstance(applied, list) or not applied:
     sys.exit(0)
+plan_ops = []
+try:
+    plan = json.load(open(sys.argv[2], encoding='utf-8'))
+    if isinstance(plan, dict) and isinstance(plan.get('ops'), list):
+        plan_ops = plan['ops']
+except Exception:
+    plan_ops = []
 MAJOR = {'rename', 'split', 'merge', 'retire', 'schema-remove', 'hook-remove'}
 MINOR = {'create', 'schema-add', 'hook-add'}
 tier = 'patch'
-for op in ops:
+for op in applied:
     if not isinstance(op, dict):
         continue
-    k = op.get('kind', '')
+    idx = op.get('plan_op_index')
+    if isinstance(idx, int) and 0 <= idx < len(plan_ops) and isinstance(plan_ops[idx], dict):
+        k = plan_ops[idx].get('kind', '')
+    else:
+        k = op.get('kind', '')
     if k in MAJOR:
         tier = 'major'
         break
     if k in MINOR and tier != 'major':
         tier = 'minor'
 print(tier)
-" "$APPLIED" 2>/dev/null || true)
+" "$APPLIED" "$PLAN" 2>/dev/null || true)
   if [[ -n "$required" ]]; then
     if [[ "$BUMP" == "none" ]]; then
       echo "admin-apex-finalize.sh: --bump=none but $APPLIED contains applied ops (required tier=$required)" >&2

@@ -5,8 +5,8 @@
 #
 # Re-snapshots inventory POST-apply, then delegates to the shared detector engine
 # (scripts/audit-detectors.py --mode polish: orphan-refs / missing-refs /
-# schema-mismatch / dead-hook / approaching-budget (WARN) / hash-roster (WARN),
-# relabeled staleness/unused/inconsistency) which
+# schema-mismatch / dead-hook / approaching-budget (WARN) / hash-roster (WARN) /
+# negative-scope (WARN), relabeled staleness/unused/inconsistency) which
 # diffs against the pre-apply drift report so only NEW issues introduced by the
 # implementation surface. No-op when zero ops were applied this run. The engine
 # is the same code audit.md task 3 runs (--mode audit) - audit + polish can no

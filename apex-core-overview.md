@@ -107,7 +107,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - hard cap: 2 reviews + 1 fix; reviewer never edits files
 
 11. Tail (foreground):
-    - standard: documentation.md always; learn.md ONLY when difficulty gate holds (fix-attempts.json exists AND attempts>=1) - parallel when both run
+    - standard: documentation.md always; learn.md ONLY when difficulty gate holds (fix-attempts.json exists AND count>=1) - parallel when both run
     - economy: documentation.md only (learn skipped)
 
 12. Commit + persist bump_hint: **inline** (orchestrator owns; no subagent hop)

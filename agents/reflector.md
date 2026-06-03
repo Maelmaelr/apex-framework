@@ -48,7 +48,7 @@ Apex phase:
 - `.claude-tmp/apex-active/{session}-traces/execute/dispatch-summary.json` (best-effort; absent under trivial path or when step 8 produced no executor returns). JSON array of `{goal, status, notes, tool_calls_made, files_touched, tool_uses, total_tokens, duration_ms, ...}`; `tool_uses` / `total_tokens` / `duration_ms` and a git-reconciled `files_touched` are orchestrator-recorded actual telemetry (step 8.3 E1), the rest are executor self-report. Consumed by the oversized-dispatch flag below.
 - `git diff --stat {diff_anchor}` + `git ls-files --others --exclude-standard`. `diff_anchor` is passed verbatim in the spawn prompt (apex orchestrator resolves it as `git merge-base <manifest.base_branch> HEAD`, the apex/<session> branch's fork point - stable since the worktree branched off at session mint).
 
-Admin-apex / lessons-analyze / lessons-extract / apex-merge: see the invocation table. No heuristic preamble (those phases bypass `reflect-traces.sh`); inputs are JSON artifacts (where present) plus the per-task / per-step summary trace.
+Admin-apex / lessons-analyze / lessons-extract / apex-merge / apex-tech-watch: see the invocation table. No heuristic preamble (those phases bypass `reflect-traces.sh`); inputs are JSON artifacts (where present) plus the per-task / per-step summary trace.
 
 **Orchestrator-proposals input (apex-merge only, optional).** When `{run}-orchestrator-proposals.md` exists, parse its `- gap: ...` / `- improvement: ...` lines and roll each into the `gaps:` / `improvements:` lines of the structured output (subject to the per-line cap; route overflow to `improvements:` rather than dropping). This is a free-form sidecar the apex-merge orchestrator writes when it routed around a shipped script or skipped a documented step mid-run; treating it as a second input closes the structural blind-spot where summary-only inputs miss "I skipped X because Y" decisions. Restructure freely (tighten wording, dedupe) but never silently reject; if an entry is genuinely irrelevant, note it once in `fixes-observed:` rather than dropping. Other phases ignore this input.
 
@@ -75,7 +75,7 @@ Exactly ONE append per invocation. Do not re-emit the block as a "verification" 
 
 Strict 2-AND contract; treat ambiguity as "emit structured block":
 
-(a) The traces directory at `.claude-tmp/apex-active/{session}-traces/` is empty OR all trace files contain only the `[no source files for ...]` placeholder (apex phase only; admin-apex / lessons phases use the equivalent: `{run}-summary.md` is empty / absent), AND
+(a) The traces directory at `.claude-tmp/apex-active/{session}-traces/` is empty OR all trace files contain only the `[no source files for ...]` placeholder (apex phase only; all non-apex phases - admin-apex / lessons-analyze / lessons-extract / apex-merge / apex-tech-watch - use the equivalent: `{run}-summary.md` is empty / absent), AND
 (b) The manifest cannot be Read OR can be Read but does not parse as JSON. A manifest that exists on disk and parses successfully DISQUALIFIES SKIPPED, regardless of how sparse its keys are. Sparse manifests still carry hypothesis-vs-reality + workflow-respected + token-reductions signal when paired with `{session}-hypothesis.json`.
 
 When BOTH (a) and (b) hold, emit the sentinel:

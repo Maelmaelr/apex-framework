@@ -352,6 +352,15 @@ finalize_defensive_fixture() {
 }
 run_fixture "admin-apex-finalize.sh bump=none-with-applied-op" 1 finalize_defensive_fixture
 
+# 6b. floor-check resolves kinds from plan (kind-free applied-ops + create + --bump=patch -> exit 1; floor is live).
+finalize_floor_via_plan_fixture() {
+  mkdir -p .claude-tmp/admin-apex-active; local d=.claude-tmp/admin-apex-active
+  printf '%s' '{"run":"abcdef01","ops":[{"kind":"create","rationale":"x"}]}' > "$d/abcdef01-evolve-plan.json"
+  printf '%s' '[{"plan_op_index":0,"status":"applied"}]' > "$d/abcdef01-applied-ops.json"
+  bash "$REPO_ROOT/skills/admin-apex/scripts/admin-apex-finalize.sh" --run abcdef01 --bump patch --message m --body b
+}
+run_fixture "admin-apex-finalize.sh floor-check-via-plan-index" 1 finalize_floor_via_plan_fixture
+
 # 7. v2 step-13 reflect-traces.sh fail-silent contract: missing or bad args
 #    still exit 0 (the heuristic block is best-effort, never blocks the flow).
 run_fixture "reflect-traces.sh missing-args" 0 \
