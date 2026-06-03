@@ -73,6 +73,7 @@ Past runs write `{run}-deferred-findings.json` (cap-overflow + uncertain-defer);
 
 For each consumable finding:
 
+0. **Staleness re-validation (before incrementing)**: confirm the finding's target condition still reproduces - grep the named `target_files` for the gap symbol, re-run the cited detector, or check an impl marker named in `evidence`. If it no longer holds (impl landed, debt paid, detector clean), DROP the finding entirely (do NOT carry or increment) and record the auto-retire in the Step 6 report. This gate runs FIRST so a resolved finding never climbs toward `chronic` and nags forever. Only still-reproducing findings reach step 1.
 1. **Increment `deferrals`** (absent -> treat as 0, so first carry-over becomes 1).
 2. **Chronic gate**: `deferrals >= 3` -> set `chronic: true`. Chronic findings are report-only - excluded from the plannable pool (they keep failing the same AskUserQuestion / design-decision gate, so re-planning churns) but carried forward in the consolidated file (non-lossy) and counted in the Step 6 report so the user is nudged to decide manually.
 3. Otherwise merge into the candidate pool alongside the fresh-source findings.
