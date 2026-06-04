@@ -15,6 +15,8 @@
 #     > 10 net lines -> deny (split a separable concern first).
 #   - max-line-length gate (apex framework skills/** + agents/** scripts): an edit
 #     that introduces a line longer than MAX_LINE_LEN chars -> deny (wrap/refactor).
+#     Data formats (.json/.yaml/.yml) are EXEMPT - their long string values
+#     (schema descriptions, prompt strings) cannot wrap; they keep the split gate.
 #
 # Trivial edits (<= 10 net lines) pass the code line gate even on > 500-line
 # files. Shrinking/neutral doc edits and new files (target absent on disk) always
@@ -46,6 +48,9 @@ CENTRAL_SPECS = {os.path.join(APEX_ROOT, n) for n in
 DOC_WORD_CAP = 2500
 LINE_SPLIT_CAP = 400
 MAX_LINE_LEN = 120
+# Data formats carry unwrappable long string values (JSON schema descriptions,
+# prompt strings, regex) - exempt from the max-line-length gate, like .md.
+DATA_EXTS = (".json", ".yaml", ".yml")
 CONTENT_BUDGET = os.path.join(APEX_ROOT, "skills", "apex", "scripts", "content-budget.json")
 
 
@@ -177,7 +182,10 @@ def line_split_decision(target, tool, inputs):
 
 def code_decision(tool, target, inputs):
     abs_t = os.path.abspath(target)
-    if abs_t.startswith(SKILLS_ROOT) or abs_t.startswith(AGENTS_ROOT):
+    ext = os.path.splitext(target)[1].lower()
+    # max-line-length is a code-readability rule; data formats are exempt (their
+    # long string values cannot wrap) but still gated on file-size by line_split.
+    if ext not in DATA_EXTS and (abs_t.startswith(SKILLS_ROOT) or abs_t.startswith(AGENTS_ROOT)):
         longest = max((len(ln) for ln in new_text_lines(tool, inputs)), default=0)
         if longest > MAX_LINE_LEN:
             return deny(f"file-health gate: {target} edit introduces a {longest}-char "

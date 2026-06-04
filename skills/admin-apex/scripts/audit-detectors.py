@@ -38,6 +38,9 @@ DOC_WORD_CAP = 2500            # fallback default skills/agents .md content budg
 PROSE_WORD_CAP = 11400         # fallback central-prose (apex-core/overview/README/CLAUDE) budget
 SCRIPT_LINE_CAP = 500          # scripts: physical-line cap (source text, not prose)
 MAX_LINE_LEN = 120             # scripts: longest single-line cap
+# Data formats are exempt from the longest-line gate (unwrappable string values);
+# kept in sync with file-health-hook.sh DATA_EXTS. They keep the line-count cap.
+DATA_EXTS = (".json", ".yaml", ".yml")
 CONTENT_BUDGET_PATH = "skills/apex/scripts/content-budget.json"
 
 # Spec-doc reference extractor (mirrors audit.md orphan-refs detector).
@@ -118,9 +121,10 @@ def detect_oversized(inv, root, budget):
         reasons = []
         if e["lines"] > SCRIPT_LINE_CAP:
             reasons.append(f'{e["lines"]} lines > {SCRIPT_LINE_CAP}')
-        longest = _max_line_len(root / e["path"])
-        if longest > MAX_LINE_LEN:
-            reasons.append(f'longest line {longest} > {MAX_LINE_LEN}')
+        if Path(e["path"]).suffix.lower() not in DATA_EXTS:
+            longest = _max_line_len(root / e["path"])
+            if longest > MAX_LINE_LEN:
+                reasons.append(f'longest line {longest} > {MAX_LINE_LEN}')
         if reasons:
             items.append(f'{e["path"]} ({"; ".join(reasons)})')
     return items

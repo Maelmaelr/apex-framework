@@ -34,7 +34,7 @@ Eight **structural** kinds are detected deterministically by `scripts/audit-dete
 
 | Kind (slug id) | Flags |
 |------|---------|
-| `oversized-files` (`oversized`) | skills/agents `.md` over its per-role content budget (resolved by `cap_for` from `skills/apex/scripts/content-budget.json`: 2500 default, higher for orchestrator-core / hot-path-heavy files; line count informational), scripts >500 lines OR longest line >120 chars, central-prose docs (apex-core/overview/README/CLAUDE) >11400 words. Audit-only - never run post-apply. |
+| `oversized-files` (`oversized`) | skills/agents `.md` over its per-role content budget (resolved by `cap_for` from `skills/apex/scripts/content-budget.json`: 2500 default, higher for orchestrator-core / hot-path-heavy files; line count informational), scripts >500 lines OR longest line >120 chars (data formats .json/.yaml/.yml exempt from the line gate - unwrappable string values), central-prose docs (apex-core/overview/README/CLAUDE) >11400 words. Audit-only - never run post-apply. |
 | `orphan-refs` (`orphan`) | Spec-doc path ref that resolves to neither an inventory entry nor a real on-disk file (bare-`scripts/X` shorthand, glob, trailing-slash dir refs, and refs to committed-but-untracked artifacts like `scripts/fixtures/*.jsonl` excepted - the gate flags dead references, not inventory-membership gaps). |
 | `missing-refs` (`missing`) | Inventory file referenced by zero spec doc (intra-skill, cross-apex-skill, and parent-dir/glob refs count as covered; `SKILL.md` / `_`-prefixed / `__pycache__` excluded). |
 | `schema-mismatch` (`schema`) | `schemas[]` entry where `id != basename(path)`. |
