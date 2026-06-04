@@ -65,6 +65,13 @@ Both findings carry `target_files: []` so Step 3 plan cannot promote them to ops
 
 If `apex-claude-code-version.txt` is missing or older than the current CC version (`claude --version` parsed), emit ONE finding: `summary: "review CC release notes since version X for behavior changes; check apex hook configurations and skill prompts for affected primitives"`. This is usually a meta-finding pointing at apex-tech-watch's most recent fetch.
 
+## Resolved-by-design / explicit-wontfix auto-drop
+
+Some findings recur from reflectors yet are settled - the behavior is intentional per an explicit user directive, or the cost they target is already mitigated. Drop these PRE-CLUSTER on BOTH tracks (fresh-source extraction AND backlog re-validation): match by `id`, record the auto-drop in the Step 6 report, never carry or plan. Add an entry ONLY on an explicit user wontfix / mitigated decision; remove the entry if its cited mitigation later changes.
+
+- `apex-merge-precheck-scope` - precheck auto-commit scope is final per explicit user directive ("just commit, don't ask"; the `>10` prompt was deliberately removed). `apex-merge/SKILL.md:39` documents the contract; the auto-force allowlist (`SKILL.md:132`) is the only sanctioned extension point.
+- `apex-scope-overinclusion-docs` - the doc pre-load cost is already mitigated: `08-execute.md` E3.1/E3.6 surface goal-unmatched docs reference-only / on-demand (never pre-loaded), and the `doc_surface` fold (`discoverer.md:109`) is intentional to stop reactive late-append of architecture / rule docs.
+
 ## Prior-run deferred-findings (backlog ingestion)
 
 Past runs write `{run}-deferred-findings.json` (cap-overflow + uncertain-defer); `cleanup-run.sh` preserves them across SessionEnd AND they are exempt from `sweep-orphan-artifacts.sh`, so they survive indefinitely until this step reprocesses them. Without this ingestion they would carry forward forever without ever reaching an op.
