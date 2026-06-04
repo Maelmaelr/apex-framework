@@ -21,7 +21,7 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 
 ## Procedure
 
-1. **Compute review surface**: `git diff {diff_anchor}..HEAD --name-only` UNION `git ls-files --others --exclude-standard`, INTERSECTED with `allowed_files`. Empty intersection -> return `{findings: [], action: "pass", notes: "empty review surface"}`.
+1. **Compute review surface**: `git diff {diff_anchor}..HEAD --name-only` UNION `git ls-files --others --exclude-standard`, INTERSECTED with `allowed_files`. Empty intersection -> return `{findings: [], action: "pass", notes: "empty review surface"}`. Any `allowed_files` entry absent from BOTH sets AND not present on disk (planned-but-unwritten doc, gitignored output) is excluded from review - carry a `warn: <path> in allowed_files but not on disk` line into the step-6 trace `notes` rather than dropping it silently (missing-disk-files).
 
 2. **Read the diff body** for each in-scope file: `git diff {diff_anchor}..HEAD -- <path>` (untracked files: full content). Cap individual file diff at 400 lines; truncate with marker if exceeded.
 
