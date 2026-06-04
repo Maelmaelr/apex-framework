@@ -17,16 +17,16 @@
 # the fix-attempt executor; first-fail keeps the executor's input focused).
 #
 # Lint phases auto-apply machine-fixable suggestions before reporting:
-#   node:   best-effort `--fix` pre-pass against the project's `lint` script
-#           (eslint/biome wrappers; harmless no-op when the underlying tool
-#            doesn't accept --fix, e.g. tsc-as-lint).
-#   ruff:   `ruff check --fix .` (single pass; ruff fixes in-place and reports
-#            remaining issues).
+#   node:   scope-isolated `eslint --fix` over ONLY the session's allowed_files
+#           (see scoped_lint_fix); never a repo-wide --fix that would reformat
+#           out-of-scope files into the commit.
+#   ruff:   `ruff check --fix .` (single pass; fixes in-place, reports the rest).
 #   clippy: `cargo clippy --fix --allow-dirty --allow-staged ... -- -D warnings`
 #            (--allow-dirty needed because the executor has just edited files).
-# Auto-fix files are mutated in place; this is intentional and out of scope
-# for the apex scope-check hook (verify-build.sh is invoked outside the
-# executor's tool-call gate).
+# Auto-fix files are mutated in place; intentional and out of scope for the
+# apex scope-check hook (verify-build.sh runs outside the executor tool gate).
+# Python tooling (ruff/mypy/pytest) resolves via the project venv when present:
+# a local .venv/venv/env bin dir is prepended to PATH before dispatch.
 #
 # Args:
 #   --session <token>   required, 8-char lowercase hex
@@ -39,12 +39,9 @@
 #                       allowed_files is treated as foreign / pre-existing
 #                       debt and the script exits 0 (errors file removed).
 #                       Defends step 10 against sibling baseline-dirty lint
-#                       failures that would otherwise abort the in-scope
-#                       verify on first-fail-stop. Recurring request:
-#                       xai_image_helpers (complexity 24) and
-#                       canvas_stitch_worker_client (cogcomplexity 17). No
-#                       main-scope.json / no jq -> falls back to the
-#                       normal (no-flag) behavior so the flag is safe to pass
+#                       failures that would otherwise abort the in-scope verify
+#                       on first-fail-stop. No main-scope.json / no jq -> falls
+#                       back to normal (no-flag) behavior, so it is safe to pass
 #                       universally.
 #
 # Exit codes:
@@ -107,18 +104,13 @@ rm -f "$ERRORS_FILE"
 # Run a single verify command. On non-zero exit, write the full transcript
 # (label + command + combined output) to ERRORS_FILE and exit with that status.
 # On zero, return silently so the caller continues to the next command.
-#
 # Optional 3rd arg `warn_as_error` (0|1, default 0): when 1 and the command
-# exited 0, scan combined output for lint-warning lines and treat any match
-# as a failure. Used by lint phases so warnings flow through the same fix-loop
-# as errors (clippy already has -D warnings; this closes the gap for node lint
-# scripts that don't pass --max-warnings=0, biome's default warning severity,
-# etc).
-#
-# Warning detector: matches eslint stylekit `<file>:<line>:<col>  warning  ...`,
-# biome `warning[...]:`, golangci `warning:`, generic ` warn:` / ` warning:`
-# prefixes. Build/typecheck phases pass warn_as_error=0 (build warnings are
-# noisy and not the linter's domain).
+# exited 0, scan output for lint-warning lines and treat any match as a failure,
+# so warnings flow through the same fix-loop as errors (closes the gap for node
+# lint scripts without --max-warnings=0, biome's default warning severity, etc).
+# The detector matches eslint `<file>:<line>:<col>  warning`, biome
+# `warning[...]:`, golangci `warning:`, generic ` warn:` / ` warning:`. Build /
+# typecheck phases pass warn_as_error=0 (build warnings are not the linter's domain).
 run_or_fail() {
   local label="$1"
   local cmd="$2"
@@ -164,16 +156,13 @@ run_or_fail() {
   fi
 }
 
-# F2: a lint
-# failure that implicates NO in-scope allowed_file is foreign / pre-existing
-# debt in an unmodified package, not what this session's executor produced.
-# We still first-fail-stop (never fail open - silently masking a real
-# in-scope regression is worse than a noisy foreign one), but append a
-# greppable NOTE so the step-10 orchestrator runs the scoped in-scope
-# lint/tsc/build the reflectors had to derive by hand (see apex-core.md
-# step 10). No main-scope.json / no jq -> no-op (behavior unchanged).
-# Returns 0 if at least one in-scope allowed_file is implicated in the error
-# output, 1 if the failure is entirely foreign (used by --in-scope-only).
+# F2: a lint failure implicating NO in-scope allowed_file is foreign /
+# pre-existing debt, not this session's work. We still first-fail-stop (never
+# fail open - masking a real in-scope regression is worse than a noisy foreign
+# one), but append a greppable NOTE so the step-10 orchestrator runs the scoped
+# in-scope lint/tsc/build (apex-core.md step 10). No main-scope.json / no jq ->
+# no-op. Returns 0 if an in-scope allowed_file is implicated, 1 if the failure
+# is entirely foreign (used by --in-scope-only).
 annotate_foreign_lint() {
   local scope_json="$APEX_ACTIVE/${SESSION}-main-scope.json"
   command -v jq >/dev/null 2>&1 && [[ -f "$scope_json" ]] || return 0
@@ -188,8 +177,29 @@ annotate_foreign_lint() {
   return 1
 }
 
-# Cached space-padded list of npm script names; populated once per run when
-# PROJECT_TYPE=node. Membership check is a portable bash substring test.
+# Scope-isolated lint --fix pre-pass (node). A repo-wide `lint --fix` reformats
+# files OUTSIDE allowed_files into the commit (recurring scope-drift -> spurious
+# step-12 AskUserQuestion), so auto-fix ONLY the in-scope lintable files via the
+# project-local eslint directly (the npm lint script's globs can't be narrowed
+# by appending paths - eslint treats positionals as extra patterns). No scope
+# json / jq / local eslint / in-scope JS-TS file -> no auto-fix at all, never a
+# repo-wide pass; the canonical lint phase below still feeds the fix-loop. The
+# `-f` guard skips git-root-relative paths unresolvable from cwd (no-op, no error).
+scoped_lint_fix() {
+  local scope_json="$APEX_ACTIVE/${SESSION}-main-scope.json"
+  command -v jq >/dev/null 2>&1 && [[ -f "$scope_json" ]] || return 0
+  local eslint_bin="node_modules/.bin/eslint"
+  [[ -x "$eslint_bin" ]] || return 0
+  local files=() f
+  while IFS= read -r f; do
+    [[ "$f" =~ \.(js|jsx|mjs|cjs|ts|tsx|mts|cts)$ && -f "$f" ]] && files+=("$f")
+  done < <(jq -r '.allowed_files[]?' "$scope_json" 2>/dev/null || true)
+  (( ${#files[@]} > 0 )) || return 0
+  "$eslint_bin" --fix "${files[@]}" >/dev/null 2>&1 || true
+}
+
+# Cached space-padded list of npm script names (populated once when
+# PROJECT_TYPE=node); membership is a portable bash substring test.
 NPM_SCRIPTS=""
 
 load_npm_scripts() {
@@ -208,15 +218,13 @@ has_npm_script() {
   [[ "$NPM_SCRIPTS" == *" $1 "* ]]
 }
 
-# Returns 0 if the binary is on PATH.
 has_bin() { command -v "$1" >/dev/null 2>&1; }
 
 # --- Docs-only fast-path ---
 # When every file modified since the session fork point is documentation
-# (*.md / *.markdown / *.txt under docs/** or top-level README/CHANGELOG),
-# there is nothing to lint or build. Skips the eslint/clippy/ruff binary
-# lookup + the foreign-error noise that a docs-only diff would otherwise
-# trip.
+# (*.md / *.markdown / *.txt under docs/** or top-level README/CHANGELOG), there
+# is nothing to lint or build - skip the eslint/clippy/ruff binary lookup + the
+# foreign-error noise a docs-only diff would otherwise trip.
 MANIFEST_JSON="$APEX_ACTIVE/${SESSION}.json"
 if [[ -f "$MANIFEST_JSON" ]] && command -v jq >/dev/null 2>&1; then
   BASE_BRANCH=$(jq -r .base_branch "$MANIFEST_JSON" 2>/dev/null || true)
@@ -235,6 +243,21 @@ if [[ -f "$MANIFEST_JSON" ]] && command -v jq >/dev/null 2>&1; then
     fi
   fi
 fi
+
+# --- Python venv bin resolution ---
+# Greenfield-python projects install ruff/mypy/pytest into a local venv, not on
+# the system PATH - a recurring gap where the lookups below (and the child
+# verify-tests.sh) missed the tooling and forced a verify re-run. Prepend the
+# first venv bin found so every downstream resolution is project-local. Names
+# mirror the SKILL.md step-5 auto-force venv allowlist; the python probe
+# confirms a real venv bin dir.
+for _venv in .venv venv env; do
+  if [[ -x "$PROJECT_ROOT/$_venv/bin/python" || -x "$PROJECT_ROOT/$_venv/bin/python3" ]]; then
+    PATH="$PROJECT_ROOT/$_venv/bin:$PATH"; export PATH
+    echo "verify-build.sh: prepended $_venv/bin to PATH (project venv)" >&2
+    break
+  fi
+done
 
 # --- Detect project type (first manifest wins) ---
 
@@ -270,8 +293,8 @@ case "$PROJECT_TYPE" in
       PM="npm"
     fi
 
-    # Build the run-prefix. `npm run --silent` suppresses the "> pkg@ver build" header
-    # (a noise source the fixer doesn't need); pnpm/yarn/bun emit cleaner output by default.
+    # Build the run-prefix. `npm run --silent` suppresses the "> pkg@ver build"
+    # header (noise the fixer doesn't need); pnpm/yarn/bun are clean by default.
     case "$PM" in
       npm)  RUN_PREFIX="npm run --silent" ;;
       pnpm) RUN_PREFIX="pnpm run" ;;
@@ -279,16 +302,11 @@ case "$PROJECT_TYPE" in
       bun)  RUN_PREFIX="bun run" ;;
     esac
 
-    # npm needs `--` to forward args; pnpm/yarn/bun pass them directly.
-    [[ "$PM" == "npm" ]] && LINT_FIX_ARGS="-- --fix" || LINT_FIX_ARGS="--fix"
-
     # Worktree dep bootstrap (Layer 3 defensive): node_modules missing means
-    # create-session.sh's Layer 1 symlink found no main-worktree node_modules
-    # to link, or a non-/apex caller is verifying a fresh clone. Install once
-    # with the PM's frozen-lockfile equivalent so a real "lockfile drift"
-    # error surfaces instead of being masked as "module not found". Failures
-    # feed the normal lint/build first-fail-stop; the executor sees the same
-    # transcript a developer would.
+    # create-session.sh's Layer 1 symlink found nothing to link, or a non-/apex
+    # caller is verifying a fresh clone. Install once with the PM's frozen-
+    # lockfile equivalent so a real "lockfile drift" surfaces instead of a
+    # masked "module not found"; failures feed the normal first-fail-stop.
     if [[ ! -d node_modules ]]; then
       case "$PM" in
         npm)  INSTALL_CMD="npm ci" ;;
@@ -306,18 +324,17 @@ case "$PROJECT_TYPE" in
     # Order matters: lint -> typecheck -> build.
     # A typecheck failure usually cascades into build, so first-fail-stop keeps
     # the fix executor focused on the upstream cause.
-    # Lint phase: best-effort `--fix` pre-pass auto-resolves machine-fixable
-    # issues (eslint/biome wrappers) before the canonical lint runs - cuts
-    # fix-loop tokens for trivial issues. Failure is harmless (e.g., a tsc-as-
-    # lint script that doesn't accept --fix); output suppressed so only the
-    # canonical pass surfaces to the executor. Then warn_as_error=1 so
-    # eslint/biome warnings feed the same fix-loop as errors (closes the gap
-    # for projects whose `lint` script doesn't pass --max-warnings=0).
+    # Lint phase: scope-isolated `eslint --fix` pre-pass (scoped_lint_fix)
+    # auto-resolves machine-fixable issues in the in-scope allowed_files before
+    # the canonical lint runs - cuts fix-loop tokens without reformatting
+    # out-of-scope files. Then warn_as_error=1 so eslint/biome warnings feed the
+    # same fix-loop as errors (closes the gap for projects whose `lint` script
+    # doesn't pass --max-warnings=0).
     for script in lint typecheck build; do
       if has_npm_script "$script"; then
         ran_anything=1
         if [[ "$script" == "lint" ]]; then
-          bash -c "$RUN_PREFIX lint $LINT_FIX_ARGS" >/dev/null 2>&1 || true
+          scoped_lint_fix
           run_or_fail "lint ($PM)" "$RUN_PREFIX lint" 1 1
         else
           run_or_fail "$script ($PM)" "$RUN_PREFIX $script" 0
