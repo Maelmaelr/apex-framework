@@ -71,6 +71,8 @@ Some findings recur from reflectors yet are settled - the behavior is intentiona
 
 - `apex-merge-precheck-scope` - precheck auto-commit scope is final per explicit user directive ("just commit, don't ask"; the `>10` prompt was deliberately removed). `apex-merge/SKILL.md:39` documents the contract; the auto-force allowlist (`SKILL.md:132`) is the only sanctioned extension point.
 - `apex-scope-overinclusion-docs` - the doc pre-load cost is already mitigated: `08-execute.md` E3.1/E3.6 surface goal-unmatched docs reference-only / on-demand (never pre-loaded), and the `doc_surface` fold (`discoverer.md:109`) is intentional to stop reactive late-append of architecture / rule docs.
+- `review-doc-stale-inline` - applying review doc-stale fixes inline at the review step contradicts the reviewer "Reports only - never edits" invariant (`agents/reviewer.md:72`, `skills/apex/steps/10-verify.md:85`); the clean invariant outweighs saving one dispatch round-trip. Explicit user wontfix.
+- `redundant-reread` - step-8 dispatch re-reading discovery-skip-inlined seeder files is already mitigated by `08-execute.md` E3.2 pre-read + E3.6 helper_snapshot inlining; low residual token-reduction, repeatedly bloat-deferred onto the hot-path file. Explicit user wontfix.
 
 ## Prior-run deferred-findings (backlog ingestion)
 

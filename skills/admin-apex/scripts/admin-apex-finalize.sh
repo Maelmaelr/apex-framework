@@ -9,6 +9,7 @@
 #   stage {run}-docs-changed.txt (if non-empty)
 #   stage plugins/, statusline/, tmp/ (private-tracked roots; respects .gitignore
 #     so transient flock targets / runtime caches stay out)
+#   emit {run}-docs-changed.txt from the staged index when absent/empty (all paths)
 #   git diff --cached --quiet => no commit -> cleanup-run.sh --run {run} -> exit 10
 #   else -> git commit -m <message> -m <body> -> exit 0
 #
@@ -228,6 +229,15 @@ if [[ -s "$DOCS" ]]; then
   xargs git add -- < "$DOCS"
 fi
 git add -- plugins/ statusline/ tmp/
+
+# Emit {run}-docs-changed.txt on ALL code paths, not only the evolve.md / sync-docs
+# path that writes it explicitly. Downstream consumers (mirror-to-dev.sh doc
+# allowlist + task-11 reflector) require it; an inline-apply / audit->apply pivot
+# path never wrote it. When absent or empty, derive the changed-doc set from the
+# staged index so it always reflects what actually landed.
+if [[ ! -s "$DOCS" ]]; then
+  git diff --cached --name-only -- '*.md' > "$DOCS" 2>/dev/null || true
+fi
 
 # Step 3: Decide commit vs no-commit-cleanup.
 if git diff --cached --quiet; then

@@ -14,7 +14,8 @@
 # This script stamps both fields so both touchpoints fire.
 #
 # Rewrites IN PLACE the entry whose .branch == <branch>:
-#   --status merged                -> detail = "resolver=<decision>", paths = [<resolved files>]
+#   --status merged                -> detail = "resolver=<decision>", paths = [<resolved files>],
+#                                     merged_sha = <HEAD merge-commit SHA>
 #   --status skipped-conflict-abort -> detail = "abort", no paths (4.6 must NOT fire)
 # Any transient `conflict` detail / stale paths on the entry are dropped first.
 # Idempotent: re-stamping the same branch updates in place (never appends a dup).
@@ -77,9 +78,18 @@ if [[ ! -f "$RESULT" ]]; then
   exit 1
 fi
 
-python3 - "$RESULT" "$BRANCH" "$STATUS" "$DECISION" "$PATHS" <<'PY'
+# merged_sha = the merged tip SHA, recorded only on a terminal `merged` stamp so a
+# post-mortem can pin the exact merge commit after the branch is pruned. The
+# orchestrator commits the conflict resolution BEFORE stamping (SKILL.md step 4),
+# so HEAD is the merge commit here.
+MERGED_SHA=""
+if [[ "$STATUS" == "merged" ]]; then
+  MERGED_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
+fi
+
+python3 - "$RESULT" "$BRANCH" "$STATUS" "$DECISION" "$PATHS" "$MERGED_SHA" <<'PY'
 import json, sys
-path, branch, status, decision, paths_csv = sys.argv[1:6]
+path, branch, status, decision, paths_csv, merged_sha = sys.argv[1:7]
 with open(path, encoding="utf-8") as f:
     data = json.load(f)
 paths = [p for p in (x.strip() for x in paths_csv.split(",")) if p]
@@ -89,13 +99,16 @@ for e in data:
         continue
     found = True
     e["status"] = status
-    # Drop any transient conflict-path detail / stale paths before re-stamping.
+    # Drop any transient conflict-path detail / stale paths / sha before re-stamping.
     e.pop("detail", None)
     e.pop("paths", None)
+    e.pop("merged_sha", None)
     if status == "merged":
         e["detail"] = "resolver=%s" % decision
         if paths:
             e["paths"] = paths
+        if merged_sha:
+            e["merged_sha"] = merged_sha
     else:  # skipped-conflict-abort: no resolver stamp -> 4.6 must not fire
         e["detail"] = "abort"
     break

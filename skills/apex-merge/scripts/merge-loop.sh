@@ -100,16 +100,25 @@ append_summary() {
 }
 
 append_result() {
-  python3 - "$RESULT" "$1" "$2" "$3" "$4" <<'PY'
+  python3 - "$RESULT" "$1" "$2" "$3" "$4" "${5:-}" <<'PY'
 import json, sys
-path, branch, base, status, detail = sys.argv[1:6]
+path, branch, base, status, detail, merged_sha = sys.argv[1:7]
 with open(path, encoding="utf-8") as f:
     data = json.load(f)
+# Dedup by (branch, status) before the terminal write: a conflict-interrupted
+# resume re-invokes the loop, which must not append a 2nd row for a branch
+# already recorded at this status (append-per-merge produced 2x entries).
+# Sibling branches (different branch or status) are preserved.
+data = [e for e in data if not (e.get("branch") == branch and e.get("status") == status)]
 entry = {"branch": branch, "base": base, "status": status}
 # Omit empty detail per SKILL.md step 4 contract (mirrors Step 2 omit-empty
 # discipline).
 if detail:
     entry["detail"] = detail
+# merged_sha = the merged tip SHA, recorded on successful merges only, so a
+# post-mortem can pin the exact merge commit after the branch is pruned.
+if merged_sha:
+    entry["merged_sha"] = merged_sha
 data.append(entry)
 with open(path, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2)
@@ -152,8 +161,22 @@ for ENTRY in "${ENTRIES[@]}"; do
   if [[ -z "$SUBJECT" ]]; then
     SUBJECT="$(git log -1 --pretty=%s "$BRANCH" 2>/dev/null || echo "$BRANCH")"
   fi
-  if git merge --no-ff "$BRANCH" -m "Merge $BRANCH: $SUBJECT" >/dev/null 2>&1; then
-    append_result "$BRANCH" "$BASE" "merged" ""
+  # Rich merge-commit message (audit traceability when multiple branches land in
+  # one push): subject line + every merged commit's subject in the body + an
+  # M/A/D diff-stat of the branch's net contribution + co-author trailer. Compute
+  # before the merge so a conflict-path resolution commit (which reuses the
+  # prepared .git/MERGE_MSG) inherits the same body.
+  MERGE_BASE="$(git merge-base "$BASE" "$BRANCH" 2>/dev/null || echo "$BASE")"
+  MERGED_COMMITS="$(git log --reverse --pretty='- %s' "$BASE..$BRANCH" 2>/dev/null || true)"
+  MAD_RAW="$(git diff --name-status "$MERGE_BASE" "$BRANCH" 2>/dev/null || true)"
+  MAD="$(printf '%s\n' "$MAD_RAW" | awk \
+    '{c[substr($1,1,1)]++} END{printf "M:%d A:%d D:%d", c["M"]+0, c["A"]+0, c["D"]+0}')"
+  if git merge --no-ff "$BRANCH" \
+       -m "Merge $BRANCH: $SUBJECT" \
+       -m "Merged commits:"$'\n'"$MERGED_COMMITS" \
+       -m "Changes: $MAD" \
+       -m "Co-Authored-By: Claude <noreply@anthropic.com>" >/dev/null 2>&1; then
+    append_result "$BRANCH" "$BASE" "merged" "" "$(git rev-parse HEAD 2>/dev/null || true)"
     append_summary "$BRANCH" "merged" 0 "none"
     continue
   fi
@@ -246,7 +269,8 @@ PY
     # no content remainder AND no DU/UD index-state conflict awaiting a decision.
     if [[ -z "$REMAINING" && -z "$DU_UD" && "$TRIVIAL_COUNT" -gt 0 ]]; then
       if git commit --no-edit >/dev/null 2>&1; then
-        append_result "$BRANCH" "$BASE" "merged" "trivial-union=$TRIVIAL_COUNT"
+        append_result "$BRANCH" "$BASE" "merged" "trivial-union=$TRIVIAL_COUNT" \
+          "$(git rev-parse HEAD 2>/dev/null || true)"
         append_summary "$BRANCH" "merged" "$TRIVIAL_COUNT" "none"
         continue
       fi
