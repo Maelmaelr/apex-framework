@@ -1,9 +1,4 @@
-# apex step 10 - Verify (+ 10.5 Review)
-
-Lazy-loaded contract for orchestrator step 10 (absorbs the former `skills/apex/review.md` as the
-10.5 sub-step). Dispatched from `skills/apex/SKILL.md` step 10; Read this file before executing
-the step so the verify + review rules are maximally recent (B/R3 read-before-work). The item-3
-step-read gate enforces the read once armed; until then the dispatch is a soft convention. This file is the full per-step contract.
+# apex step 10 - Verify (+ 10.5 Review) (full contract)
 
 ## Step 10 - Verify
 

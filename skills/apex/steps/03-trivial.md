@@ -1,9 +1,4 @@
-# apex step 3 - Trivial pre-flight
-
-Lazy-loaded contract for orchestrator step 3. Dispatched from `skills/apex/SKILL.md`
-step 3; Read this file before executing the step so the rule is maximally recent
-(B/R3 read-before-work). The item-3 step-read gate enforces the read once armed;
-until then the dispatch is a soft convention. This file is the full per-step contract.
+# apex step 3 - Trivial pre-flight (full contract)
 
 ## Contract
 

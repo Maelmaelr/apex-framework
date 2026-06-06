@@ -1,9 +1,4 @@
-# apex step 6 - Discovery
-
-Lazy-loaded contract for orchestrator step 6. Dispatched from `skills/apex/SKILL.md`
-step 6; Read this file before executing the step so the rule is maximally recent
-(B/R3 read-before-work). The item-3 step-read gate enforces the read once armed;
-until then the dispatch is a soft convention. This file is the full per-step contract.
+# apex step 6 - Discovery (full contract)
 
 ## Contract
 

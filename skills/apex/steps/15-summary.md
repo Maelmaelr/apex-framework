@@ -1,9 +1,4 @@
-# apex step 15 - Inline summary
-
-Lazy-loaded contract for orchestrator step 15. Dispatched from `skills/apex/SKILL.md`
-step 15; Read this file before executing the step so the rule is maximally recent
-(B/R3 read-before-work). The item-3 step-read gate enforces the read once armed;
-until then the dispatch is a soft convention. This file is the full per-step contract.
+# apex step 15 - Inline summary (full contract)
 
 ## Contract
 

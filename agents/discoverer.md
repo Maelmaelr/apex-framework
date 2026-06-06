@@ -8,7 +8,7 @@ model: sonnet
 
 Spec: `skills/apex/steps/06-discovery.md`.
 
-Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
+Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit user-global rules - load them explicitly before any action).
 
 ## Spawn-prompt inputs (caller propagates explicitly)
 
@@ -51,11 +51,11 @@ Persist only paths that exist on disk. Symbol-shaped seeds feed the LSP layer; p
 
 **Persist the expander inputs.** Write the existing-on-disk seed paths (one per line) to `.claude-tmp/apex-active/{session}-seeds.txt`, the `hypothesis.goals[]` text (one goal per line) to `{session}-goals.txt`, and `original_prompt` verbatim to `{session}-prompt.txt`. These three files are the input contract for `discovery-expand.sh` (cascade layer b below).
 
-**Error-return-shape probe.** When `hypothesis` text asserts a concrete failure mode at a named site (`throws`, `returns`, `fails with`, an error code / structured-error shape), Read that exact site plus its direct callers before running the cascade and record the confirmed throw-vs-structured-return shape in scope notes. A hypothesis that inherited a stale plan note (a prior run's fix already changed `throw` into a structured `{code:...}` return) is caught here, not at executor plan-parse where every executor must independently reframe it (plan note "line 340 throws" was stale post server-fix; reality was a structured return, making the gap UX-only).
+**Error-return-shape probe.** When `hypothesis` text asserts a concrete failure mode at a named site (`throws`, `returns`, `fails with`, an error code / structured-error shape), Read that exact site plus its direct callers before running the cascade and record the confirmed throw-vs-structured-return shape in scope notes. This catches a hypothesis that inherited a stale plan note (a prior fix already changed `throw` into a structured `{code:...}` return) here, not at executor plan-parse.
 
 ## Layered cascade
 
-Stop at the lowest non-empty bounded set. The LSP layer (a) and the screener (c) are the model/harness judgment layers this agent runs inline; ALL deterministic Glob/Grep sibling/consumer/doc expansion is delegated to a single `discovery-expand.sh` call (b). That script subsumes the ~14 prose expansion clauses this agent used to walk one-tool-call-at-a-time - runs that ended up >100 tool calls in one context. One bash call now does the mechanical work; the agent spends its tool budget on the LSP probe + the screener.
+Stop at the lowest non-empty bounded set. The LSP layer (a) and the screener (c) are the model/harness judgment layers this agent runs inline; ALL deterministic Glob/Grep sibling/consumer/doc expansion is delegated to a single `discovery-expand.sh` call (b). The agent spends its tool budget on the LSP probe + the screener.
 
 ### a. LSP find-references / definition
 
@@ -74,7 +74,7 @@ bash skills/apex/scripts/discovery-expand.sh "$project_root" \
 One call performs every deterministic expansion and writes JSON:
 `{candidates: [{path, sources:[clause], match_count}], doc_surface: [string], presplit_targets: [{source, split_target, loc}], delete_only_hint: [string], caps: {clause: {cap, truncated}}}`.
 
-Clauses (each gated mechanically off `goals[]`/`prompt` tokens + seed shape; the script is the canonical home, with per-clause caps + the scope-miss incident that motivated each in its header/body comments):
+Clauses (each gated mechanically off `goals[]`/`prompt` tokens + seed shape; the script is the canonical home, with per-clause caps in its header/body comments):
 
 - sibling spec/test inclusion (`spec`) - co-located `.spec`/`.test`/`__tests__`/`_test`/`test_` siblings; gated on test/fix/change goal verbs.
 - sibling helper/utils inclusion (`helper`) - `{base}_` and role-stripped `{stem}_` `{helpers,utils,lib}` siblings of a `*_controller|*_service|*_route`; gated on extract verbs OR seed > 400 LOC.
@@ -91,26 +91,26 @@ The script is purely ADDITIVE + existence-filtered and never finalizes scope. `c
 
 ### c. Screener inner subagent
 
-Spawn `agents/screener.md` (Sonnet, single call) directly as a child subagent. **Always fires** when the cascade reaches this layer with any candidate - any non-empty LSP/expander output flows through screening so an unscreened overshoot never becomes scope unilaterally.
+Spawn `agents/screener.md` (Sonnet, single call) directly as a child subagent. **Always fires** when the cascade reaches this layer with any candidate - any non-empty LSP/expander output flows through screening.
 
 Spawn-prompt: ranked top-K (LSP hits UNION `candidates[]`, ranked by the script's source-count/match-count order) + hypothesis (verbatim from this agent's spawn input). **Top-K scales by `hypothesis.goals.length`**: 1 -> K=15 (single-task, narrow); 2-5 -> K=30 (multi-task, today's default); >5 -> K=50 (audit / sweep). When `goals` is absent (legacy hypothesis), default K=30. The screener does NOT inherit this agent's working memory; pass the ranked list + hypothesis explicitly. Output: `{kept: [{file, screener_reason}], dropped: [{file, screener_reason}]}` written to `.claude-tmp/apex-active/{session}-screened.json` (producer-validated against `screened.schema.json`); trace at `.claude-tmp/apex-active/{session}-traces/entry/screener.md`.
 
 ## Output
 
-`.claude-tmp/apex-active/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json` - validation MUST fail loud and abort the return on any missing schema-required field (e.g. `session`) rather than emitting a non-conformant artifact for the orchestrator to patch mid-tail. Then write the scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single-line absolute path to the scope JSON; arms the scope-check PreToolUse hook for downstream Edit / Write).
+`.claude-tmp/apex-active/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json` - validation MUST fail loud and abort the return on any missing schema-required field (e.g. `session`) rather than emitting a non-conformant artifact. Then write the scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single-line absolute path to the scope JSON; arms the scope-check PreToolUse hook for downstream Edit / Write).
 
 **Token discipline (canonical naming).** Two distinct identifiers appear in the output paths and they MUST NOT be confused:
 - `{session}` is the 8-hex apex token; it appears in the parent directory name (`.claude-tmp/apex-active/{session}-*`) and in the main-scope.json filename.
 - `{cc_session_id}` is the uuid-shaped Claude Code session id; it appears ONLY as the pointer filename inside the `*-scopes/` dir (`{cc_session_id}.txt`), so the PreToolUse hook can resolve by `session_id` from its event payload.
-Writing the pointer as `{session}.txt` (e.g., `b69d28ba.txt`) is a contract violation - the scope-check hook globs `*-scopes/<event session_id>.txt` and will never match an 8-hex session token.
+Writing the pointer as `{session}.txt` (e.g., `b69d28ba.txt`) is a contract violation - the hook will never match an 8-hex session token.
 
 **Producer ownership.** The discoverer writes `main-scope.json` directly here, BEFORE returning to the orchestrator. The orchestrator MUST read `allowed_files` from `main_scope` only; reconstructing `allowed_files` from `screened.json` `kept[]` on the orchestrator side is a contract violation.
 
-`allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated LSP + expander candidate set), UNION `discovery-expand.sh`'s `doc_surface[]` output, UNION the `split_target` of every `presplit_targets[]` entry. The script's `doc_surface[]` already folds in the goal-named docs, the `docs/**` / `docs/architecture/**` / `.claude/rules/**` files matched by basename/subsystem against any kept code path, the same-dir `*.md` sibling auto-join, and the `<project-root>/CLAUDE.md` deep-reference links - the recurring late-append where a subsystem / sibling / architecture / rule doc was discovered post-hoc (step-9/11/12 expand). Folding it at scope-finalization stops the reactive documentation-agent scope expand. Standard safety paths are implicit at the hook layer; do not list them in `allowed_files`.
+`allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated LSP + expander candidate set), UNION `discovery-expand.sh`'s `doc_surface[]` output, UNION the `split_target` of every `presplit_targets[]` entry. The script's `doc_surface[]` already folds in the goal-named docs, the `docs/**` / `docs/architecture/**` / `.claude/rules/**` files matched by basename/subsystem against any kept code path, the same-dir `*.md` sibling auto-join, and the `<project-root>/CLAUDE.md` deep-reference links. Folding it at scope-finalization stops post-hoc doc late-append. Standard safety paths are implicit at the hook layer; do not list them in `allowed_files`.
 
 ## Return to caller
 
-JSON paths only: `{main_scope: "<path>", screened: "<path>", cache_hit: <bool>, delete_only: ["<paths>"]}` (`screened` present only when the screener fired; `cache_hit` true when the cache-check short-circuit returned scope; `delete_only` = `discovery-expand.sh`'s `delete_only_hint[]` intersected with `allowed_files` - the subset `hypothesis.goals[]` text schedules for `git rm` / removal so step-8 spawn-prompt composition treats them as file-list-only and never pre-inlines their bodies; empty when no goal schedules a deletion) plus a one-line status (`cache-hit` | `kept: N, dropped: M, delete-only: K` from the screener when present | `cascade-exit-at: <layer>`). NEVER the findings body - keeps orchestrator context small. The `delete_only` annotation closes a recurring oversized-dispatch overhead where 10+ mechanical scaffolds (25-34 LOC each) get pre-inlined into executor context for no semantic value (2-session cluster: 11 of 15 files git-rm targets / 10 of 17 files _index.ts scaffolds).
+JSON paths only: `{main_scope: "<path>", screened: "<path>", cache_hit: <bool>, delete_only: ["<paths>"]}` (`screened` present only when the screener fired; `cache_hit` true when the cache-check short-circuit returned scope; `delete_only` = `discovery-expand.sh`'s `delete_only_hint[]` intersected with `allowed_files` - the subset `hypothesis.goals[]` text schedules for `git rm` / removal so step-8 spawn-prompt composition treats them as file-list-only and never pre-inlines their bodies; empty when no goal schedules a deletion) plus a one-line status (`cache-hit` | `kept: N, dropped: M, delete-only: K` from the screener when present | `cascade-exit-at: <layer>`). NEVER the findings body - keeps orchestrator context small.
 
 ## Cascade-empty
 
