@@ -29,7 +29,6 @@
 #   - skills/apex-fix/**                (private orchestration)
 #   - skills/apex-git/**                (private orchestration: personal git wrapper)
 #   - skills/apex-init/**               (private orchestration)
-#   - skills/apex-file-health/**        (private orchestration)
 #   - skills/apex-lessons/**            (private orchestration: extract + analyze)
 #   - plugins/**                        (private; installed_plugins.json + known_marketplaces.json are user-specific)
 #   - statusline/**                     (private; user-specific config + cached state)
@@ -88,7 +87,7 @@ DOCS="$ACTIVE/${RUN}-docs-changed.txt"
 # auto-extend below reads {run}-applied-ops.json for create/rename ops
 # and unions their target paths into a per-run dynamic allowlist. The denylist
 # (settings.json / CLAUDE.md / skills/apex-fix / apex-git / apex-init
-# / apex-file-health / apex-lessons / README.md / plugins / statusline / tmp)
+# / apex-lessons / README.md / plugins / statusline / tmp)
 # always wins and is checked BEFORE the auto-extend.
 DYNAMIC_ALLOWED=""
 APPLIED="$ACTIVE/${RUN}-applied-ops.json"
@@ -118,7 +117,7 @@ denied_by_static() {
   # an op creates a file under them.
   case "$1" in
     settings.json|CLAUDE.md|skills/README.md) return 0 ;;
-    skills/apex-fix/*|skills/apex-git/*|skills/apex-init/*|skills/apex-file-health/*|skills/apex-lessons/*) return 0 ;;
+    skills/apex-fix/*|skills/apex-git/*|skills/apex-init/*|skills/apex-lessons/*) return 0 ;;
     plugins/*|statusline/*|tmp/*) return 0 ;;
     *) return 1 ;;
   esac
