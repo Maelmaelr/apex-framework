@@ -270,6 +270,8 @@ SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 # Strip a leading "bump=<tier>" token if the caller embedded one in --body, so the
 # summary prints bump= exactly once.
 BODY_SUMMARY="$(printf '%s' "$BODY" | sed -E 's/^bump=[^ ]*( |$)//')"
-echo "task-9: bump=$BUMP $BODY_SUMMARY, commit $SHA" >> "$SUMMARY"
+# Idempotency: a re-invocation must not double-append the task-9 line.
+SUMMARY_LINE="task-9: bump=$BUMP $BODY_SUMMARY, commit $SHA"
+grep -qxF "$SUMMARY_LINE" "$SUMMARY" 2>/dev/null || echo "$SUMMARY_LINE" >> "$SUMMARY"
 
 exit 0

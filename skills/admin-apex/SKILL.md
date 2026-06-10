@@ -128,6 +128,8 @@ Env knob: `APEX_MIRROR_NO_PUSH=1` skips both pushes (commit-only inspect). Top-l
 
 Spawn `agents/reflector.md` (Sonnet, foreground) with the admin-apex phase. The agent reads its own contract for input/output shape (table row `admin-apex task 11`); this skill supplies only the run-specific context. The reflector's appended block in `~/.claude/tmp/apex-workflow-improvements.md` is consumed by `/apex-improve`'s next run, which can target `skills/admin-apex/**` in `target_files`.
 
+Pre-flight: `test -f .claude-tmp/admin-apex-active/{run}-summary.md` - missing summary leaves the reflector blind to per-task friction; surface `task-11: summary.md missing` and spawn anyway (reflector falls back to git context).
+
 Spawn-prompt template (substitute `{run}`):
 
 ```
@@ -139,6 +141,7 @@ artifacts plus `git diff --stat HEAD~1` and `git log -1 --pretty=%B`.
 Token:    {run}             # 8-hex; used in place of {session}
 Phase:    admin-apex
 Manifest: $HOME/.claude/.claude-tmp/admin-apex-active/{run}.json   # absolute on purpose: subagent CWD != ~/.claude breaks relative paths (see agents/reflector.md "CWD discipline").
+Summary:  $HOME/.claude/.claude-tmp/admin-apex-active/{run}-summary.md
 
 Errors -> ~/.claude/tmp/reflector-errors.log (silent failure otherwise).
 Shut down silently (no main-session output).
