@@ -51,6 +51,8 @@ Persist only paths that exist on disk. Symbol-shaped seeds feed the LSP layer; p
 
 **Persist the expander inputs.** Write the existing-on-disk seed paths (one per line) to `.claude-tmp/apex-active/{session}-seeds.txt`, the `hypothesis.goals[]` text (one goal per line) to `{session}-goals.txt`, and `original_prompt` verbatim to `{session}-prompt.txt`. These three files are the input contract for `discovery-expand.sh` (cascade layer b below).
 
+**Cross-scope consumer probe.** When `hypothesis` changes a shared data shape (node/record schema, type union, settings contract), grep for registry/factory files, shared-package barrels, and top-level rules/matrix files consuming the changed shape and seed the hits - grep-level expansion misses these consumers, and executors then re-discover them mid-dispatch as out-of-scope findings (cluster: discoverer-cross-scope-consumers). For security-audit prompts, also seed the 1-level transitive imports of each named entrypoint.
+
 **Error-return-shape probe.** When `hypothesis` text asserts a concrete failure mode at a named site (`throws`, `returns`, `fails with`, an error code / structured-error shape), Read that exact site plus its direct callers before running the cascade and record the confirmed throw-vs-structured-return shape in scope notes. This catches a hypothesis that inherited a stale plan note (a prior fix already changed `throw` into a structured `{code:...}` return) here, not at executor plan-parse.
 
 ## Layered cascade
@@ -106,7 +108,7 @@ Writing the pointer as `{session}.txt` (e.g., `b69d28ba.txt`) is a contract viol
 
 **Producer ownership.** The discoverer writes `main-scope.json` directly here, BEFORE returning to the orchestrator. The orchestrator MUST read `allowed_files` from `main_scope` only; reconstructing `allowed_files` from `screened.json` `kept[]` on the orchestrator side is a contract violation.
 
-`allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated LSP + expander candidate set), UNION `discovery-expand.sh`'s `doc_surface[]` output, UNION the `split_target` of every `presplit_targets[]` entry. The script's `doc_surface[]` already folds in the goal-named docs, the `docs/**` / `docs/architecture/**` / `.claude/rules/**` files matched by basename/subsystem against any kept code path, the same-dir `*.md` sibling auto-join, and the `<project-root>/CLAUDE.md` deep-reference links. Folding it at scope-finalization stops post-hoc doc late-append. Standard safety paths are implicit at the hook layer; do not list them in `allowed_files`.
+`allowed_files` = screener `kept[]` files (or, when the cascade exits before screening, the deduplicated LSP + expander candidate set), UNION `discovery-expand.sh`'s `doc_surface[]` output, UNION the `split_target` of every `presplit_targets[]` entry. The script's `doc_surface[]` already folds in the goal-named docs, the `docs/**` / `docs/architecture/**` / `.claude/rules/**` files matched by basename/subsystem against any kept code path, the same-dir `*.md` sibling auto-join, and the `<project-root>/CLAUDE.md` deep-reference links. Folding it at scope-finalization stops post-hoc doc late-append. Standard safety paths are implicit at the hook layer; do not list them in `allowed_files`. **Generated-file filter**: exclude compiler/framework-generated files (`next-env.d.ts`, lockfiles, build-output typegen) from `allowed_files` at finalization - they regenerate during verification and recur as scope-drift noise at commit (cluster: scope-noise).
 
 ## Return to caller
 

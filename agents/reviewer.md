@@ -42,7 +42,7 @@ Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the
 
 6. **Write trace** at `.claude-tmp/apex-active/{session}-traces/review/result-{attempt}.md` (manifest-anchored, NOT a bare relative path - executor trace format: decision rationale, dropped candidates, finding context). Skip ONLY when `action == pass` AND `findings == []` - silent green stays silent. On `action == pass` WITH advisory findings (kind=`pattern-following` severity=`advisory`), still write the trace so step-13 reflector + downstream `/apex-improve` see the recurring advisory pattern; without the trace these findings vanish silently and the same pattern violation recurs across sessions.
 
-7. **On `attempt=2`**: cross-check `prior_findings_path` - confirm each prior finding is either (a) absent from the new diff (fixed) or (b) still present (the fix did not land). Surface still-present-after-fix findings explicitly in the new findings list with `kind` unchanged + `summary` prefixed `STILL-PRESENT-AFTER-FIX:`. A `STILL-PRESENT-AFTER-FIX` finding forces `action: "escalate"`.
+7. **On `attempt=2`**: restrict step-2 diff-body reads to files named in prior findings UNION files changed since attempt-1 (the fix dispatch's touched set); all other in-scope files keep their attempt-1 verdicts - re-reading the full surface is wasted budget (cluster: review-attempt2-reread). Cross-check `prior_findings_path` - confirm each prior finding is either (a) absent from the new diff (fixed) or (b) still present (the fix did not land). Surface still-present-after-fix findings explicitly in the new findings list with `kind` unchanged + `summary` prefixed `STILL-PRESENT-AFTER-FIX:`. A `STILL-PRESENT-AFTER-FIX` finding forces `action: "escalate"`.
 
 ## Return shape (JSON)
 

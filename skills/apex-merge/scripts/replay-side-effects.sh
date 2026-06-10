@@ -119,12 +119,9 @@ for entry in result:
         by_session[session] = cmds
 
 # Empty-replay short-circuit: when no side-effects accumulated across merged
-# sessions, skip the artifact write entirely. Script-owned step-4.5 summary append mirrors
-# merge-loop.sh step-4 pattern.
-if not unique:
-    with open(summary_path, "a", encoding="utf-8") as f:
-        f.write("step-4.5: no side-effects to replay (artifact skipped)\n")
-else:
+# sessions, skip the artifact write AND the summary line - silence is the
+# signal (cluster: merge-side-effects-empty-skip).
+if unique:
     Path(out_path).write_text(json.dumps({
         "run": os.path.basename(out_path).split("-")[0],
         "unique_cmds": unique,

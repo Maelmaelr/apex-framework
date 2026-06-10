@@ -153,6 +153,25 @@ fi
 
 for ENTRY in "${ENTRIES[@]}"; do
   IFS=$'\t' read -r BRANCH BASE SUBJECT <<<"$ENTRY"
+  # Resume idempotency: a branch already at a terminal status was handled by a
+  # prior invocation (conflict-interrupted resume). Re-merging would re-stamp
+  # "merged" with empty detail, wiping the resolver=/paths[] fields that gate
+  # step 4.6, and re-append its summary line. Skip it.
+  if python3 - "$RESULT" "$BRANCH" <<'PY'
+import json, sys
+path, branch = sys.argv[1], sys.argv[2]
+try:
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(1)
+terminal = {"merged", "skipped-conflict-abort"}
+sys.exit(0 if any(e.get("branch") == branch and e.get("status") in terminal for e in data) else 1)
+PY
+  then
+    echo "merge-loop.sh: $BRANCH already terminal in merge-result; skipping (resume)"
+    continue
+  fi
   if ! git checkout "$BASE" >/dev/null 2>&1; then
     append_result "$BRANCH" "$BASE" "checkout-failed" "could not check out base $BASE"
     append_summary "$BRANCH" "checkout-failed" 0 "none"
