@@ -73,6 +73,10 @@ Some findings recur from reflectors yet are settled - the behavior is intentiona
 - `apex-scope-overinclusion-docs` - the doc pre-load cost is already mitigated: `08-execute.md` E3.1/E3.6 surface goal-unmatched docs reference-only / on-demand (never pre-loaded), and the `doc_surface` fold (`discoverer.md:109`) is intentional to stop reactive late-append of architecture / rule docs.
 - `review-doc-stale-inline` - applying review doc-stale fixes inline at the review step contradicts the reviewer "Reports only - never edits" invariant (`agents/reviewer.md:72`, `skills/apex/steps/10-verify.md:85`); the clean invariant outweighs saving one dispatch round-trip. Explicit user wontfix.
 - `redundant-reread` - step-8 dispatch re-reading discovery-skip-inlined seeder files is already mitigated by `08-execute.md` E3.2 pre-read + E3.6 helper_snapshot inlining; low residual token-reduction, repeatedly bloat-deferred onto the hot-path file. Explicit user wontfix.
+- `step8-export-kind-verify` - single-session evidence never reinforced across 7 carries; one-off, not a pattern. Explicit user wontfix.
+- `admin-apex-inventory-post-skip` - token micro-optimization on an out-of-band skill; fast-path complexity outweighs the savings. Explicit user wontfix.
+- `review-gate-widen-fix-sessions` - widening raises review-dispatch cost on every fix session for 3-session anecdotal risk; the doc-consistency carve-out + complexity triggers (`10-verify.md`) already cover the surface. Explicit user wontfix.
+- `doc-consistency-carveout-step11-suppress` - suppression conflicts with the carve-out's planned-scope keying (step-11 docs land AFTER the gate; `10-verify.md:26`); the code-only review hop is ~200-token noise, not worth weakening the gate. Explicit user wontfix.
 
 ## Prior-run deferred-findings (backlog ingestion)
 
