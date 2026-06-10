@@ -12,7 +12,7 @@ Legend: `inline` = main-orchestrator inline prompt | `skill` = `~/.claude/skills
 | -------- | ---------- | ------------------------------------------------------------------------------------------------- |
 | trivial  | step 3     | step 3.1 inline edit + commit -> jump to 14. Skips 4-13.                                          |
 | economy  | step 7     | step 8 executors = sonnet; step 9 polish skipped; step 10.5 review skipped; step 11 learn skipped. All other steps run. |
-| standard | step 7     | step 8 executors = main session model; full tail.                                                 |
+| standard | step 7     | step 8 executors = opus; full tail.                                                |
 
 Step 13 reflector is **background** in non-trivial paths; reflector owns post-reflect `cleanup-session.sh`. Step 14 only runs on trivial path. Step 15 inline summary is fully deterministic (no LLM hop, no git audit pass).
 
@@ -83,7 +83,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - split-needed redispatch (C1 follow-up): orchestrator re-spawns up to 2 follow-ups with residual_goal + residual_files (cap 2 per goal, under a ~100 tool_use / ~300k token per-goal cumulative-budget guard); third split-needed or budget breach -> failed
    - idempotency: same prompt -> same goals -> same N tasks; if goals were achieved last run, executors return already-satisfied -> empty diff -> step 12 skips commit
    - file-health hook = safety net during edits
-   - executor model: sonnet if economy, main session model if standard
+   - executor model: sonnet if economy, opus if standard
    - dispatch-only: orchestrator MUST NOT inline Edit/Write/MultiEdit/NotebookEdit slice files at step 8
 
 9. Polish: agents/polish.md (Sonnet; spawn-prompt carries scope path + diff_anchor + lessons hits; subagents do NOT inherit working memory)
@@ -159,7 +159,7 @@ Any orchestrator exit bypassing step 14 runs `session-end-hook.sh {session}` inl
 | 5    | skip    | run            | run              |
 | 6    | skip    | run            | run              |
 | 7    | skip    | run            | run              |
-| 8    | skip    | run (sonnet)   | run (main)       |
+| 8    | skip    | run (sonnet)   | run (opus)       |
 | 9    | skip    | skip           | run              |
 | 10   | skip    | run            | run              |
 | 10.5 | skip    | skip           | run (gated)      |

@@ -8,7 +8,7 @@ For a summary of steps, skill / agent / script used, and routing conditions, see
 
 - **trivial** decided at step 3 (conservative pre-flight; ANY ambiguity = non-trivial). Step 3.1 inline single Edit/Write + lightweight commit -> jump to step 14. Skips 4-13.
 - **economy** decided at step 7 by deterministic rule. Step 8 executors run on Sonnet; **step 9 polish skipped**; **step 10.5 review skipped**; step 11 skips `learn`.
-- **standard** default at step 7 when the deterministic rule does not classify economy. Step 8 executors run on the main session model; full tail.
+- **standard** default at step 7 when the deterministic rule does not classify economy. Step 8 executors run on Opus; full tail.
 
 **Step 13 reflector is background** in non-trivial paths (economy + standard); the reflector owns the post-reflect `cleanup-session.sh` call as its final action. Step 14 only runs on the trivial path (where step 13 was skipped). Step 15's inline summary is fully deterministic (no LLM hop, no git audit pass).
 

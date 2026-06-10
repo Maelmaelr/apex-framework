@@ -42,7 +42,7 @@
 
 Per task:
 
-- Spawn `agents/executor.md` (Sonnet if `tier=economy`; main session model if `tier=standard`; tier decided at step 7).
+- Spawn `agents/executor.md` (model `sonnet` if `tier=economy`; model `opus` if `tier=standard`; tier decided at step 7). Pass the model explicitly on every dispatch Agent call - executors never inherit the main session model.
 - **Parallel dispatch (mandatory when N >= 2 tasks)**: spawn all N executor Agent calls in ONE assistant message AS multiple tool_use blocks AND set `run_in_background: true` on each - foreground multi-block alone serialises, so `run_in_background` is the actual concurrency primitive. The orchestrator yields the turn and the harness re-invokes it as each executor completes; dispatch-summary.json accumulates in arrival order and step 9 starts only after all N return. **No fallback wakeup**: after yielding, do NOT `ScheduleWakeup` a hang-guard for the in-flight executors - the harness auto-re-invocation above IS the wake mechanism. Sequential dispatch is legitimate ONLY for coupled / B2 sequential shared-spec chain tasks - never for the goals-driven N-task parallel set in 8.2.
 - **Spawn-prompt context (executor stack)** - explicit, not inherited:
   - hypothesis (verbatim)

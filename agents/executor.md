@@ -1,6 +1,6 @@
 ---
 name: executor
-description: Per-task implementation agent. Step 8 dispatch (Sonnet under economy, main session model under standard) and step 10 verify fix-loop (always Sonnet, cap 3). Respects file-health + scope-check PreToolUse hooks. Writes a structured trace ONLY on failure or file-split decision.
+description: Per-task implementation agent. Step 8 dispatch (Sonnet under economy, Opus under standard) and step 10 verify fix-loop (always Sonnet, cap 3). Respects file-health + scope-check PreToolUse hooks. Writes a structured trace ONLY on failure or file-split decision.
 model: sonnet
 ---
 
