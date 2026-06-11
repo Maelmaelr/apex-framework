@@ -66,8 +66,9 @@ fi
 # git stash pop (applies stash and drops it; can overwrite working-tree changes; loses safety net)
 if [[ "$COMMAND" =~ git[[:space:]]+stash[[:space:]]+pop ]]; then
   msg="GUARDRAIL: git stash pop applies the stash and drops it -- can overwrite working-tree changes "
-  msg+="and loses the stash safety net. Use 'git stash apply' (keeps stash) instead, or ask user via "
-  msg+="AskUserQuestion before proceeding."
+  msg+="and loses the stash safety net. All stash apply forms are blocked here (they can only target a "
+  msg+="pre-existing USER stash and inject conflict markers). Commit your work instead, or ask the user "
+  msg+="via AskUserQuestion before proceeding."
   deny "$msg"
   exit 0
 fi
@@ -78,10 +79,13 @@ fi
 # screener, reviewer, polish, learn, documentation) share a single working tree.
 # A bare `git stash` (alias for `git stash push`) from any one of them silently
 # captures EVERY co-resident agent's uncommitted edits into a single stash ref,
-# which presents as catastrophic work loss for parallel siblings. Read-only
-# (list/show) and non-destructive recovery (apply/branch) stay allowed; `pop`
-# has its own block above. Sub-command split mirrors CHECKOUT_BYPASS so a
-# commit message or echo string containing "git stash" does not false-positive.
+# which presents as catastrophic work loss for parallel siblings. Only read-only
+# `list`/`show` stay allowed; `pop` has its own block above; `apply`/`branch`
+# (the `git stash` subcommands, NOT `git branch`) are denied below because, with
+# creation blocked, they can only ever target a pre-existing USER stash and
+# 3-way-merge it into the working tree -- injecting conflict markers (real
+# incident). Sub-command split mirrors CHECKOUT_BYPASS so a commit message or
+# echo string containing "git stash" does not false-positive.
 STASH_CREATE=$(echo "$COMMAND" | python3 -c "
 import re, sys
 cmd = sys.stdin.read().strip()
@@ -94,22 +98,30 @@ for s in subcmds:
     sub = m.group(1)
     # Deny-by-default: bare 'git stash' (== push), push/save/create/store, and
     # every flag form (-p / -u / -k / -m / --include-untracked ...) all CREATE a
-    # stash. Allow only read-only + non-destructive recovery sub-commands.
+    # stash. Allow only read-only sub-commands ('list' / 'show').
     # 'pop' is handled by its own block above; listed here so a reordering of
     # blocks cannot accidentally route it through the deny path. 'drop' / 'clear'
     # are destructive stash-entry removal (drop = one entry, clear = all) and are
-    # intentionally NOT allowlisted -> they fall through to deny
+    # intentionally NOT allowlisted -> they fall through to deny.
+    # 'apply' / 'branch' are ALSO denied (NOT recovery): because stash creation
+    # is blocked above, an agent never owns a self-created stash, so a bare
+    # `git stash apply` defaults to stash@{0} -- which can only be a pre-existing
+    # USER stash -- and 3-way-merges it into the (clean) working tree, injecting
+    # conflict markers. That is a real incident, not a hypothetical. 'git stash
+    # branch' is the stash subcommand (NOT `git branch` / `git worktree add -b`,
+    # which never reach this parser) and applies a stash the same way.
     # (apex-core.md ## Conventions, block-destructive hook / NEVER stash).
-    if sub not in ('list', 'show', 'apply', 'branch', 'pop'):
+    if sub not in ('list', 'show', 'pop'):
         print('yes')
         sys.exit(0)
 " 2>/dev/null || echo "")
 
 if [[ "$STASH_CREATE" == "yes" ]]; then
-  msg="GUARDRAIL: git stash (push/save/bare) is never allowed for apex agents -- co-resident "
-  msg+="subagents inside one worktree share a single working tree, and a stash captures every "
-  msg+="agent's uncommitted work into a single ref that looks like work loss to parallel siblings. "
-  msg+="Commit your work instead, or ask the user via AskUserQuestion."
+  msg="GUARDRAIL: git stash is never allowed for apex agents. Creating a stash (push/save/bare/flags) "
+  msg+="captures every co-resident subagent's uncommitted work into a single ref that looks like work "
+  msg+="loss to parallel siblings. Applying one (apply/branch) can only target a pre-existing USER "
+  msg+="stash here -- it defaults to stash@{0} and 3-way-merges it into your tree, injecting conflict "
+  msg+="markers. Commit your work instead, or ask the user via AskUserQuestion."
   deny "$msg"
   exit 0
 fi
