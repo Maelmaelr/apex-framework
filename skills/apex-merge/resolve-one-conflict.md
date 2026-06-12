@@ -23,7 +23,7 @@ The content resolver only handles `<<<<`-marked UU/AA hunks. Remaining content c
 
 ## Decision (per file)
 
-Then AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = reject-edit-manually). Per-option `description` carries a one-line diff sketch + recommendation only; full rationale lives in `<run>-merge-result.json`. On accept: write file, `git add P`. On reject: user manual edit, then `git add P`. On abort: `git merge --abort`, then stamp the terminal entry (below) + skip cleanup, continue.
+Then AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = reject-edit-manually). Per-option `description` carries a one-line diff sketch + recommendation only; full rationale lives in `<run>-merge-result.json`. On accept: write file; **post-accept base-loss check**: diff the accepted body against the base side (`git show :2:P`, ours / HEAD) and surface any base-side hunk that silently vanished before continuing - accept can drop base-side changes in shared utility files; then `git add P`. On reject: user manual edit, then `git add P`. On abort: `git merge --abort`, then stamp the terminal entry (below) + skip cleanup, continue.
 
 ## Terminal stamp (per branch, after the last file)
 
