@@ -77,6 +77,7 @@ Some findings recur from reflectors yet are settled - the behavior is intentiona
 - `admin-apex-inventory-post-skip` - token micro-optimization on an out-of-band skill; fast-path complexity outweighs the savings. Explicit user wontfix.
 - `review-gate-widen-fix-sessions` - widening raises review-dispatch cost on every fix session for 3-session anecdotal risk; the doc-consistency carve-out + complexity triggers (`10-verify.md`) already cover the surface. Explicit user wontfix.
 - `doc-consistency-carveout-step11-suppress` - suppression conflicts with the carve-out's planned-scope keying (step-11 docs land AFTER the gate; `10-verify.md:26`); the code-only review hop is ~200-token noise, not worth weakening the gate. Explicit user wontfix.
+- `review-rereview-skip-known-rejected` - an attempt-2 re-review skip needs new previously-rejected-false-positive tracking state on the hot-path re-review contract (`10-verify.md:70`); the gate-erosion risk outweighs saving one already-bounded reviewer call (cap 2 reviews + 1 fix). Explicit user wontfix.
 
 ## Prior-run deferred-findings (backlog ingestion)
 
