@@ -88,6 +88,7 @@ Clauses (each gated mechanically off `goals[]`/`prompt` tokens + seed shape; the
 - importer + direct-import + callee-chain (`importer`/`directimport`/`callee`) - importers of each seed, the seed's own resolved imports, and one-hop callees of a named entry-point op.
 - named-pattern sibling-consumer (`namedpattern`) - explicit `use-*` / camelCase identifiers named in prompt/goals -> their consumers.
 - value/discriminator-rename consumer grep (`valuerename`) - rename verb + quoted/kebab/snake literal -> every file containing the OLD literal (with a generic-word guard).
+- i18n locale-surface (`i18n`) - tracked locale/messages JSON; gated on i18n/locale/translation/label goal tokens (cluster: i18n-completeness-upfront).
 
 The script is purely ADDITIVE + existence-filtered and never finalizes scope. `candidates[]` join the LSP set as screener input; `doc_surface[]` and `presplit_targets[]` are folded directly into `allowed_files` at finalization (docs are not screened); `delete_only_hint[]` feeds the `delete_only` return field. On a non-TS / non-git smoke repo the script still runs (falls back to `find`/`grep`); empty `candidates` + empty LSP = `cascade_empty`.
 

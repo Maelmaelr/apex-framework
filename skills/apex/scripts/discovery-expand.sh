@@ -364,6 +364,15 @@ while IFS= read -r op; do
   done < <(grep -oE '\b[a-z][a-zA-Z0-9]{4,}\(' "$ROOT/$deffile" 2>/dev/null | tr -d '(' | sort -u | head -12)
 done < <(printf '%s' "$GP_TEXT" | grep -oE '\b[a-z][a-zA-Z]+[A-Z][a-zA-Z0-9]{3,}\b' | sort -u | head -3)
 
+# clause 15: i18n locale-surface (cluster: i18n-completeness-upfront) - UI-text goal -> every tracked locale file.
+if has_word 'i18n' 'locale' 'translation' 'translations' 'message' 'messages' 'label'; then
+  for md in messages apps/web/messages src/messages locales src/locales public/locales lang translations; do
+    [[ -d "$ROOT/$md" ]] || continue
+    while IFS= read -r f; do emit "$f" i18n; done \
+      < <(cd "$ROOT" && git ls-files -- "$md" 2>/dev/null | grep -iE '\.json$' | head -40)
+    break
+  done
+fi
 # =============================================================================
 # Doc-surface (clauses 13 + 14): basename grep across docs + rules, then
 # same-dir *.md auto-join for every docs/features/<area>/ that matched.
