@@ -290,7 +290,7 @@ PY
       if git commit --no-edit >/dev/null 2>&1; then
         append_result "$BRANCH" "$BASE" "merged" "trivial-union=$TRIVIAL_COUNT" \
           "$(git rev-parse HEAD 2>/dev/null || true)"
-        append_summary "$BRANCH" "merged" "$TRIVIAL_COUNT" "none"
+        append_summary "$BRANCH" "merged" "$TRIVIAL_COUNT" "trivial-union"
         continue
       fi
     fi
