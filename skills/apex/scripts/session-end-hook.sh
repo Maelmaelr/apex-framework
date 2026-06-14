@@ -203,6 +203,17 @@ else
   # branch is fully merged (clean + no commits past base). Cheap + idempotent;
   # runs every SessionEnd.
   sweep_stale_worktrees
+  # Defense-in-depth orphan-artifact reap. Per-worktree isolation keeps the MAIN
+  # worktree's apex-active empty by construction, so the hot path historically ran
+  # no orphan sweep. But a partial cleanup-session.sh worktree-remove (lock / race)
+  # or a stray main-anchored {session}-* write can still strand artifacts whose
+  # manifest is already gone. sweep-orphan-artifacts.sh only reaps manifest-absent
+  # {token}-* siblings older than --age-hours, so a live session (manifest present)
+  # and an in-flight writer (<24h) are never touched; deferred-findings are exempt.
+  if [[ -x "$SCRIPT_DIR/sweep-orphan-artifacts.sh" ]]; then
+    "$SCRIPT_DIR/sweep-orphan-artifacts.sh" \
+      --dir "$MAIN_ROOT/.claude-tmp/apex-active" --age-hours 24 2>/dev/null || true
+  fi
 fi
 
 exit 0
