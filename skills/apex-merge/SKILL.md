@@ -18,6 +18,7 @@ TaskCreate "4.5 Replay worktree side-effects"
 TaskCreate "4.6 Lint/build cleanup post-merge"
 TaskCreate "5. Cleanup merged branches"
 TaskCreate "6. Final push + summary"
+TaskCreate "6.5 Cleanup project apex scratch"
 TaskCreate "7. Self-reflect"
 ```
 
@@ -145,7 +146,20 @@ TaskCreate "7. Self-reflect"
    - `B=$(git symbolic-ref --short HEAD)`; push ONLY when `git rev-list origin/$B..HEAD` is non-empty - skips the no-op round-trip on a clean zero-branch run. Update `<run>-merge-result.json` per entry: `pushed: true|false|"not-attempted"`.
    - Print + append to `<run>-summary.md`: `step-6: merged N branches, K conflicts auto-resolved, M conflicts manual, P branches skipped, cleaned Q worktrees, pushed-precheck=<yes|no> pushed-merges=<yes|no|skipped>`. The split keeps zero-branch runs unambiguous: a dirty-autocommit push is not an integration push (cluster: merge-zero-branch-artifacts).
 
-7. **Self-reflect** - if the orchestrator routed around any shipped script or skipped any documented step during steps 1-6, write a free-form `<run>-orchestrator-proposals.md` capturing each deviation as a `- gap: ...` / `- improvement: ...` pair BEFORE spawning the reflector (rolled into the reflector's gaps/improvements lines so mid-run tooling failures are not lost). Skip the artifact on clean runs. Then spawn `agents/reflector.md` (Sonnet, foreground) with `phase=apex-merge`, then sweep this run's artifacts. Spawn-prompt template (substitute `<run>`):
+6.5. **Cleanup project apex scratch** - inline, unconditional, runs before Step 7 (idempotent; no-op when absent). The main worktree's gitignored `.claude-tmp/apex-active/` + `.claude-tmp/apex-discovery-cache/` accumulate stale per-session manifests, scope pointers, and discovery cache across /apex runs - stale `{session}-scopes/{cc_session_id}.txt` pointers can arm the scope-check hook and block later edits (`resolve-one-conflict.md`). Both are local scratch (gitignored - never tracked or pushed); live /apex sessions run under `.apex-worktrees/<session>/.claude-tmp/`, not here, so wiping main's copies drops only stale state. Run from the main worktree (Step 1 enforces cwd):
+   ```bash
+   TOP=$(cd "$(git rev-parse --show-toplevel)" && pwd -P)
+   CLEANED=""
+   for d in apex-active apex-discovery-cache; do
+     if [[ -n "$TOP" && -d "$TOP/.claude-tmp/$d" ]]; then
+       rm -rf "$TOP/.claude-tmp/$d"; CLEANED="${CLEANED:+$CLEANED,}$d"
+     fi
+   done
+   if [[ -n "$CLEANED" ]]; then NOTE="cleaned project apex scratch ($CLEANED)"; else NOTE="nothing to clean"; fi
+   echo "step-6.5: $NOTE" >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md"
+   ```
+
+7. **Self-reflect** - if the orchestrator routed around any shipped script or skipped any documented step during steps 1-6.5, write a free-form `<run>-orchestrator-proposals.md` capturing each deviation as a `- gap: ...` / `- improvement: ...` pair BEFORE spawning the reflector (rolled into the reflector's gaps/improvements lines so mid-run tooling failures are not lost). Skip the artifact on clean runs. Then spawn `agents/reflector.md` (Sonnet, foreground) with `phase=apex-merge`, then sweep this run's artifacts. Spawn-prompt template (substitute `<run>`):
 
    ```
    You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and follow the `apex-merge step 7` row of the invocation table. Inputs: `<run>-summary.md` + `<run>-discovery.json` + `<run>-merge-result.json` + (when present) `<run>-orchestrator-proposals.md` + `git log -1 --pretty=%B` for the integration commit.
