@@ -49,7 +49,9 @@ TaskCreate "7. Self-reflect"
      printf '%s\n' "$DIRTY_LIST" > "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-precheck-auto-committed.txt"
      SRC_DIRTY=$(printf '%s\n' "$DIRTY_LIST" | cut -c4- | grep -Ev '^(\.claude/|\.claude-tmp/|\.apex-worktrees/)|(^|/)lessons\.md$' || true)
      if [[ -n "$SRC_DIRTY" ]]; then
-       printf 'apex-merge precheck WARNING: auto-committing source paths to main:\n%s\n' "$SRC_DIRTY" >&2
+       SRC_TOTAL=$(printf '%s\n' "$SRC_DIRTY" | grep -c . || true)
+       SRC_UNTRACKED=$(printf '%s\n' "$DIRTY_LIST" | grep '^?? ' | cut -c4- | grep -vEc '^(\.claude/|\.claude-tmp/|\.apex-worktrees/)|(^|/)lessons\.md$' || true)
+       printf 'apex-merge precheck WARNING: auto-committing source paths to main (modified=%d untracked=%d):\n%s\n' "$((SRC_TOTAL - SRC_UNTRACKED))" "$SRC_UNTRACKED" "$SRC_DIRTY" >&2
      fi
      UU=$(git ls-files -u | awk '{print $4}' | sort -u)
      [[ -z "$UU" ]] || { printf 'apex-merge precheck ABORT: unmerged (UU) index entries (orphaned stash-pop); resolve before re-running:\n%s\n' "$UU" >&2; exit 1; }
