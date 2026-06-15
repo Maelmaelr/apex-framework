@@ -6,13 +6,16 @@ Inline (no subagent hop; orchestrator owns it). Worktree isolation means each se
     ```
     # Classify diff -> patch (bug fix / refactor / internal-only / tweak) | minor (new public symbol/route/component OR breaking API change). Never major - user-set only.
     BUMP_HINT=<patch|minor>
+    # Anchor apex-active to the worktree (resolver reads the manifest's worktree_path); bare-relative
+    # .claude-tmp/apex-active paths resolve against project_root and leak into the main tree (cluster: worktree-marker-leak).
+    APEX_ACTIVE="$(bash skills/apex/scripts/resolve-apex-active.sh {session})"
     # Persist hint into manifest for the project-side deploy skill to consume.
-    tmpf=$(mktemp) && jq --arg h "$BUMP_HINT" '. + {bump_hint: $h}' .claude-tmp/apex-active/{session}.json > "$tmpf" && mv "$tmpf" .claude-tmp/apex-active/{session}.json
+    tmpf=$(mktemp) && jq --arg h "$BUMP_HINT" '. + {bump_hint: $h}' "$APEX_ACTIVE/{session}.json" > "$tmpf" && mv "$tmpf" "$APEX_ACTIVE/{session}.json"
     # Draft commit MESSAGE from `git diff {diff_anchor}..HEAD` + `git status --porcelain`
     # (orchestrator inline; the working tree IS this session's scope).
     # Scope-drift emit (one line per foreign-modified path; non-blocking) - the scope-check
     # hook cannot see tool-side auto-mutations (formatters / codegen / installs).
-    SCOPE_JSON=".claude-tmp/apex-active/{session}-main-scope.json"
+    SCOPE_JSON="$APEX_ACTIVE/{session}-main-scope.json"
     git status --porcelain | awk '{print $2}' | python3 -c "
 import json,sys,os,datetime
 allow=set(json.load(open('$SCOPE_JSON')).get('allowed_files',[])) if os.path.exists('$SCOPE_JSON') else set()
