@@ -14,10 +14,17 @@
 #   1. Pointer hits -> orchestrator path: enforce that scope.
 #   2. Pointer misses AND no active main-scope.json in this worktree's
 #      apex-active -> entry-flow / non-/apex session: pass through.
-#   3. Pointer misses AND the single active main-scope.json exists -> subagent
-#      leak from this worktree's apex orchestrator. Per-worktree isolation
-#      guarantees exactly one orchestrator (and so exactly one main-scope) per
-#      apex-active dir; enforce it directly.
+#   3. Pointer misses AND the single active main-scope.json exists AND CWD is
+#      inside an apex worktree (.apex-worktrees/<token>/) -> subagent leak from
+#      this worktree's apex orchestrator. Per-worktree isolation guarantees
+#      exactly one orchestrator (and so exactly one main-scope) per apex-active
+#      dir; enforce it directly.
+#   3b. Pointer misses AND active main-scope.json exists BUT CWD is NOT inside a
+#      worktree -> the main-scope is a leaked/stray artifact in the MAIN tree's
+#      apex-active (every /apex session is worktree-isolated, so a legitimate
+#      main-scope never lives in the main tree). The editor is an unrelated
+#      sibling session, not a subagent; pass through (fail open) rather than
+#      block innocent concurrent work.
 #
 # Standard safety paths (closed set, always allowed):
 #   - .claude-tmp/
@@ -150,6 +157,23 @@ fi
 # orchestrator. Per-worktree isolation guarantees exactly one main-scope file
 # in this apex-active dir; resolve it directly.
 if [[ -z "$POINTER" ]]; then
+  # Main-tree leak guard: the subagent-leak fallback below assumes the single
+  # main-scope.json in this apex-active belongs to an orchestrator whose
+  # subagent is now editing. That holds only INSIDE an isolated apex worktree
+  # (.apex-worktrees/<token>/), where create-session.sh guarantees exactly one
+  # orchestrator per apex-active dir. When CWD is NOT inside a worktree, any
+  # main-scope.json found here lives in the MAIN tree's apex-active and is a
+  # leaked/stray artifact - every /apex session is worktree-isolated, so a
+  # legitimate main-scope never sits in the main tree. A pointer-miss editor in
+  # the main tree is then an unrelated sibling session (a separate /apex or
+  # non-/apex Claude Code session sharing the repo), NOT a subagent of the
+  # leaked scope's orchestrator; enforcing against it blocks innocent concurrent
+  # work. Fail OPEN. Subagent enforcement inside real worktrees is unaffected -
+  # their CWD matches .apex-worktrees/<token>/ and falls through to the check.
+  if [[ "$PWD" != *"/.apex-worktrees/"* ]]; then
+    echo "$ALLOW"
+    exit 0
+  fi
   shopt -s nullglob
   ACTIVE_SCOPES=("$APEX_ACTIVE"/*-main-scope.json)
   shopt -u nullglob
