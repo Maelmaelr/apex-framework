@@ -16,7 +16,20 @@ A single Haiku screener call gates lesson hits before they enter main-orchestrat
 
 - Raw grep-lessons.sh stdout (one or more `--- LINES s-e ---` markers + section bodies; up to ~150 lines, possibly truncated with the `--- TRUNCATED ---` footer).
 - `hypothesis` (verbatim from `{session}-hypothesis.json`: `original_prompt`, `hypothesis`, `complexity_hint`, `alternatives`).
-- `session` (8-hex token) and `lessons_path` (`<project-root>/.claude/lessons.md`) so trace + JSON outputs land at the correct session paths.
+- `session` (8-hex token) - names the `{session}-*` output files and resolves the worktree-resident apex-active dir for output anchoring (see First action below).
+- `lessons_path` (`<project-root>/.claude/lessons.md`) - the MAIN-tree lessons source for line-range references (read-only here; deliberately main-anchored so session cleanup never wipes it).
+
+## First action (worktree anchoring; before any write)
+
+Subagent CWD inheritance into the session worktree is unreliable, and Write / Edit resolve relative paths against the project root - not the bash CWD - so a bare-relative `.claude-tmp/apex-active/...` marker can leak into the MAIN tree (cluster: worktree-marker-leak). Before writing `lesson-screened.json` or the trace:
+
+1. Resolve the worktree-resident apex-active dir via the shared resolver - it reads `worktree_path` from the session manifest, so it is authoritative regardless of this agent's CWD:
+   ```
+   APEX_ACTIVE="$(bash skills/apex/scripts/resolve-apex-active.sh {session})"
+   ```
+   The resolver fails closed (non-zero, no stdout) when no manifest / `worktree_path` is found. On failure, abort the return with an explicit error - never fall back to a bare-relative path (that re-introduces the leak).
+2. `cd "$(dirname "$(dirname "$APEX_ACTIVE")")"` (the worktree root); when on an `apex/{session}` branch, assert `git branch --show-current` matches the spawn-prompt session branch, and fail-open on a non-apex branch (legitimate detached / pre-worktree runs).
+3. Resolve both `{session}-*` writes (`lesson-screened.json` + trace) as absolute paths under `$APEX_ACTIVE/`. `lessons_path` stays the main-tree read - never anchor it.
 
 ## Behavior
 
@@ -31,12 +44,12 @@ Per section in the raw input, decide keep / drop with a free-text reason. Bias r
 
 ## Outputs
 
-1. `.claude-tmp/apex-active/{session}-lesson-screened.json` (producer-validated against `lesson-screened.schema.json`):
+1. `$APEX_ACTIVE/{session}-lesson-screened.json` (producer-validated against `lesson-screened.schema.json`):
    - `kept[]`: `{line_range, section_title, screener_reason}` - **ranges only; NEVER emit `content`**. Verbatim section bodies are materialized post-screen by the orchestrator via `bash skills/apex/scripts/slice-lessons.sh <lessons_path> <kept line_range...>` (deterministic sed, off the Haiku critical path) and back-filled into `kept[].content` for the downstream-spawn role. Re-emitting bodies from this cold Haiku context was ~81% of step-5 wall.
    - `dropped[]`: `{line_range, section_title, screener_reason}`. `screener_reason` MUST be a single short tag (one of `off-topic` | `generic` | `superseded` | `no-noun-match`) - drop entries are metadata for audit only and a flat tagged list reads more cleanly than per-entry prose (15 entries x 4-6 lines each; full per-section rationale for 4 dropped entries verbose where titles + tags suffice).
    - `line_range` matches the `--- LINES s-e ---` marker exactly so `update-hit.sh` and `slice-lessons.sh` consume kept ranges directly.
    - **artifact role**: audit + step 13 reflector input only. The orchestrator slices kept bodies post-screen and passes them into step-6/8 spawn prompts from working memory; this JSON is never re-read by the executor / dispatch phase.
-2. `.claude-tmp/apex-active/{session}-traces/entry/lesson-screener.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop). Reference each section by `{content_hash, line_range, section_title}` tuple ONLY (content_hash is computed over the raw grep-input body the screener reads, not an emitted field) - never embed verbatim section bodies in the trace. The screener does not emit bodies at all; duplicating them in the prose trace burns ~1500-1800 tokens per session for zero downstream signal. **Pre-rank rationale: one line per section, not a paragraph**. The hypothesis-domain noun-match decision is binary (>=2 matches -> tilt keep) and the keep/dropped JSON already records the outcome; the trace's pre-rank section MUST be one `{section_title} - matches=N keep|drop` line per section, never a multi-line per-section narrative. Multi-paragraph rationale duplicated 40 lines on a 7-section input with no decision signal the keep/drop list did not already carry.
+2. `$APEX_ACTIVE/{session}-traces/entry/lesson-screener.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop). Reference each section by `{content_hash, line_range, section_title}` tuple ONLY (content_hash is computed over the raw grep-input body the screener reads, not an emitted field) - never embed verbatim section bodies in the trace. The screener does not emit bodies at all; duplicating them in the prose trace burns ~1500-1800 tokens per session for zero downstream signal. **Pre-rank rationale: one line per section, not a paragraph**. The hypothesis-domain noun-match decision is binary (>=2 matches -> tilt keep) and the keep/dropped JSON already records the outcome; the trace's pre-rank section MUST be one `{section_title} - matches=N keep|drop` line per section, never a multi-line per-section narrative. Multi-paragraph rationale duplicated 40 lines on a 7-section input with no decision signal the keep/drop list did not already carry.
 
 ## Return to caller
 

@@ -16,6 +16,19 @@ A single screener call is the only LLM gate in the cascade. Always fires when th
 
 - Ranked file list (top-K, default 30; ordered by upstream relevance score)
 - hypothesis (verbatim from `{session}-hypothesis.json`)
+- `session` - 8-char hex token; used to resolve the worktree-resident apex-active dir for output anchoring (see First action below).
+
+## First action (worktree anchoring; before any write)
+
+Subagent CWD inheritance into the session worktree is unreliable, and Write / Edit resolve relative paths against the project root - not the bash CWD - so a bare-relative `.claude-tmp/apex-active/...` marker can leak into the MAIN tree (cluster: worktree-marker-leak). Before writing `screened.json` or the trace:
+
+1. Resolve the worktree-resident apex-active dir via the shared resolver - it reads `worktree_path` from the session manifest, so it is authoritative regardless of this agent's CWD:
+   ```
+   APEX_ACTIVE="$(bash skills/apex/scripts/resolve-apex-active.sh {session})"
+   ```
+   The resolver fails closed (non-zero, no stdout) when no manifest / `worktree_path` is found. On failure, abort the return with an explicit error - never fall back to a bare-relative path (that re-introduces the leak).
+2. `cd "$(dirname "$(dirname "$APEX_ACTIVE")")"` (the worktree root); when on an `apex/{session}` branch, assert `git branch --show-current` matches the spawn-prompt session branch, and fail-open on a non-apex branch (legitimate detached / pre-worktree runs).
+3. Resolve both `{session}-*` writes (`screened.json` + trace) as absolute paths under `$APEX_ACTIVE/` - never the bare-relative `.claude-tmp/apex-active/...` form.
 
 ## Behavior
 
@@ -31,10 +44,10 @@ Per file in the ranked list, decide keep / drop with a free-text reason. Bias ru
 
 ## Outputs
 
-1. `.claude-tmp/apex-active/{session}-screened.json` (producer-validated against `screened.schema.json`):
+1. `$APEX_ACTIVE/{session}-screened.json` (producer-validated against `screened.schema.json`):
    - `kept[]`: `{file, screener_reason}`
    - `dropped[]`: `{file, screener_reason}`
-2. `.claude-tmp/apex-active/{session}-traces/entry/screener.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop).
+2. `$APEX_ACTIVE/{session}-traces/entry/screener.md` - prose claim-provenance trace (kept/dropped narrative + one-line reason per drop).
 
 ## Return to caller
 
