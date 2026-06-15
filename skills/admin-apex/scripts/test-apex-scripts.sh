@@ -461,6 +461,11 @@ else echo "FAIL suite test-protect-env.sh" >&2; failed=$((failed + 1)); fi
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-replay-acceptance.sh"; then
   echo "PASS suite test-replay-acceptance.sh"; pass=$((pass + 1))
 else echo "FAIL suite test-replay-acceptance.sh" >&2; failed=$((failed + 1)); fi
+# 22. resolve-apex-active.sh (WS0 worktree-marker-leak) fixtures: worktree-path
+#     anchoring + fail-closed contract live in a sibling file (file-health cap).
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-resolve-apex-active.sh"; then
+  echo "PASS suite test-resolve-apex-active.sh"; pass=$((pass + 1))
+else echo "FAIL suite test-resolve-apex-active.sh" >&2; failed=$((failed + 1)); fi
 
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"

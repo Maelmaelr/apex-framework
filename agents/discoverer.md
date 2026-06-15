@@ -22,6 +22,18 @@ Subagents do NOT inherit working memory; the orchestrator MUST propagate every i
 - `project_context_paths` - paths mentioned in `<project-root>/docs/project-context.md` (deduped list; first ~200 lines per the read-cap convention).
 - `project_root` - absolute repo root path; used for the discovery-cache key.
 
+## First action (worktree anchoring; before the cache check)
+
+Subagent CWD inheritance into the session worktree is unreliable, and the Write / Edit tools resolve relative paths against the project root - not the bash CWD - so a bare-relative `.claude-tmp/apex-active/...` marker (notably `main-scope.json` + the scope-check pointer) can leak into the MAIN tree and block unrelated sibling sessions (cluster: worktree-marker-leak). Before computing seeds or any scope write:
+
+1. Resolve the worktree-resident apex-active dir ONCE via the shared resolver - it reads `worktree_path` from the session manifest, so it is authoritative regardless of this agent's CWD:
+   ```
+   APEX_ACTIVE="$(bash skills/apex/scripts/resolve-apex-active.sh {session})"
+   ```
+   The resolver fails closed (non-zero, no stdout) when no manifest / `worktree_path` is found. On failure, abort the return with an explicit error - NEVER fall back to a bare-relative path (that re-introduces the leak).
+2. `cd "$(dirname "$(dirname "$APEX_ACTIVE")")"` (the worktree root) so bash-invoked producers (`discovery-expand.sh`) write relative to the worktree; when on an `apex/{session}` branch, assert `git branch --show-current` matches the spawn-prompt session branch, and fail-open on a non-apex branch (legitimate detached / pre-worktree runs).
+3. Resolve EVERY `{session}-*` marker write as an absolute path under `$APEX_ACTIVE/` - `main-scope.json`, the `{session}-scopes/{cc_session_id}.txt` pointer, `seeds.txt` / `goals.txt` / `prompt.txt`, `expand.json`, `screened.json`, and traces - never the bare-relative `.claude-tmp/apex-active/...` form. The relative paths shown below are the canonical artifact names; prefix each with `$APEX_ACTIVE/` at the write site.
+
 ## Cache check (runs first; skips the cascade on hit)
 
 Before computing seeds, query the discovery cache:
@@ -30,7 +42,7 @@ Before computing seeds, query the discovery cache:
 bash skills/apex/scripts/discovery-cache.sh check "$original_prompt" "$project_root"
 ```
 
-Exit 0 + path on stdout -> hit. Copy the cached body to `.claude-tmp/apex-active/{session}-main-scope.json`, write the scope-check pointer (see Output below), and return `{main_scope: "<path>", cache_hit: true}` with status `cache-hit`. Skip seeds + cascade + screener.
+Exit 0 + path on stdout -> hit. Copy the cached body to `$APEX_ACTIVE/{session}-main-scope.json`, write the scope-check pointer (see Output below), and return `{main_scope: "<path>", cache_hit: true}` with status `cache-hit`. Skip seeds + cascade + screener.
 
 Exit 1 -> miss / expired / corrupt. Proceed to seeds + cascade. After the cascade produces a non-empty `main-scope.json` (and the screener has run when it fires), call:
 
@@ -49,7 +61,7 @@ d. Paths from `project_context_paths`.
 
 Persist only paths that exist on disk. Symbol-shaped seeds feed the LSP layer; path-shaped seeds feed the expander.
 
-**Persist the expander inputs.** Write the existing-on-disk seed paths (one per line) to `.claude-tmp/apex-active/{session}-seeds.txt`, the `hypothesis.goals[]` text (one goal per line) to `{session}-goals.txt`, and `original_prompt` verbatim to `{session}-prompt.txt`. These three files are the input contract for `discovery-expand.sh` (cascade layer b below).
+**Persist the expander inputs.** Write the existing-on-disk seed paths (one per line) to `$APEX_ACTIVE/{session}-seeds.txt`, the `hypothesis.goals[]` text (one goal per line) to `$APEX_ACTIVE/{session}-goals.txt`, and `original_prompt` verbatim to `$APEX_ACTIVE/{session}-prompt.txt`. These three files are the input contract for `discovery-expand.sh` (cascade layer b below).
 
 **Cross-scope consumer probe.** When `hypothesis` changes a shared data shape (node/record schema, type union, settings contract), grep for registry/factory files, shared-package barrels, and top-level rules/matrix files consuming the changed shape and seed the hits - grep-level expansion misses these consumers, and executors then re-discover them mid-dispatch as out-of-scope findings (cluster: discoverer-cross-scope-consumers). For security-audit prompts, also seed the 1-level transitive imports of each named entrypoint. Extend the probe one transitive hop for code the change couples but does not name: a spec/test importing a direct CALLER of a seed symbol the change adds (not just direct importers of the seed), and a companion file that CONSTRUCTS a prop/field the seed adds - both otherwise recur as mid-dispatch C1 split-needed cycles (cluster: transitive-spec-companion-coupling).
 
@@ -67,10 +79,10 @@ Fires when seeds name an identifier-shape symbol. Use the harness LSP tool (type
 
 ```
 bash skills/apex/scripts/discovery-expand.sh "$project_root" \
-  --seeds  .claude-tmp/apex-active/{session}-seeds.txt \
-  --goals  .claude-tmp/apex-active/{session}-goals.txt \
-  --prompt .claude-tmp/apex-active/{session}-prompt.txt \
-  --out    .claude-tmp/apex-active/{session}-expand.json
+  --seeds  "$APEX_ACTIVE/{session}-seeds.txt" \
+  --goals  "$APEX_ACTIVE/{session}-goals.txt" \
+  --prompt "$APEX_ACTIVE/{session}-prompt.txt" \
+  --out    "$APEX_ACTIVE/{session}-expand.json"
 ```
 
 One call performs every deterministic expansion and writes JSON:
@@ -96,11 +108,11 @@ The script is purely ADDITIVE + existence-filtered and never finalizes scope. `c
 
 Spawn `agents/screener.md` (Sonnet, single call) directly as a child subagent. **Always fires** when the cascade reaches this layer with any candidate - any non-empty LSP/expander output flows through screening.
 
-Spawn-prompt: ranked top-K (LSP hits UNION `candidates[]`, ranked by the script's source-count/match-count order) + hypothesis (verbatim from this agent's spawn input). **Top-K scales by `hypothesis.goals.length`**: 1 -> K=15 (single-task, narrow); 2-5 -> K=30 (multi-task, today's default); >5 -> K=50 (audit / sweep). When `goals` is absent (legacy hypothesis), default K=30. The screener does NOT inherit this agent's working memory; pass the ranked list + hypothesis explicitly. Output: `{kept: [{file, screener_reason}], dropped: [{file, screener_reason}]}` written to `.claude-tmp/apex-active/{session}-screened.json` (producer-validated against `screened.schema.json`); trace at `.claude-tmp/apex-active/{session}-traces/entry/screener.md`.
+Spawn-prompt: ranked top-K (LSP hits UNION `candidates[]`, ranked by the script's source-count/match-count order) + hypothesis (verbatim from this agent's spawn input). **Top-K scales by `hypothesis.goals.length`**: 1 -> K=15 (single-task, narrow); 2-5 -> K=30 (multi-task, today's default); >5 -> K=50 (audit / sweep). When `goals` is absent (legacy hypothesis), default K=30. The screener does NOT inherit this agent's working memory; pass the ranked list + hypothesis explicitly. Output: `{kept: [{file, screener_reason}], dropped: [{file, screener_reason}]}` written to `$APEX_ACTIVE/{session}-screened.json` (producer-validated against `screened.schema.json`); trace at `$APEX_ACTIVE/{session}-traces/entry/screener.md`. Pass the absolute `$APEX_ACTIVE/{session}-screened.json` path into the screener spawn prompt so its output lands in-worktree (the screener's own anchoring discipline is its agent contract).
 
 ## Output
 
-`.claude-tmp/apex-active/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json` - validation MUST fail loud and abort the return on any missing schema-required field (e.g. `session`) rather than emitting a non-conformant artifact. Then write the scope-check pointer at `.claude-tmp/apex-active/{session}-scopes/{cc_session_id}.txt` (single-line absolute path to the scope JSON; arms the scope-check PreToolUse hook for downstream Edit / Write).
+`$APEX_ACTIVE/{session}-main-scope.json` (`{allowed_files: [string]}`); producer-validated against `main-scope.schema.json` - validation MUST fail loud and abort the return on any missing schema-required field (e.g. `session`) rather than emitting a non-conformant artifact. Then write the scope-check pointer at `$APEX_ACTIVE/{session}-scopes/{cc_session_id}.txt` (single-line absolute path to the scope JSON; arms the scope-check PreToolUse hook for downstream Edit / Write).
 
 **Token discipline (canonical naming).** Two distinct identifiers appear in the output paths and they MUST NOT be confused:
 - `{session}` is the 8-hex apex token; it appears in the parent directory name (`.claude-tmp/apex-active/{session}-*`) and in the main-scope.json filename.
