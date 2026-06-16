@@ -29,7 +29,7 @@ for p in (l.strip() for l in sys.stdin if l.strip()):
       echo "step-12: nothing to commit (empty diff)"
     else
       git commit -m "$MESSAGE"
-      git push -u origin "apex/{session}" || echo "step-12: push failed; /apex-merge will retry"
+      git push -u origin "apex/{session}" || echo "step-12: push failed; non-blocking (/apex-merge integrates the local branch)"
     fi
     ```
-    Returns `{status, commit_sha, bump_kind}` to working memory for step 15. Push failure is non-blocking: `/apex-merge` re-attempts the push as part of its merge loop. Empty diff (all-already-satisfied path) is a valid outcome; no commit lands and `bump_hint` is still persisted so the deploy skill picks no-op intent up correctly. The scope-drift emit before `git add -A` is non-blocking - the commit always proceeds; the line only surfaces foreign tool-side mutations (skipping `docs/**` / `.claude-tmp/**` safety paths) in `/apex-improve` for cluster tracking.
+    Returns `{status, commit_sha, bump_kind}` to working memory for step 15. Push failure is non-blocking: `/apex-merge` integrates the local `apex/{session}` branch into its base and pushes that base branch (merge-loop.sh never mutates remote refs), so the session commits reach origin via the base-branch push - the `apex/{session}` ref itself is never re-pushed (it is deleted after merge). Empty diff (all-already-satisfied path) is a valid outcome; no commit lands and `bump_hint` is still persisted so the deploy skill picks no-op intent up correctly. The scope-drift emit before `git add -A` is non-blocking - the commit always proceeds; the line only surfaces foreign tool-side mutations (skipping `docs/**` / `.claude-tmp/**` safety paths) in `/apex-improve` for cluster tracking.

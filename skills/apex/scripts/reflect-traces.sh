@@ -4,7 +4,7 @@
 #
 # Categorises trace files under .claude-tmp/apex-active/{session}-traces/**/*.md:
 #   gap_signals    : trace content matches /error|failed|skip/i
-#   fix_attempts   : filename matches fix-{attempt-N}.md
+#   fix_attempts   : filename matches fix-N.md or fix-attempt-N.md (attempt- optional)
 #   verbose_traces : >= VERBOSE_THRESHOLD lines (REFLECT_VERBOSE_THRESHOLD env, default 100)
 # A trace is "novel" when it falls into none of the above. Reflector always fires;
 # novel_flagged is informational. The novel_traces line drives focus selection.

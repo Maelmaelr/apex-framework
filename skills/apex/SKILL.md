@@ -36,7 +36,7 @@ All 15 always queued. Trivial branch at step 3 marks 4-13 completed-skipped.
 | Tier     | Decided at | Effect                                                                                                  |
 |----------|------------|---------------------------------------------------------------------------------------------------------|
 | trivial  | step 3     | Step 3.1 inline `Edit`/`Write` + commit -> jump to 14. Skips 4-13.                                      |
-| economy  | step 7     | Step 8 executors run on Sonnet; step 9 polish skipped; step 11 skips `learn`.                           |
+| economy  | step 7     | Step 8 executors run on Sonnet; step 9 polish + step 10.5 review skipped; step 11 skips `learn`.        |
 | standard | step 7     | Step 8 executors run on Opus; full tail (step 9 polish always; step 11 documentation unless `code-only-no-docs` mode; learn runs when the difficulty gate holds - no tier-conditional skip path under standard). |
 
 Step 13 reflector is **background** in non-trivial paths (economy + standard); the reflector owns the post-reflect `cleanup-session.sh` call as its final action. Step 14 only runs on the trivial path (where step 13 was skipped).
@@ -73,7 +73,7 @@ The trivial branch still marks step 3 `in_progress` with `metadata={step: 3}` be
 Coordination that spans steps - the orchestrator owns these because no single step file does; each step file holds its own mechanics, this is the canonical map (do NOT re-state the coupling per step file).
 - **Scope is seeded up-front, never grown at the tail (steps 1/6 -> 8/11/12).** Step 1 pre-coordinates the doc-touch surface (`full-scope`, report-only deliverable paths; `code-only-no-docs` instead skips the step-11 doc agent and admits no doc paths) and step 6 folds the doc-surface + co-located test files into `allowed_files` at scope-finalization - so steps 8/11/12 act inside a fixed scope and never reactively expand it. A reactive step-12 doc/scope expand means step 1/6 under-populated `allowed_files`.
 - **Doc-fold feeds the tail (step 6 -> 11/12).** The doc-surface files step 6 folds into `allowed_files` are exactly what step 11's documentation agent edits and step 12 stages; a doc edit stranded outside `allowed_files` at step 12 is an under-populated step 6, not a step-12 bug.
-- **Tier drives the tail (step 7 -> 8/9/11).** The step-7 tier selects the step-8 executor model (Sonnet economy / Opus standard) and gates step-9 polish + step-11 learn (economy skips both) - see the Tier matrix above; step files must not re-derive the tier.
+- **Tier drives the tail (step 7 -> 8/9/10.5/11).** The step-7 tier selects the step-8 executor model (Sonnet economy / Opus standard) and gates step-9 polish + step-10.5 review + step-11 learn (economy skips all three) - see the Tier matrix above; step files must not re-derive the tier.
 
 ## Mid-flow abort cleanup
 

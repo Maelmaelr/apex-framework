@@ -43,7 +43,7 @@ Future mirror pairs plug in by extending the list above. Do NOT generalize prema
   "run": "{run}",
   "ops": [
     {
-      "kind": "edit" | "create" | "rename" | "split" | "merge" | "retire",
+      "kind": "edit" | "create" | "rename" | "split" | "merge" | "retire" | "schema-add" | "schema-remove" | "hook-add" | "hook-remove",
       "target": "<repo-relative path>",
       "split_into":    ["<paths>"],   // only when kind == split
       "merge_sources": ["<paths>"],   // only when kind == merge

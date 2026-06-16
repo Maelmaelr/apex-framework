@@ -115,14 +115,14 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
     - persist classified tier as `bump_hint` into manifest; the project-side deploy skill reads it to drive the batched VERSION bump
     - **scope-drift pre-commit emit**: before `git add -A`, diff dirty paths against allowed_files and append one `scope-drift foreign-mutation: <path>` line per foreign-modified file to ~/.claude/tmp/git-agent-errors.log (catches tool-side auto-mutations the PreToolUse hook cannot see; commit still proceeds)
     - `git add -A; git commit -m "$MESSAGE"; git push -u origin apex/<session>` (worktree isolation makes shared-working-tree contamination impossible; no allowlist / private-index / CAS-retry needed)
-    - empty diff = noop (valid); push failure non-blocking (/apex-merge retries)
+    - empty diff = noop (valid); push failure non-blocking (/apex-merge integrates the local branch into its base and pushes that; the apex/<session> ref is not re-pushed)
 
 13. Self-reflect: reflect-traces.sh + reflector.md (**background** in non-trivial paths)
     - reads traces in-place from .claude-tmp/apex-active/{session}-traces/
     - appends to ~/.claude/tmp/apex-workflow-improvements.md
     - non-convergence detection: appends {ts, session, hash=sha1(prompt), scope_count, touched_count, files_touched} to ~/.claude/tmp/apex-prompt-history.log; on hash collision with different files_touched, surfaces non-convergence: line in improvements:
     - oversized-dispatch flag (E1): read {session}-traces/execute/dispatch-summary.json; trip on orchestrator-recorded actuals - max(tool_calls_made, tool_uses) > 50 OR total_tokens > 150k OR files_touched > 12, never self-report alone - surface oversized-dispatch: line under improvements: (cap 3, top-3 by tool_uses)
-    - **owns post-reflect cleanup**: as final action runs `bash scripts/cleanup-session.sh --session {session}` (idempotent)
+    - **owns post-reflect cleanup**: as final action runs `bash scripts/cleanup-session.sh --session {session} --apex-active-dir {abs}` (idempotent; the background reflector passes --apex-active-dir explicitly since it does not inherit project CWD - see apex-core.md Failure handling)
 
 14. Cleanup session (trivial-only): cleanup-session.sh
     - **runs only on trivial path** (where step 13 was skipped); non-trivial paths get cleanup from the backgrounded reflector at step 13
