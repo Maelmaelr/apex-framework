@@ -39,6 +39,7 @@ REPO_ROOT="${CLAUDE_PROJECT_DIR:-$HOME/.claude}"
 ACTIVE="$REPO_ROOT/.claude-tmp/admin-apex-active"
 APPLIED="$ACTIVE/${RUN}-applied-ops.json"
 DRIFT="$ACTIVE/${RUN}-drift-report.json"
+DIRTY_PATHS="$ACTIVE/${RUN}-dirty-paths.txt"
 INV_POST="$ACTIVE/${RUN}-inventory-post.json"
 POLISH="$ACTIVE/${RUN}-polish-report.json"
 
@@ -57,8 +58,11 @@ bash "$REPO_ROOT/skills/admin-apex/scripts/inventory-apex.sh" --out "$INV_POST" 
 
 # Delegate to the shared detector engine. --mode polish relabels to
 # staleness/unused/inconsistency and diffs against the pre-apply drift report so
-# only NEW drift surfaces; it prints $POLISH and exits 1 on NEW drift (which
-# set -e propagates as this script's exit code), else 0.
+# only NEW drift surfaces; --dirty-paths further restricts the WARN guards
+# (approaching/hash-roster/negative-scope) to files this apply touched, so a
+# pre-existing over-budget file untouched by the run cannot escalate as NEW. It
+# prints $POLISH and exits 1 on NEW drift (which set -e propagates as this
+# script's exit code), else 0.
 python3 "$REPO_ROOT/skills/admin-apex/scripts/audit-detectors.py" \
   --inventory "$INV_POST" --mode polish --run "$RUN" \
-  --prior-drift "$DRIFT" --out "$POLISH"
+  --prior-drift "$DRIFT" --dirty-paths "$DIRTY_PATHS" --out "$POLISH"

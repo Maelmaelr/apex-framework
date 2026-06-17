@@ -13,11 +13,16 @@ detector's rule; this module is its implementation. The detector core is shared;
   --mode polish  Post-apply NEW-only mirror: same detectors minus oversized,
                  relabeled (staleness / unused / inconsistency; approaching +
                  hash-roster + negative-scope keep their kinds). Diffs against
-                 --prior-drift; exits 1 when any NEW cluster remains.
+                 --prior-drift; the WARN guards (approaching / hash-roster /
+                 negative-scope) are further restricted to --dirty-paths (files
+                 this apply touched) so a pre-existing over-budget file the run
+                 never edited cannot surface as NEW drift on a stub baseline.
+                 Exits 1 when any NEW cluster remains.
 
 CLI: --inventory <p> --mode {audit|polish} --run <RUN> [--prior-drift <p>]
-[--extra-clusters <p>] [--out <p>] (argparse help below). Exit: 0 audit (always)
-or polish-no-NEW; 1 polish-NEW; 2 bad args / unreadable inventory.
+[--dirty-paths <p>] [--extra-clusters <p>] [--out <p>] (argparse help below).
+Exit: 0 audit (always) or polish-no-NEW; 1 polish-NEW; 2 bad args / unreadable
+inventory.
 """
 
 import argparse
@@ -149,8 +154,7 @@ def detect_approaching(inv, budget):
 
 # Reflector-hash citation matcher (re-bloat guard). A "citation hash" is an 8-hex
 # token led by a citation keyword (reflector/session/incident/cluster) or in a
-# multi-hash roster (joined by / , + &); an isolated keyword-less hex is NOT
-# counted, so false positives stay near zero.
+# multi-hash roster (joined by / , + &); a bare keyword-less hex is NOT counted.
 _HASH = r"(?<![0-9a-z])[0-9a-f]{8}(?![0-9a-z])"
 _KEYWORD_CITE = re.compile(
     r"\b(?:reflector|reflectors|session|sessions|incident|cluster|clusters)\b[ \t]+"
@@ -171,10 +175,9 @@ def count_citation_hashes(text):
 
 # Negative-scope disclaimer matcher (re-bloat guard for the section/bullet half of
 # apex-core.md Lean prose; hash-roster covers the inline-hash half). Flags a
-# dedicated "What X does NOT do" / "Out of scope" / "Non-goals" HEADING or a
-# THIRD-PERSON "Does NOT ..." bullet. Operational negatives that govern current
-# behavior (imperative "Do not run X", "never blind-edit") read as second-person
-# and never match - the anchored patterns are zero-false-positive.
+# "What X does NOT do" / "Out of scope" / "Non-goals" HEADING or a THIRD-PERSON
+# "Does NOT ..." bullet. Operational negatives ("Do not run X", "never blind-edit")
+# read as second-person and never match - anchored patterns are zero-FP.
 _NEG_HEADING = re.compile(
     r"(?im)^#{1,6}[ \t]+(?:out[- ]of[- ]scope|non[- ]goals?"
     r"|what[ \t].+?does(?:n't| not)[ \t]+do)[ \t]*:?[ \t]*$")
@@ -351,9 +354,12 @@ def _diff_key(item):
     return item.split(" (", 1)[0]
 
 
-def diff_against_prior(clusters, prior_path):
-    """polish-only NEW-item diff keyed on cluster id + per-item path key."""
-    prior = {}
+def diff_against_prior(clusters, prior_path, dirty=None):
+    """polish-only NEW-item diff keyed on cluster id + per-item path key. WARN-guard
+    clusters (approaching / hash-roster / negative-scope) additionally require the path
+    in `dirty` (touched files; None disables) - a pre-existing over-budget file the apply
+    never edited is leanness pressure, not NEW drift, even on a stub prior baseline."""
+    prior, warn = {}, {"approaching", "hash-roster", "negative-scope"}
     if prior_path and os.path.exists(prior_path):
         try:
             for c in json.loads(Path(prior_path).read_text()).get("clusters", []):
@@ -362,7 +368,9 @@ def diff_against_prior(clusters, prior_path):
             pass
     new_clusters = []
     for c in clusters:
-        new_items = [i for i in c["items"] if _diff_key(i) not in prior.get(c["id"], set())]
+        scoped = dirty is None or c["id"] not in warn
+        new_items = [i for i in c["items"] if _diff_key(i) not in prior.get(c["id"], set())
+                     and (scoped or _diff_key(i) in dirty)]
         if new_items:
             nc = dict(c)
             nc["items"] = new_items
@@ -377,6 +385,7 @@ def main():
     ap.add_argument("--mode", required=True, choices=["audit", "polish"])
     ap.add_argument("--run", required=True, help="8-hex run token")
     ap.add_argument("--prior-drift", help="polish: pre-apply drift report for NEW-only diff")
+    ap.add_argument("--dirty-paths", help="polish: {run}-dirty-paths.txt; restricts WARN guards to touched files")
     ap.add_argument("--extra-clusters", help="audit: JSON array of LLM stale-spec/user-driven clusters to append")
     ap.add_argument("--out", help="write report here; otherwise stdout")
     args = ap.parse_args()
@@ -410,7 +419,10 @@ def main():
                 for cid in order if cid in detected and detected[cid]]
 
     if args.mode == "polish":
-        clusters = diff_against_prior(clusters, args.prior_drift)
+        dirty = None
+        if args.dirty_paths and os.path.exists(args.dirty_paths):
+            dirty = {ln.strip() for ln in Path(args.dirty_paths).read_text().splitlines() if ln.strip()}
+        clusters = diff_against_prior(clusters, args.prior_drift, dirty)
     elif args.extra_clusters and os.path.exists(args.extra_clusters):
         try:
             extra = json.loads(Path(args.extra_clusters).read_text())
