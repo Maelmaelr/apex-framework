@@ -4,8 +4,6 @@
 
 An opinionated operating system for Claude Code. APEX replaces ad-hoc "just go fix it" prompting with a deliberate, self-improving pipeline: hypothesize, discover, plan, execute, verify, learn.
 
-This is the public mirror of the apex framework. Source lives in the maintainer's private `~/.claude` and is mirrored here by `admin-apex` on every framework commit.
-
 ---
 
 ## Why
@@ -63,7 +61,7 @@ Ten load-bearing ideas. Everything else in the repo is there to implement them.
 7. **Scoped delegation, enforced at the tool call.** Every executor has an allowed-files list. Edits outside it are blocked by the scope-check hook, not caught in review. The file-health hook splits oversized files before writes land.
 8. **Verify, do not trust.** Step 10 runs lint and build. Failures block completion and feed `executor.md` a bounded fix-loop (cap 3). "It looked right" is not a verdict.
 9. **Lessons and discovery findings as persistent memory.** Every session reads the lessons index first and writes back what it learned. Discovery scope JSON persists per session. Next run starts with what the last run discovered; duplicates merge, stale entries age out.
-10. **Self-improving, safe, lean, resilient.** Step 13 reflection appends signals to the improvement log every run; `apex-improve` consumes those signals weekly to evolve the framework. Destructive commands, `.env` reads, and force-pushes to main are blocked outright. Skill files stay lean by rule: `apex-file-health` splits any file that crosses the threshold; nothing new gets added unless something else earns its place.
+10. **Self-improving, safe, lean, resilient.** Step 13 reflection appends signals to the improvement log every run; `apex-improve` consumes those signals weekly to evolve the framework. Destructive commands, `.env` reads, and force-pushes to main are blocked outright. Skill files stay lean by rule: the file-health hook splits any file that crosses the threshold; nothing new gets added unless something else earns its place.
 
 ---
 
@@ -75,7 +73,7 @@ Ten load-bearing ideas. Everything else in the repo is there to implement them.
 - **Fewer silent failures.** Bad-claim thresholds force re-runs instead of letting hallucinations drive routing.
 - **Shorter, cleaner sessions.** Discovery returns pointers, executors run in fresh contexts, the main session stays small.
 - **Done means tested.** Every implementation run ends with build, lint, and a bounded fix-loop. Failures block completion.
-- **Code and docs stay healthy.** `apex-file-health` splits files before they hit the complexity cliff. `documentation.md` updates project docs alongside the code that changed them.
+- **Code and docs stay healthy.** The file-health hook splits files before they hit the complexity cliff. `documentation.md` updates project docs alongside the code that changed them.
 - **Cumulative learning.** `learn.md` distills lessons every standard-tier run. `apex-lessons` curates them. `apex-improve` evolves the framework itself from accumulated reflection signals.
 - **Trustworthy autonomy.** Fail-closed guardrails mean APEX can run without supervision and still stay on rails.
 - **A framework that evolves with you.** The reflector log + tech-watch fetcher feed `apex-improve`, which proposes edits to the framework on a weekly cadence.
@@ -85,12 +83,11 @@ Ten load-bearing ideas. Everything else in the repo is there to implement them.
 ## Skills
 
 - **apex/** - Main coding orchestrator (entry: `apex/SKILL.md`). Sub-skills: `discover.md` (step 6), `execute.md` (step 8).
-- **apex-eod/** - End of day. Chains `apex-file-health` -> `apex-lessons` (extract + analyze) -> `apex-improve` -> inline git commit.
-- **apex-fix/** - Standalone lint/build fix loop. Mints a synthetic session, runs `verify-build.sh`, spawns `executor.md` capped at 3 attempts.
-- **apex-file-health/** - Remediate oversized files flagged by `/apex` verify (step 10). Splits, verifies, runs tail tasks.
 - **apex-init/** - Initialize a new project with apex-compatible structure (`.claude-tmp`, docs, `CLAUDE.md`).
-- **apex-improve/** - Self-improvement engine. Consumes reflector log + tech-watch updates + Claude Code version stamp. Slash-invokable; called by `apex-eod`.
+- **apex-fix/** - Standalone lint/build fix loop. Mints a synthetic session, runs `verify-build.sh`, spawns `executor.md` capped at 3 attempts.
+- **apex-merge/** - Integrate `apex/<session>` worktree branches back into their recorded base branches. Manual trigger; runs from the main worktree.
 - **apex-lessons/** - Curate lessons. Two phases: extract (consolidate pending) + analyze (triage / dedupe / route).
+- **apex-improve/** - Self-improvement engine. Consumes reflector log + tech-watch updates + Claude Code version stamp. Slash-invokable.
 - **apex-tech-watch/** - Weekly tech-watch fetcher. Reads `sources.json`, summarizes via WebFetch / WebSearch, appends to `tech-updates.md`. Cron-driven (Sunday 06:00 local). Output consumed by `apex-improve`.
 - **admin-apex/** - Framework maintainer. Audit / evolve / sync-docs / test / commit / mirror-to-public / push / self-reflect chain. Maintainer-only.
 
@@ -104,13 +101,43 @@ Ten load-bearing ideas. Everything else in the repo is there to implement them.
 
 ---
 
+## Installation
+
+APEX is a set of Claude Code skills, agents, and hooks that live in your Claude Code config directory (`~/.claude`). Every skill, agent, and hook in the framework resolves its paths against `~/.claude`, so install it there (a single global install shared by all your projects):
+
+```bash
+git clone https://github.com/Maelmaelr/apex-framework.git
+cd apex-framework
+
+mkdir -p ~/.claude/skills ~/.claude/agents
+cp -R skills/* ~/.claude/skills/
+cp -R agents/* ~/.claude/agents/
+cp apex-core.md apex-core-overview.md VERSION ~/.claude/
+```
+
+The hooks that enforce scope-checking, file-health splitting, `.env` protection, and destructive-command blocking are defined in `settings.json`. If you do not already have a `~/.claude/settings.json`, copy it directly; otherwise merge its `hooks` and `permissions` blocks into your existing file (do not blindly overwrite - your file also carries your own permissions and preferences):
+
+```bash
+cp settings.json ~/.claude/settings.json        # only if you have none yet
+```
+
+Restart Claude Code, then from any project:
+
+```bash
+/apex-init                  # scaffold .claude-tmp/, docs/, CLAUDE.md in the current project
+/apex "your first task"     # run the main orchestrator
+```
+
+---
+
 ## Usage
 
 ```
+/apex-init                  # scaffold APEX structure in a new project
 /apex "task description"    # main coding orchestrator (15 steps, tier auto-decided)
 /apex-fix                   # standalone lint/build fix loop
-/apex-eod                   # end-of-day: file-health + lessons + improve + commit
-/apex-lessons               # curate lessons index
+/apex-merge                 # integrate apex/<session> worktree branches into their base
+/apex-lessons               # curate the lessons index
 ```
 
 ---
