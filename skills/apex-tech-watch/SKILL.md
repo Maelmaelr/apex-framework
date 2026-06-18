@@ -100,10 +100,13 @@ size=$(wc -c < "$TARGET" 2>/dev/null || echo 0)
 if (( size > LIMIT )); then
   # Force a rotation - treat all blocks older than 7 days as expired
   # invoke rotation.md's aggressive variant: the Step-1 rotation block re-run with cutoff = timedelta(days=7)
+  echo "step-3: budget-guard aggressive-rotation-applied (size=${size}B > ${LIMIT}B)" >> "$SUMMARY"
+else
+  echo "step-3: budget-guard OK (size=${size}B <= ${LIMIT}B)" >> "$SUMMARY"
 fi
 ```
 
-The 256 KB cap is a backstop; the 30-day rotation should keep the file well under this in practice. If we hit the cap, the source list is too aggressive for weekly cadence - surface a one-line warning ("apex-tech-watch: tech-updates.md hit 256 KB cap; aggressive rotation applied") so it's visible at the next /apex-improve run.
+The 256 KB cap is a backstop; the 30-day rotation should keep the file well under this in practice. If we hit the cap, the source list is too aggressive for weekly cadence - surface a one-line warning ("apex-tech-watch: tech-updates.md hit 256 KB cap; aggressive rotation applied") so it's visible at the next /apex-improve run. Either way record the guard outcome (`budget-guard: OK` | `aggressive-rotation-applied`) to `$SUMMARY` so the improve loop confirms the check ran rather than inferring a silent skip.
 
 ## Step 4: Report
 
@@ -114,7 +117,7 @@ line="apex-tech-watch: <N> source(s) fetched, <M> failure(s), <K> block(s) rotat
 printf '%s\n' "$line" | tee -a "$SUMMARY"   # on failures, tee each "  <id>: <err>" too
 ```
 
-Then surface degraded fetch quality: grep the blocks appended THIS run for quality markers (`stale`, `unverified`, `likely-stale`) and emit one `  warn <id>: <marker line>` per hit into `$SUMMARY`. A `fetch returned a likely-stale snapshot` / out-of-window source is NOT a hard failure (the block still appended) so it never trips the `<M> failure(s)` count - without this scan it passes silently and the improve loop cannot see partial-quality runs deterministically (the consumer would have to re-read every block). Zero hits -> no extra line.
+Then surface degraded fetch quality: grep the blocks appended THIS run for quality markers anchored to summary indented lines (`grep -E '^  (stale|unverified|likely-stale)'` - two-space indent + marker at line start, the shape the LLM emits as a status prefix) and emit one `  warn <id>: <marker line>` per hit into `$SUMMARY`. Anchoring excludes mid-line feature-name occurrences (e.g. Next.js `stale 'use cache'`) that would otherwise trip a false warn. A `fetch returned a likely-stale snapshot` / out-of-window source is NOT a hard failure (the block still appended) so it never trips the `<M> failure(s)` count - without this scan it passes silently and the improve loop cannot see partial-quality runs deterministically. Zero hits -> no extra line.
 
 ## Step 5: Self-reflect
 

@@ -14,7 +14,7 @@ A single Haiku screener call gates lesson hits before they enter main-orchestrat
 
 ## Inputs (passed by main orchestrator at spawn)
 
-- Raw grep-lessons.sh stdout (one or more `--- LINES s-e ---` markers + section bodies; up to ~150 lines, possibly truncated with the `--- TRUNCATED ---` footer).
+- Raw grep-lessons.sh stdout (one or more `--- LINES s-e ---` markers + section bodies; up to 240 lines per grep-lessons.sh `MAX_OUTPUT_LINES`, possibly truncated with the `--- TRUNCATED ---` footer).
 - `hypothesis` (verbatim from `{session}-hypothesis.json`: `original_prompt`, `hypothesis`, `complexity_hint`, `alternatives`).
 - `session` (8-hex token) - names the `{session}-*` output files and resolves the worktree-resident apex-active dir for output anchoring (see First action below).
 - `lessons_path` (`<project-root>/.claude/lessons.md`) - the MAIN-tree lessons source for line-range references (read-only here; deliberately main-anchored so session cleanup never wipes it).
@@ -53,4 +53,4 @@ Per section in the raw input, decide keep / drop with a free-text reason. Bias r
 
 ## Return to caller
 
-JSON path + one-line status (e.g., `kept: 3, dropped: 7`). NEVER the kept content - the orchestrator reads `kept[]` from the JSON to keep its message-history footprint small. When the raw grep input carried the `--- TRUNCATED ---` footer, the status MUST append ` truncated=true` so the orchestrator can re-run `grep-lessons.sh` with a higher line cap or targeted keys before relying on the screened set - a silently discarded 121st+ line dropped potentially relevant sections in 2 sessions.
+JSON path + one-line status (e.g., `kept: 3, dropped: 7`). NEVER the kept content - the orchestrator reads `kept[]` from the JSON to keep its message-history footprint small. When the raw grep input carried the `--- TRUNCATED ---` footer, the status MUST append ` truncated=true` so the orchestrator can re-run `grep-lessons.sh` with targeted keys before relying on the screened set - a silently discarded past-cap line drops potentially relevant sections (cluster: lessons-truncation).
