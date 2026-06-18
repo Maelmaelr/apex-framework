@@ -86,6 +86,10 @@ Some findings recur from reflectors yet are settled - the behavior is intentiona
 - `merge-single-branch-discovery-overhead` - the unconditional `<run>-discovery.json` write is the complete-artifact-set-for-audit decision (`apex-merge/SKILL.md:85` keeps discovery.json + `[]`-sentinel merge-result.json regardless of branch count); inlining for <=1 branch trades the audit trail for one JSON round-trip. Sibling to `merge-sidecar-omit`. Explicit user wontfix.
 - `merge-sidecar-omit` - conditionally omitting `<run>-precheck-auto-committed.txt` weakens the audit half of the settled merge-precheck-observability mitigation (`apex-merge/SKILL.md:49`) for a low token saving. Explicit user wontfix.
 - `gs-hook-split` - lowering the scout B0.7 `allowed_files` floor (~3-8, `08-execute.md:35`) spawns scouts on tiny goals project-wide to catch a single-session ~10-call overrun that clears neither the >60 tool_uses nor >180k token single-dispatch reaction. Bad cost/benefit. Explicit user wontfix.
+- `budget-guard-warn-skip` - the admin-apex task-3 `approaching-budget` WARN is intentional standing leanness pressure routed to `defer` by design (`audit.md:42`); skipping it deletes the signal, not the work. Explicit user wontfix.
+- `dcp-delegate-discipline` - reflector advisory self-concluded "no structural change warranted"; the delegate-the-investigation idiom already exists (`apex-core.md` context-isolation), so a vague "strengthen" only bloats a central spec. Explicit user wontfix.
+- `admin-mirror-followup-seed` - the task-9 stage / task-10 mirror split is intentional (`admin-apex/SKILL.md:42`); seeding followups into task-9 conflates the two phases. Explicit user wontfix.
+- `economy-review-multifile` - widening economy-tier review triggers raises cost on the cheap path, eroding the tier's purpose; sibling to the settled `review-gate-widen-fix-sessions`. Explicit user wontfix.
 
 ## Prior-run deferred-findings (backlog ingestion)
 
