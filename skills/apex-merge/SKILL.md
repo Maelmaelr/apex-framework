@@ -61,7 +61,7 @@ TaskCreate "7. Self-reflect"
      git commit -m "apex-merge: auto-commit dirty main before integration ($DIRTY_COUNT files) [run:$RUN]" \
        -m "Changes: $MAD" \
        -m "Co-Authored-By: Claude <noreply@anthropic.com>"
-     # Append short hash + subject for post-hoc audit. No full rev-parse SHA, no --stat: both duplicate data never read downstream (cluster: merge-precheck-observability).
+     # Append short hash + subject for post-hoc audit (no full SHA / --stat - duplicate data; cluster: merge-precheck-observability).
      git show -s --format='%h %s' HEAD >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-precheck-auto-committed.txt"
    fi
    ```
@@ -74,7 +74,7 @@ TaskCreate "7. Self-reflect"
    PID=$(bash "$HOME/.claude/skills/apex/scripts/find-claude-pid.sh" 2>/dev/null || echo "$PPID")
    printf '{"run":"%s","cc_session_id":"%s","pid":%s,"producer":"apex-merge"}\n' "$RUN" "$CC_ID" "$PID" > "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}.json"
    ```
-   NEVER write `cc_session_id:""` (breaks SessionEnd sweep) and NEVER use bare `$PPID` inside `bash -c` (captures transient zsh pid). Reuse `RUN` across all subsequent steps. Then append a one-line summary trace for Step 7's reflector: `step-1: precheck ok (auto-committed N dirty files on main; src-paths=K; list -> $HOME/.claude/.claude-tmp/apex-merge-active/<run>-precheck-auto-committed.txt)` if `DIRTY_COUNT > 0` else `step-1: precheck ok (main worktree clean)`, written to `$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md`. `src-paths=K` = SRC_DIRTY line count; write `harness-only` instead when SRC_DIRTY is empty, so the reflector clusters dirty-main-with-source-files without parsing the txt sidecar (cluster: merge-precheck-observability). The embedded absolute path points at that sidecar (verbatim porcelain lines + short commit hash/subject).
+   NEVER write `cc_session_id:""` (breaks SessionEnd sweep) and NEVER use bare `$PPID` inside `bash -c` (captures transient zsh pid). Reuse `RUN` across all subsequent steps. Then append a one-line summary trace for Step 7's reflector: `step-1: precheck ok (auto-committed N dirty files on main; src-paths=K; list -> $HOME/.claude/.claude-tmp/apex-merge-active/<run>-precheck-auto-committed.txt)` if `DIRTY_COUNT > 0` else `step-1: precheck ok (main worktree clean)`, written to `$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md`. `src-paths=K` = SRC_DIRTY line count; write `harness-only` instead when SRC_DIRTY is empty, so the reflector clusters dirty-main-with-source-files without parsing the txt sidecar (cluster: merge-precheck-observability). The embedded absolute path points at that sidecar.
 
 2. **Discover** - inline. Enumerate `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`. For each branch B:
    - SESSION = strip `apex/` prefix.
@@ -163,7 +163,7 @@ TaskCreate "7. Self-reflect"
    echo "step-6.5: $NOTE" >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md"
    ```
 
-7. **Self-reflect** - if the orchestrator routed around any shipped script or skipped any documented step during steps 1-6.5, write a free-form `<run>-orchestrator-proposals.md` capturing each deviation as a `- gap: ...` / `- improvement: ...` pair BEFORE spawning the reflector (rolled into the reflector's gaps/improvements lines so mid-run tooling failures are not lost). Skip the artifact on clean runs. Then spawn `agents/reflector.md` (Sonnet, foreground) with `phase=apex-merge`, then sweep this run's artifacts. Spawn-prompt template (substitute `<run>`):
+7. **Self-reflect** - **No-work gate (cluster: apex-merge-reflector-gate)**: `branches_merged==0` AND `conflicts==0` AND Step 1 logged `harness-only`/clean main -> skip the spawn; append `## <run> - apex-merge - SKIPPED-no-work - <ts>` via `skills/apex/scripts/append-with-lock.sh`, then sweep. Precheck source auto-commit (`src-paths>0`) -> spawn normally (mixed-concern WIP audited). Otherwise: orchestrator routed around a shipped script / skipped a documented step in 1-6.5 -> write `<run>-orchestrator-proposals.md`, one `- gap:`/`- improvement:` pair per deviation, BEFORE the spawn (rolled into reflector gaps/improvements); skip on clean runs. Then spawn `agents/reflector.md` (Sonnet, foreground, `phase=apex-merge`) and sweep this run's artifacts. Spawn-prompt template (substitute `<run>`):
 
    ```
    You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and follow the `apex-merge step 7` row of the invocation table. Inputs: `<run>-summary.md` + `<run>-discovery.json` + `<run>-merge-result.json` + (when present) `<run>-orchestrator-proposals.md` + `git log -1 --pretty=%B` for the integration commit.
@@ -175,7 +175,7 @@ TaskCreate "7. Self-reflect"
    Errors -> ~/.claude/tmp/reflector-errors.log (silent failure otherwise). Shut down silently.
    ```
 
-   After reflector returns, sweep: `rm -f "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}"*`. Reflector failure does NOT block cleanup. SessionEnd-hook is the orphan fallback (see `skills/admin-apex/scripts/session-end-hook.sh`).
+   After reflector returns, sweep `rm -f "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}"*` (reflector failure does NOT block cleanup; SessionEnd-hook is the orphan fallback - `skills/admin-apex/scripts/session-end-hook.sh`).
 
 ## Scope
 
