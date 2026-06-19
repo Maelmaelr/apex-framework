@@ -41,7 +41,7 @@ printf '{"run":"%s","producer":"apex-tech-watch","ts":"%s"}\n' "$RUN" "$TS" > "$
 
 ## Step 1: 30-day rotation (BEFORE fetching)
 
-Rotate before fetching so the target file's footprint stays bounded. Read and follow `~/.claude/skills/apex-tech-watch/rotation.md` for the canonical rotation Python block (and the aggressive 7-day variant called from Step 3's hard-cap fallback).
+Rotate before fetching so the target file's footprint stays bounded. Read and follow `~/.claude/skills/apex-tech-watch/rotation.md` for the canonical rotation Python block; its aggressive 7-day variant is not a separate runnable block - Step 3's hard-cap fallback applies the 30->7 day cutoff swap inline (see rotation.md).
 
 ## Step 2: Fetch + summarize each source
 
@@ -99,7 +99,7 @@ LIMIT=$(( 256 * 1024 ))  # 256 KB hard cap
 size=$(wc -c < "$TARGET" 2>/dev/null || echo 0)
 if (( size > LIMIT )); then
   # Force a rotation - treat all blocks older than 7 days as expired
-  # invoke rotation.md's aggressive variant: the Step-1 rotation block re-run with cutoff = timedelta(days=7)
+  # apply rotation.md's aggressive variant inline: re-run the Step-1 rotation block with cutoff = timedelta(days=7)
   echo "step-3: budget-guard aggressive-rotation-applied (size=${size}B > ${LIMIT}B)" >> "$SUMMARY"
 else
   echo "step-3: budget-guard OK (size=${size}B <= ${LIMIT}B)" >> "$SUMMARY"

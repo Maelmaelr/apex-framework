@@ -84,31 +84,51 @@ DOCS="$ACTIVE/${RUN}-docs-changed.txt"
 # renamed during THIS run is auto-added so a newly-created public-eligible skill
 # is mirrored on the first run that introduced it. The manual-allowlist-only
 # model would otherwise omit a skill dir in the run that created it; the
-# auto-extend below reads {run}-applied-ops.json for create/rename ops
-# and unions their target paths into a per-run dynamic allowlist. The denylist
+# auto-extend below reads {run}-evolve-plan.json - joined to
+# {run}-applied-ops.json by plan_op_index - for create/rename ops and unions
+# their target paths into a per-run dynamic allowlist. The plan is authoritative
+# for op kind/target (applied-ops carries no kind/target per evolve.md's
+# plan-is-authoritative rule), so reading kind off applied-ops alone always
+# yielded '' and silently disabled this feature. The denylist
 # (settings.json / CLAUDE.md / skills/apex-git / README.md / plugins
 # / statusline / tmp) always wins and is checked BEFORE the auto-extend.
 DYNAMIC_ALLOWED=""
 APPLIED="$ACTIVE/${RUN}-applied-ops.json"
+PLAN="$ACTIVE/${RUN}-evolve-plan.json"
 if [[ -s "$APPLIED" ]]; then
   DYNAMIC_ALLOWED=$(python3 -c "
-import json, sys, os
+import json, sys
 try:
-    ops = json.load(open(sys.argv[1], encoding='utf-8'))
+    applied = json.load(open(sys.argv[1], encoding='utf-8'))
 except Exception:
     sys.exit(0)
+try:
+    plan_ops = json.load(open(sys.argv[2], encoding='utf-8')).get('ops', [])
+except Exception:
+    plan_ops = []
+def op_for(entry):
+    # Plan is authoritative; join by index. Fall back to the entry itself for
+    # legacy applied-ops that inlined kind/target.
+    idx = entry.get('plan_op_index')
+    if isinstance(idx, int) and 0 <= idx < len(plan_ops):
+        return plan_ops[idx]
+    return entry
 paths = set()
-for op in ops if isinstance(ops, list) else []:
+for entry in applied if isinstance(applied, list) else []:
+    if not isinstance(entry, dict):
+        continue
+    if entry.get('status') not in (None, 'applied'):
+        continue
+    op = op_for(entry)
     if not isinstance(op, dict):
         continue
-    kind = op.get('kind', '')
-    if kind in ('create', 'rename'):
+    if op.get('kind', '') in ('create', 'rename'):
         for key in ('target', 'rename_to'):
             v = op.get(key, '')
             if isinstance(v, str) and (v.startswith('skills/') or v.startswith('agents/')):
                 paths.add(v)
 print('\n'.join(sorted(paths)))
-" "$APPLIED" 2>/dev/null || true)
+" "$APPLIED" "$PLAN" 2>/dev/null || true)
 fi
 
 denied_by_static() {

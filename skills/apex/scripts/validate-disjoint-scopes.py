@@ -14,7 +14,7 @@
 #
 # Standard safety paths (from apex-core.md Conventions):
 #   .claude-tmp/        ~/.claude/tmp/        /tmp/{session}-*
-#   docs/**             README* (any depth)
+#   docs/** (any depth) README* (any depth)  VERSION (any depth)
 #
 # Input:
 #   --plan <path>        JSON file shape:
@@ -51,9 +51,10 @@ def _is_safety(path: str, session: str | None) -> bool:
         return True
     if p.startswith("~/.claude/tmp/") or p == "~/.claude/tmp":
         return True
-    if p.startswith("docs/") or p == "docs":
+    if p.startswith("docs/") or p == "docs" or "/docs/" in p:
         return True
-    if os.path.basename(p).startswith("README"):
+    base = os.path.basename(p)
+    if base.startswith("README") or base == "VERSION":
         return True
     if session and re.match(rf"^/tmp/{re.escape(session)}-", p):
         return True

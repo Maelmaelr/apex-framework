@@ -8,7 +8,7 @@ Called from `SKILL.md` after Step 2 (no-signals exit), after Step 4 (0-ops exit)
 bash $HOME/.claude/skills/admin-apex/scripts/polish-check.sh --run "$RUN"
 ```
 
-Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch / dead-hook detectors (mirrors `~/.claude/skills/admin-apex/audit.md`), diffs against any pre-existing `{run}-drift-report.json` so only NEW drift introduced by Step 4 apply surfaces. Skipped automatically when 0 ops applied this run.
+Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch / dead-hook / approaching-budget (WARN) / hash-roster (WARN) / negative-scope (WARN) detectors (mirrors `~/.claude/skills/admin-apex/audit.md`), diffs against any pre-existing `{run}-drift-report.json` so only NEW drift introduced by Step 4 apply surfaces. Skipped automatically when 0 ops applied this run.
 
 - Exit `0` -> clean; continue to Step 5b.
 - Exit `1` -> new drift in `{run}-polish-report.json`. Hold the clusters in working memory - do NOT append yet. The escalation append happens in Step 5d, AFTER 5b archives + truncates the workflow file; appending here would copy the block to the archive and wipe it from the live file in the same pass, so the next run would read an empty file and NOT pick it up. Continue to Step 5b - do NOT block the current run; the report (Step 6) surfaces the polish cluster count.

@@ -71,7 +71,7 @@ Standard apex safety guardrails apply (hook + global-`CLAUDE.md` enforced - no s
 
 - Do not delete lessons without dedup, freshness, OR non-obvious-classification justification
 - Do not skip Reflect + Cleanup phase - it always runs (early-exit reasons are gap signals worth reflecting on)
-- Do not leave temp files on success - `cleanup-run.sh --phase analyze --post-success` removes `.claude-tmp/lessons-analyze-active/{run}-*`
+- Do not leave temp files on success - `cleanup-run.sh --phase analyze --run {run} --post-success` removes `.claude-tmp/lessons-analyze-active/{run}-*` (the `--run` flag is required; cleanup-run.sh exits 0 without cleaning if it is absent)
 - Do not route verified lessons to skill-file destinations. Verified lessons graduate mainly via the `.claude/rules/` branch (route.md Step 6); route.md also defines two exceptions - reference-grade verified lessons route to docs, and verified `[anti-pattern]` lessons route to CLAUDE.md / docs as warnings/gotchas. Match route.md Step 6; do NOT treat `.claude/rules/` as the sole path
 - Do not skip Route on the basis of "extract pre-categorized" / "lessons already well-categorized" rationales. Route skip is permitted ONLY via the deterministic gates: `triage.md` Step 4 (all-verified / zero-routable-unverified) or `triage.md` Step 3.5 / 3.7 zero-after-filter early exits. The extract phase's per-category insertion (Step 2) is NOT a routing claim and never short-circuits analyze.
 - Do not accept stale findings from freshness Explore agents without main-context verification (Step 3 post-check verification)

@@ -129,4 +129,4 @@ Standard apex safety guardrails apply (hook + global-`CLAUDE.md` enforced - no s
 - Do not mark lessons as `[verified]` (that is the analyze phase's job - extract writes `[unverified, last-hit: {today}]` only)
 - Do not reorganize, merge, rewrite, or move existing lessons between categories (reorganization is the analyze phase's domain)
 - Do not skip Step 6 - early-exit reasons (no project context, no lessons to extract) are gap signals worth reflecting on
-- Do not leave temp files on success - `cleanup-run.sh --phase extract --post-success` removes `.claude-tmp/lessons-extract-active/{run}-*`
+- Do not leave temp files on success - `cleanup-run.sh --phase extract --run {run} --post-success` removes `.claude-tmp/lessons-extract-active/{run}-*` (the `--run` flag is required; cleanup-run.sh exits 0 without cleaning if it is absent)

@@ -40,7 +40,7 @@ Monorepo: {yes/no, with workspace list if yes}
 Existing: {list any APEX artifacts already present}
 ```
 
-If ALL artifacts exist (CLAUDE.md + .claude-tmp/ + .claude/lessons.md + docs/project-context.md), print "Project already initialized. Nothing to do." and stop. Otherwise continue - re-runs backfill missing dirs (including a missing .claude/) without overwriting existing files.
+If ALL artifacts exist (CLAUDE.md + .claude-tmp/ + docs/project-context.md + the full `.claude/` structure created in Step 4: lessons.md + lessons-index.md + lessons-archive.md + commands/), print "Project already initialized. Nothing to do." and stop. Otherwise continue - re-runs backfill any missing artifact (including individual `.claude/` files when the dir already exists) without overwriting existing files.
 
 ## Step 2: Gather Info
 

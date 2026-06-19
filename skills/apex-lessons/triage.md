@@ -50,7 +50,7 @@ ARCHIVE: "lesson text snippet" (last-hit: YYYY-MM-DD / never)
 
 If no lessons meet archival criteria and no unarchival candidates found, skip this step.
 
-**Zero-remaining gate.** If zero lessons remain after Steps 2-3.5 (all were deduplicated, promoted, stale-removed, or archived), skip to Step 7 (write updated file) and Step 8 (regenerate index). In full mode, mark Triage + Filter, Clean, Route, and Finalize tasks as completed (skipped) but proceed to Reflect + Cleanup (analyze.md Step 10). Print: `EARLY EXIT: 0 lessons remaining after consolidation/triage.`
+**Zero-remaining gate.** If zero lessons remain after Steps 2-3.5 (all were deduplicated, promoted, stale-removed, or archived), skip to Step 7 (write updated file) and Step 8 (regenerate index). In full mode, mark Triage + Filter, Clean, and Route tasks as completed (skipped), then still run the Finalize task (Steps 7-8 live there) and proceed to Reflect + Cleanup (analyze.md Step 10). Print: `EARLY EXIT: 0 lessons remaining after consolidation/triage.`
 
 ## Step 3.7: Non-obvious Filter
 
@@ -91,7 +91,7 @@ Append a one-line summary to `.claude-tmp/lessons-analyze-active/{run}-summary.m
 step-3.7: dropped {N} obvious lessons (kept {M})
 ```
 
-**Zero-after-filter gate.** If zero lessons remain after Step 3.7, skip to Step 7 (write updated file) and Step 8 (regenerate index); mark Clean, Route, and Finalize tasks as completed (skipped) but proceed to Reflect + Cleanup. Print: `EARLY EXIT: 0 lessons remaining after non-obvious filter.`
+**Zero-after-filter gate.** If zero lessons remain after Step 3.7, skip to Step 7 (write updated file) and Step 8 (regenerate index); mark Clean and Route tasks as completed (skipped), then still run the Finalize task (Steps 7-8 live there) and proceed to Reflect + Cleanup. Print: `EARLY EXIT: 0 lessons remaining after non-obvious filter.`
 
 ## Step 4: Filter for Routing
 

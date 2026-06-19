@@ -79,7 +79,7 @@ Step 0 TaskCreates 1-15 (trivial detection at step 3 may collapse 4-13 into "ski
    - spawn-prompt carries executor stack (hypothesis, single goal, per-task scope, scope budget hint E2 ["Expected: N files, ~K LOC; >2x -> split-needed"], lessons hits, project-context, task description) - subagents do NOT inherit working memory
    - parallel dispatch (mandatory when N >= 2 tasks): all tool_use blocks in ONE assistant message AND run_in_background:true on each; foreground multi-block serialises; sequential dispatch is only for coupled / B2 chain tasks
    - executor returns {goal, status, notes, tool_calls_made, files_touched} where status is implemented | already-satisfied | failed | split-needed (C1 self-assessment carries residual_goal + residual_files + what_i_did); orchestrator collects per-goal map for step 15
-   - dispatch self-report log (E1): each return appended to {session}-traces/execute/dispatch-summary.json; reflector flags tool_calls_made > 50
+   - dispatch self-report log (E1): each return appended to {session}-traces/execute/dispatch-summary.json; reflector flags oversized dispatch (E1 thresholds defined at step 13: max(tool_calls_made, tool_uses) > 50 OR total_tokens > 150k OR files_touched > 12)
    - split-needed redispatch (C1 follow-up): orchestrator re-spawns up to 2 follow-ups with residual_goal + residual_files (cap 2 per goal, under a ~100 tool_use / ~300k token per-goal cumulative-budget guard); third split-needed or budget breach -> failed
    - idempotency: same prompt -> same goals -> same N tasks; if goals were achieved last run, executors return already-satisfied -> empty diff -> step 12 skips commit
    - file-health hook = safety net during edits
