@@ -106,7 +106,7 @@ bash skills/admin-apex/scripts/admin-apex-finalize.sh \
   --run {run} --bump {kind} --message "<one-liner>" --body "<count+kind summary, e.g. '3 edit'>"
 ```
 
-Caller decides `{kind}` per the bump rule above (read `{run}-applied-ops.json` to classify). Branch on exit code:
+Caller decides `{kind}` per the bump rule above (classify from `{run}-evolve-plan.json` op kinds; `{run}-applied-ops.json` is kind-free). Branch on exit code:
 - `0` -> commit created; proceed to task 10
 - `10` -> nothing staged; finalize.sh already invoked `cleanup-run.sh`; skip task 10
 - `1` -> bad args / defensive-validation failure; surface to user

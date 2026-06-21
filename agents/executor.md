@@ -39,7 +39,7 @@ A bare-relative `.claude-tmp/apex-active/...` marker leaks into the MAIN tree wh
    ```
    APEX_ACTIVE="$(bash skills/apex/scripts/resolve-apex-active.sh {session})"
    ```
-   The resolver fails closed (non-zero, no stdout) on a missing manifest / `worktree_path`. On failure, abort the return with an explicit error - never fall back to bare-relative (re-introduces the leak).
+   The resolver fails closed (non-zero, no stdout) on a missing manifest / `worktree_path`. On failure: a standalone run (apex-fix, no manifest) writes the marker to the injected bare path - a manifest-less run owns no sibling worktrees, so the leak guard is moot; any other run aborts the return with an explicit error, never bare-relative (re-introduces the leak).
 2. `cd "$(dirname "$(dirname "$APEX_ACTIVE")")"` (the worktree root) so Edit / Write targets and bash commands resolve against the worktree; on an `apex/{session}` branch assert `git branch --show-current` matches the spawn-prompt session branch, fail-open on a non-apex branch (detached / pre-worktree runs).
 3. Resolve EVERY `{session}-*` marker write as absolute under `$APEX_ACTIVE/` - the trace, `{session}-side-effects.jsonl`, and the in-flight `{session}-main-scope.json` `allowed_files` append - never bare-relative. The cross-session `dispatch-summary.json` glob (behavior 2) scans all worktrees and stays project-root-relative.
 

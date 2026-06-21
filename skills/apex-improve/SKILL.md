@@ -111,7 +111,7 @@ Read and follow `~/.claude/skills/apex-improve/sync-git.md`. Skipped when Step 4
 
 Pre-flight: only fire if `test -f .claude/lessons.md` (the project may not have lessons captured yet).
 
-After Steps 7-8 commit + mirror succeed, spawn `/apex-lessons` as a subagent so its determinism / non-determinism mix runs in a fresh context (separate from this run's Step 4 apply context). The orchestrator runs both extract and analyze phases sequentially:
+Sequenced after Steps 7-8 (and still firing when those were skipped on a zero-op run - the lessons sweep is gated only on `.claude/lessons.md`, independent of framework commits), spawn `/apex-lessons` as a subagent so its determinism / non-determinism mix runs in a fresh context (separate from this run's Step 4 apply context). The orchestrator runs both extract and analyze phases sequentially:
 
 ```
 Spawn subagent (general-purpose, sonnet, bypassPermissions):

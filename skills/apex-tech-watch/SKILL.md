@@ -106,7 +106,7 @@ else
 fi
 ```
 
-The 256 KB cap is a backstop; the 30-day rotation should keep the file well under this in practice. If we hit the cap, the source list is too aggressive for weekly cadence - surface a one-line warning ("apex-tech-watch: tech-updates.md hit 256 KB cap; aggressive rotation applied") so it's visible at the next /apex-improve run. Either way record the guard outcome (`budget-guard: OK` | `aggressive-rotation-applied`) to `$SUMMARY` so the improve loop confirms the check ran rather than inferring a silent skip.
+The 256 KB cap is a backstop; the 30-day rotation should keep the file well under this in practice. If we hit the cap, the source list is too aggressive for weekly cadence - the `step-3: budget-guard aggressive-rotation-applied (...)` line the script writes to `$SUMMARY` is the signal surfaced at the next /apex-improve run. Either way record the guard outcome (`budget-guard: OK` | `aggressive-rotation-applied`) to `$SUMMARY` so the improve loop confirms the check ran rather than inferring a silent skip.
 
 ## Step 4: Report
 

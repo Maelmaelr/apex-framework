@@ -51,7 +51,7 @@ Reflect + Cleanup ALWAYS runs (even on early exits) so friction signals are not 
 | Triage + Filter (Steps 3, 3.5, 3.7, 4) | `triage.md` | freshness, archive, **non-obvious filter**, unverified routing gate |
 | Clean (Step 4.5) | `triage.md` | small-section merge, condense, oversized split |
 | Route + Finalize (Steps 5, 6, 6.5, 7, 8, 9) | `route.md` | route, verify-write, regenerate index, report |
-| Reflect + Cleanup (Step 10) | `reflect.md` | reflector spawn (`--phase lessons-analyze`), `cleanup-run.sh --phase analyze --post-success` |
+| Reflect + Cleanup (Step 10) | `reflect.md` | reflector spawn (`--phase lessons-analyze`), `cleanup-run.sh --phase analyze --run {run} --post-success` |
 
 Sub-file early exits jump to Reflect + Cleanup with the exit reason captured in `{run}-summary.md` (the early-exit IS the gap signal worth reflecting on):
 - `consolidate.md` Step 1 "no lessons" -> Reflect + Cleanup
