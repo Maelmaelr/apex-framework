@@ -15,7 +15,7 @@ TaskCreate "2. Discover apex/* branches"
 TaskCreate "3. Update main"
 TaskCreate "4. Merge loop"
 TaskCreate "4.5 Replay worktree side-effects"
-TaskCreate "4.6 Lint/build cleanup post-merge"
+TaskCreate "4.6 Lint/build cleanup post-conflict"
 TaskCreate "5. Cleanup merged branches"
 TaskCreate "6. Final push + summary"
 TaskCreate "6.5 Cleanup project apex scratch"
@@ -115,7 +115,7 @@ TaskCreate "7. Self-reflect"
    ```
    Script reads every merged branch's side-effects log, dedupes by the whitespace-normalized verbatim `cmd` string (leading `KEY=VALUE` env assignments are part of the string, so `DB=stage pnpm migrate` and `DB=prod pnpm migrate` do NOT collapse), and on non-empty `unique_cmds` writes `<run>-side-effects-dedup.json` + prints cmds to stdout. **Empty `unique_cmds` skips the artifact write AND the summary line entirely** (no zero-payload `dedup.json`, no `artifact skipped` note - silence is the signal; cluster: merge-side-effects-empty-skip); the non-empty case writes the dedup artifact but no summary line - the orchestrator appends `step-4.5: replayed K/N (skipped=M)` itself after the AskUserQuestion below. Non-empty list -> AskUserQuestion (`run-all` | `skip-all`; dismiss = `skip-all`; prompt MUST include the full deduped command list verbatim). On `run-all`: invoke each sequentially from main worktree root, first-failure-stop; record `{cmd, exit_code, stderr_tail}` into `<run>-side-effects-replay.json`. Non-zero exit halts the replay (user resolves + re-runs `/apex-merge`). On `skip-all`: write `{skipped: true}`. Append `step-4.5: replayed K/N (skipped=M)` to `<run>-summary.md`. Per the destructive-operation rule, AskUserQuestion is mandatory - never auto-run.
 
-4.6. **Lint/build cleanup post-merge** - inline, runs ONLY when step 4 resolved 1+ conflicts (clean-merge-only runs skip; union of two clean diffs cannot introduce a lint regression neither side had). Merge resolution stitches code at the file level and can leave unused imports / unreferenced symbols / lint regressions neither side carried alone; run `apex-fix` once on main. Run from the main worktree (precheck Step 1 already enforces cwd):
+4.6. **Lint/build cleanup post-conflict** - inline, runs ONLY when step 4 resolved 1+ conflicts (clean-merge-only runs skip; union of two clean diffs cannot introduce a lint regression neither side had). Merge resolution stitches code at the file level and can leave unused imports / unreferenced symbols / lint regressions neither side carried alone; run `apex-fix` once on main. Run from the main worktree (precheck Step 1 already enforces cwd):
    ```bash
    RESOLVED_CONFLICTS=$(jq -r '.[] | select(.status=="merged") | (.detail // "")' \
      "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-merge-result.json" 2>/dev/null \
