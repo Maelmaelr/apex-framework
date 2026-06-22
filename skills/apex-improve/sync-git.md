@@ -53,7 +53,7 @@ Mirrors admin-apex SKILL.md task 10. Skip if Step 7 was skipped or returned non-
 bash skills/admin-apex/scripts/mirror-to-dev.sh "{run}"
 ```
 
-The script reads `{run}-dirty-paths.txt` + `{run}-docs-changed.txt`, applies the closed allowlist (`skills/apex/**`, `skills/admin-apex/**`, `skills/apex-improve/**`, `skills/apex-merge/**`, `skills/apex-tech-watch/**`, `agents/**`, `VERSION`, `apex-core.md`, `apex-core-overview.md`), copies survivors to the public mirror (default `/Users/mael/dev/apex-framework`), commits with the same message as the just-made `~/.claude` commit, then pushes the public repo first and `~/.claude` second.
+The script reads `{run}-dirty-paths.txt` + `{run}-docs-changed.txt`, applies the closed allowlist (`skills/apex/**`, `skills/admin-apex/**`, `skills/apex-improve/**`, `skills/apex-merge/**`, `skills/apex-tech-watch/**`, `skills/apex-init/**`, `skills/apex-fix/**`, `skills/apex-lessons/**`, `agents/**`, `VERSION`, `apex-core.md`, `apex-core-overview.md`), copies survivors to the public mirror (default `/Users/mael/dev/apex-framework`), commits with the same message as the just-made `~/.claude` commit, then pushes the public repo first and `~/.claude` second.
 
 On exit 0 (success), immediately sweep this run's artifacts:
 
@@ -83,6 +83,6 @@ The no-commit branch (Step 7 exit 10) DOES call `cleanup-run.sh` internally via 
 
 ## Invariants
 
-The `>=1`-op run gate lives in `SKILL.md`. The bump rule is byte-for-byte identical to admin-apex SKILL.md task 9, so the two flows produce identical version semantics. Both repos push together; on per-repo push failure the script exits 6 or 7 and leaves the other repo untouched (mirror-to-dev.sh's behavior). The closed allowlist keeps `skills/apex-fix/**`, `skills/apex-git/**`, etc. private to `~/.claude` regardless of how Step 4 modified them.
+The `>=1`-op run gate lives in `SKILL.md`. The bump rule is byte-for-byte identical to admin-apex SKILL.md task 9, so the two flows produce identical version semantics. Both repos push together; on per-repo push failure the script exits 6 or 7 and leaves the other repo untouched (mirror-to-dev.sh's behavior). The closed allowlist keeps `skills/apex-git/**` (plus `settings.json`, `CLAUDE.md`, `README.md`, and the `plugins/` / `statusline/` / `tmp/` roots) private to `~/.claude` regardless of how Step 4 modified them; every other apex skill - including `apex-init`, `apex-fix`, and `apex-lessons` - is mirrored.
 
 See `skills/admin-apex/SKILL.md` tasks 9-10 for the canonical contract; `skills/admin-apex/scripts/admin-apex-finalize.sh` and `skills/admin-apex/scripts/mirror-to-dev.sh` for the implementation; `skills/apex-improve/SKILL.md` Steps 7-8 stub for the apex-improve entry point.
