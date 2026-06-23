@@ -36,6 +36,10 @@
 #     on the final integration commit, and by orchestrator post-agent inline
 #     bumps in non-/apex contexts; step 12 of /apex persists `bump_hint` into
 #     the manifest rather than bumping VERSION directly)
+#   - any CLAUDE.md file at any depth + .claude/rules/** (the doc-code
+#     consistency rule fires on every code edit, so these always-relevant doc
+#     surfaces must be writable without a mid-run scope-add - same class as
+#     docs/** / README)
 #
 # Never includes .env* or .git/ regardless of scope contents (those are gated
 # by separate hooks / settings deny rules).
@@ -86,10 +90,13 @@ is_safety_path() {
   [[ "$target" == /tmp/*-* ]] && return 0
   [[ "$target" == "docs/"* ]] && return 0
   [[ "$target" == */docs/* ]] && return 0
+  [[ "$target" == ".claude/rules/"* ]] && return 0
+  [[ "$target" == */.claude/rules/* ]] && return 0
   local base
   base=$(basename "$target")
   [[ "$base" == README* ]] && return 0
   [[ "$base" == "VERSION" ]] && return 0
+  [[ "$base" == "CLAUDE.md" ]] && return 0
   return 1
 }
 
