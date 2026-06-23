@@ -5,15 +5,14 @@
 # Walks:
 #   skills/apex/*.md             -> skills[] (apex sub-skills)
 #   skills/apex/steps/*.md       -> skills[] (per-step lazy-load contracts; R5 budget-enforced)
-#   skills/apex-*/SKILL.md       -> skills[] (sibling apex skills: improve, tech-watch,
-#                                  eod, fix, init, lessons-extract, lessons-analyze,
-#                                  file-health)
+#   skills/apex-*/*.md           -> skills[] (sibling apex skills SKILL.md + sub-.md:
+#                                  fix, git, improve, init, lessons, merge, tech-watch)
 #   skills/admin-apex/*.md       -> skills[] (admin-apex sub-skills: SKILL, audit,
 #                                  evolve, sync-docs)
 #   agents/*.md                  -> agents[]
 #   skills/apex/scripts/*.{sh,py,js,json}       -> scripts[]
 #   skills/admin-apex/scripts/*.{sh,py,js,json} -> scripts[]
-#   skills/apex-merge/scripts/*.{sh,py,js,json} -> scripts[]
+#   skills/apex-*/scripts/*.{sh,py,js,json}     -> scripts[] (sibling skill scripts: lessons, merge)
 #     (.js = committed Workflow scripts, *.workflow.js;
 #      .json = committed data files, e.g. content-budget.json)
 #   skills/apex/schemas/*.json       -> schemas[]
@@ -231,14 +230,14 @@ inventory = {
     "skills": (
         collect_md(os.path.join(repo, "skills/apex/*.md"))
         + collect_md(os.path.join(repo, "skills/apex/steps/*.md"))
-        + collect_md(os.path.join(repo, "skills/apex-*/SKILL.md"))
+        + collect_md(os.path.join(repo, "skills/apex-*/*.md"))
         + collect_md(os.path.join(repo, "skills/admin-apex/*.md"))
     ),
     "agents": collect_md(os.path.join(repo, "agents/*.md")),
     "scripts": (
         collect_scripts(os.path.join(repo, "skills/apex/scripts/*"))
         + collect_scripts(os.path.join(repo, "skills/admin-apex/scripts/*"))
-        + collect_scripts(os.path.join(repo, "skills/apex-merge/scripts/*"))
+        + collect_scripts(os.path.join(repo, "skills/apex-*/scripts/*"))
     ),
     "schemas": (
         collect_schemas(os.path.join(repo, "skills/apex/schemas/*.json"))
