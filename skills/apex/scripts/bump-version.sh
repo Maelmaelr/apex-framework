@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # VERSION bump tier applier. NOT run at /apex step 12: step 12 only classifies
-# + persists bump_hint into the session manifest. The project-side deploy skill
-# reads every merged session's bump_hint, picks the highest tier across the
-# batch, and runs this script ONCE on the final integration commit.
+# + persists bump_hint into the session manifest as a record. The project-side
+# deploy skill derives the tier from the merged commits' types (commit-type
+# buckets) - not from bump_hint, since the manifests are removed with their
+# worktrees at /apex-merge cleanup before deploy runs - and runs this script
+# ONCE on the final integration commit with the highest tier across the batch.
 # Spec: apex-core.md ## Conventions (bump tiers) + steps/12-commit.md.
 #
 # Reads <project-root>/VERSION (vX.Y.Z; tolerates missing-`v` and trailing
