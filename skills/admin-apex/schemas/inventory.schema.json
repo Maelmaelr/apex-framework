@@ -51,7 +51,7 @@
     },
     "schemas": {
       "type": "array",
-      "description": "skills/apex/schemas/*.json. Each entry: path, $id, title.",
+      "description": "skills/admin-apex/schemas/*.json. Each entry: path, $id, title.",
       "items": {
         "type": "object",
         "required": ["path", "id"],

@@ -1,6 +1,6 @@
 # apex-lessons (analyze phase): Consolidate
 
-Called from `analyze.md` after Task Setup Step 0a (run mint). Performs the Step 0b pipeline mode gate itself in Step 1 (counting total/unverified lessons requires reading `.claude/lessons.md`, which only this phase does). Returns to `analyze.md` for the Triage phase. Extracted to keep the dispatcher under the 175-line cap.
+Called from `analyze.md` after Task Setup Step 0a (run mint). Performs the Step 0b pipeline mode gate itself in Step 1 (counting total/unverified lessons requires reading `.claude/lessons.md`, which only this phase does). Returns to `analyze.md` for the Triage phase. Extracted to keep the dispatcher within the file-health content budget.
 
 This phase is the Consolidate task in the full-mode TaskCreate chain (read, deduplicate, merge, detect promoted entries).
 
@@ -9,7 +9,7 @@ This phase is the Consolidate task in the full-mode TaskCreate chain (read, dedu
 **Pre-check lessons.md size** before reading (avoids token-limit errors on large files):
 1. Run `wc -l < .claude/lessons.md 2>/dev/null || echo 0` via Bash to get line count.
 2. If file missing (count = 0 and file does not exist), print "No lessons to analyze" and proceed to Reflect + Cleanup (analyze.md Step 10) - early exits never skip reflection.
-3. Targeted-read gate (threshold 400 for this file vs the global 250-line default): if >400 lines, read with offset/limit (300 lines/chunk) alongside `.claude/lessons-index.md` in parallel.
+3. Targeted-read gate: if >400 lines, read with offset/limit (300 lines/chunk) alongside `.claude/lessons-index.md` in parallel.
 4. Otherwise, read both lessons files in a SINGLE message (parallel Read tool calls):
    - `.claude/lessons.md` - master lessons file
    - `.claude/lessons-index.md` - category-keyword mappings (used in Steps 3 and 5; format: `keyword1, keyword2 -> Category Name`)

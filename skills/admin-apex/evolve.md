@@ -42,7 +42,7 @@ Set `doc_only: true` for any op that does NOT touch `skills/apex*/`, `skills/adm
 
 **Plan is the single source of op rationale.** `{run}-evolve-plan.json` is authoritative; `{run}-applied-ops.json` MUST NOT restate the `rationale` / `target` / `kind` fields of an op verbatim - applied entries reference the plan by op-index (`{plan_op_index: N, status: applied, delta_lines: ..., dirty_paths: [...]}`) and any structured outcome fields (drift, errors, retries). Task 6 may patch the plan in place before applying when an auto-fix or scope-overspill discovers an extra op (preserve original `_meta.generated_at`; bump `_meta.amended_at`); task 8 auto-fixes that add ops likewise patch the plan first, NEVER append directly to applied-ops without a plan op. Closes the recurring plan-vs-applied divergence cluster.
 
-Validate the plan before write. Admin-apex schemas live at `skills/admin-apex/schemas/` (siblings of apex schemas). Two equivalent invocation paths:
+Validate the plan before write. Admin-apex schemas live at `skills/admin-apex/schemas/`. Two equivalent invocation paths:
 
 ```
 # Preferred: shell wrapper (sets APEX_SCHEMA_DIR internally under --admin)

@@ -12,6 +12,10 @@
 #   - Else run runner on derived set; first-fail-stop semantics, errors written
 #     to {session}-verify-errors.txt (same path verify-build.sh uses).
 #
+# NOTE: the {session}-main-scope.json diff filter below is a dormant fail-safe:
+# nothing in the current fenced-dynamic model writes that file (retired
+# discovery artifact), so the filter is inert unless a caller supplies one.
+#
 # Args:
 #   --session <token>     required, 8-char lowercase hex
 #   --project-type <t>    required: node | rust | python | go
@@ -56,9 +60,10 @@ trap 'rm -f "$TMP_OUT"' EXIT
 # `git merge-base $base_branch HEAD` (the apex/<session> worktree's fork point;
 # stable since the worktree branched off at session mint). Worktree isolation
 # means no sibling /apex session writes to this working tree.
-# When this session has a main-scope on disk, intersect the diff with
-# `allowed_files` so only THIS session's changes drive test selection.
-# Pre-discovery (no main-scope) and trivial path keep the unfiltered behavior.
+# If a {session}-main-scope.json exists on disk, intersect the diff with
+# `allowed_files` so only THIS session's changes drive test selection. Legacy
+# scoped mode: no live producer writes that file since the fenced-dynamic
+# transition, so absent a caller-supplied one the unfiltered path always runs.
 get_modified_files() {
   local manifest="$APEX_ACTIVE/${SESSION}.json"
   [[ -f "$manifest" ]] || return 1

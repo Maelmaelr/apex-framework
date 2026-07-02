@@ -5,10 +5,9 @@
       {
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "hooks": [
-          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/scope-check-hook.sh" },
+          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/worktree-fence-hook.sh" },
           { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/protect-env-hook.sh" },
-          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/file-health-hook.sh" },
-          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/step-read-gate-hook.sh" }
+          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/file-health-hook.sh" }
         ]
       },
       {
@@ -20,28 +19,7 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/block-destructive-hook.sh" },
-          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/step-read-gate-hook.sh" }
-        ]
-      },
-      {
-        "matcher": "Task",
-        "hooks": [
-          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/step-read-gate-hook.sh" }
-        ]
-      },
-      {
-        "matcher": "TaskUpdate",
-        "hooks": [
-          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/step-read-gate-hook.sh" }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "Read",
-        "hooks": [
-          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/step-read-gate-hook.sh" }
+          { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/block-destructive-hook.sh" }
         ]
       }
     ],
@@ -49,6 +27,11 @@
       {
         "hooks": [
           { "type": "command", "command": "bash ~/.claude/skills/apex/scripts/session-end-hook.sh" }
+        ]
+      },
+      {
+        "hooks": [
+          { "type": "command", "command": "bash ~/.claude/skills/admin-apex/scripts/session-end-hook.sh" }
         ]
       }
     ]

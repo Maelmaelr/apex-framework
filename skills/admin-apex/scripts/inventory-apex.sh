@@ -14,7 +14,6 @@
 #   skills/apex-*/scripts/*.{sh,py,js,json}     -> scripts[] (sibling skill scripts: lessons, merge)
 #     (.js = committed Workflow scripts, *.workflow.js;
 #      .json = committed data files, e.g. content-budget.json)
-#   skills/apex/schemas/*.json       -> schemas[]
 #   skills/admin-apex/schemas/*.json -> schemas[]
 #   settings.json                -> hooks[]
 #   apex-core.md, apex-core-overview.md, README.md, CLAUDE.md -> spec_docs[]
@@ -237,10 +236,7 @@ inventory = {
         + collect_scripts(os.path.join(repo, "skills/admin-apex/scripts/*"))
         + collect_scripts(os.path.join(repo, "skills/apex-*/scripts/*"))
     ),
-    "schemas": (
-        collect_schemas(os.path.join(repo, "skills/apex/schemas/*.json"))
-        + collect_schemas(os.path.join(repo, "skills/admin-apex/schemas/*.json"))
-    ),
+    "schemas": collect_schemas(os.path.join(repo, "skills/admin-apex/schemas/*.json")),
     "hooks": collect_hooks(),
     "spec_docs": collect_spec_docs(),
     "version": read_version(),

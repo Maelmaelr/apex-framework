@@ -27,8 +27,8 @@ judges spec-vs-code contradiction' },
 // cron path - Open risk 4), AND the Workflow tool is reachable.
 // The serial fallback (audit.md: dispatch the same per-unit Explore agents in a
 // single response) produces identical findings when Workflow is absent
-// (headless/cron). Agents reuse agentType 'Explore' (read-only search, no Edit ->
-// scope-check hook not engaged) and inherit the orchestrator CWD (= ~/.claude,
+// (headless/cron). Agents reuse agentType 'Explore' (read-only search, no Edit)
+// and inherit the orchestrator CWD (= ~/.claude,
 // the framework root; admin-apex cd's there at task 1), so the repo-relative
 // `files` paths resolve with no path plumbing (Phase 0 spike finding).
 //

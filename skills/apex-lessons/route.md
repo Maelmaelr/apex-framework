@@ -1,6 +1,6 @@
 # apex-lessons (analyze phase): Route + Finalize
 
-Called from `analyze.md` after the Triage + Clean phase. Returns to `analyze.md` for the final report. Extracted to keep the dispatcher under the 175-line cap.
+Called from `analyze.md` after the Triage + Clean phase. Returns to `analyze.md` for the final report. Extracted to keep the dispatcher within the file-health content budget.
 
 Covers the Route and Finalize tasks in the full-mode TaskCreate chain (route to permanent homes, verify, write, index, report).
 
@@ -31,7 +31,7 @@ For each routable lesson, determine the best destination:
 
 **Global CLAUDE.md**: Tool usage pattern, cross-project habit, or universal best practice.
 
-**apex/SKILL.md**: Workflow step improvement, flag behavior, or phase guidance.
+**apex/SKILL.md**: Orchestrator behavior - lane routing, executor-brief discipline, worktree-fence or verify-gate guidance.
 
 **docs/**: Feature behavior, architecture decision, or API documentation.
 
@@ -47,7 +47,7 @@ For each routable lesson, determine the best destination:
 
 Execute each routing action:
 - **Project/Global CLAUDE.md**: Append under an EXISTING section whose domain matches the lesson; never invent a new top-level section in project CLAUDE.md - the curated section taxonomy IS the structure, preserve it (if nothing fits, prefer a `docs/` pointer or `lessons.md` over a new heading). One concise rule or pointer line, never narrative or accumulated implementation detail. Project CLAUDE.md appends are also subject to the leanness budget above (evict-to-docs on breach); global `~/.claude/CLAUDE.md` is user-curated - never auto-evict it.
-- **apex/SKILL.md or subfiles**: Edit the relevant workflow file.
+- **apex/SKILL.md**: Edit the orchestrator doc directly (the apex skill ships SKILL.md + scripts only - no doc subfiles).
 - **docs/**: Identify the most relevant doc file and append or suggest the edit.
 - **`.claude/rules/`**: Append the one-liner as a `-` bullet under the best-matching heading in the rule chosen by `paths:` glob match. Apply the per-rule leanness budget first; on breach route to `docs/` instead. Then remove the lesson from lessons.md using the Delete guard below. No matching rule -> emit `NEEDS-RULE:` and keep the lesson.
 - **Verified (keep)**: Update tag to `[verified, last-hit: YYYY-MM-DD]` (preserving the existing last-hit date) in lessons.md.

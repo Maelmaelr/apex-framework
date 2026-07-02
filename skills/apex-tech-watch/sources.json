@@ -42,7 +42,7 @@
       "id": "web-agent-patterns",
       "kind": "websearch",
       "query": "claude agent SDK design patterns 2026",
-      "summarize_prompt": "Top 5 results from the last 30 days that describe agent architecture / orchestration patterns relevant to apex (multi-agent, scope-checking, self-reflection). Title, URL, one-line takeaway."
+      "summarize_prompt": "Top 5 results from the last 30 days that describe agent architecture / orchestration patterns relevant to apex (multi-agent, worktree isolation, self-reflection). Title, URL, one-line takeaway."
     },
     {
       "id": "typescript-releases",

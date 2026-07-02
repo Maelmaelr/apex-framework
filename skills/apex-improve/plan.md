@@ -28,9 +28,9 @@ A finding with `target_files: []` (e.g., a tech-watch never-run / stale finding)
 
 ## Mirror-pair invariant
 
-The apex framework documents one mandatory mirror pair (per `skills/apex/SKILL.md`):
+The apex framework maintains one mandatory mirror pair (per `apex-core.md`, which names the overview as its execution summary):
 
-- `apex-core.md` (full behavioral contract) <-> `apex-core-overview.md` (light-read skeleton + skip matrix)
+- `apex-core.md` (architecture rationale + cross-cutting conventions) <-> `apex-core-overview.md` (execution skeleton)
 
 When any op in the plan targets one half of the pair, auto-pair the same `kind` against the other half and emit it as a second op in the same `ops` array (same `rationale`, suffixed `mirror-pair:`). The LLM may drop the auto-paired op only with an explicit per-op `rationale` prefixed `mirror-drop:` justifying scoped divergence (e.g., `mirror-drop: change is overview-only formatting; contract surface unaffected`); silent drops are not permitted.
 

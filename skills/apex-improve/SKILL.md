@@ -65,7 +65,7 @@ If all three signals empty / current AND no consumable deferred backlog at Step 
 
 Each task `blockedBy` the previous. Steps 3-4 conditional on Step 2 non-empty findings; Steps 5-6 ALWAYS run (finalize resets the consumed-signal files every invocation - see finalize.md); Steps 7-8 conditional on >=1 op applied; Step 9 conditional on `.claude/lessons.md` exists.
 
-**Deferred-tool guard.** `TaskCreate` / `TaskUpdate` / `TaskList` / `AskUserQuestion` are deferred - batch-fetch via `ToolSearch select:TaskCreate,TaskUpdate,TaskList,AskUserQuestion` before queuing the chain. If a `TaskCreate` / `TaskUpdate` errors (`InputValidationError` / "schema not sent to the API"), do NOT fire the remaining lines - re-run that ToolSearch load, retry ONCE, then STOP and surface to the user (an empty / flaky ToolSearch return fails every call identically; same contract as apex / admin-apex / apex-merge Step 0).
+**Deferred-tool guard.** `TaskCreate` / `TaskUpdate` / `TaskList` / `AskUserQuestion` are deferred - batch-fetch via `ToolSearch select:TaskCreate,TaskUpdate,TaskList,AskUserQuestion` before queuing the chain. If a `TaskCreate` / `TaskUpdate` errors (`InputValidationError` / "schema not sent to the API"), do NOT fire the remaining lines - re-run that ToolSearch load, retry ONCE, then STOP and surface to the user (an empty / flaky ToolSearch return fails every call identically; same contract as admin-apex / apex-merge Step 0).
 
 ## Step 1: Mint run + manifest (inline)
 

@@ -6,7 +6,8 @@
 # Per-run mirror (NOT a full reconciliation). Reads {run}-dirty-paths.txt and
 # {run}-docs-changed.txt from .claude-tmp/admin-apex-active/, applies an
 # allowlist (everything outside is private to ~/.claude and skipped), copies
-# survivors into the public mirror with identity path mapping, stages + commits
+# survivors into the public mirror with identity path mapping, prunes dirs the
+# deletions emptied (git tracks no dirs, so they would linger), stages + commits
 # them with the same message as the just-made ~/.claude commit, then pushes
 # the public repo first (more visible failure surface) and ~/.claude second.
 #
@@ -206,6 +207,10 @@ for p in ${paths[@]+"${paths[@]}"}; do
     mirrored+=("$p")
   fi
 done
+
+# Deleted files can empty their parent dirs in the mirror; git tracks no dirs,
+# so without pruning they linger as stale untracked layout (steps/, schemas/).
+find "$PUBLIC/skills" "$PUBLIC/agents" -type d -empty -not -path '*/.git*' -delete 2>/dev/null || true
 
 if [[ ${#mirrored[@]} -eq 0 ]]; then
   echo "no allowlisted paths to mirror"

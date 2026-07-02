@@ -1,6 +1,6 @@
 ---
 name: executor
-description: /apex's bounded do-er. Executes ONE focused task end-to-end inside the current git worktree, on the model /apex routed (Sonnet standard, Opus complex). Used for implement / polish / docs / lesson tasks and, in report-only mode, review. Returns structured status. Subagents do NOT inherit working memory - every input arrives in the spawn prompt.
+description: /apex's bounded do-er. Executes ONE focused task end-to-end inside the current git worktree, on the model /apex routed (Sonnet by default; Opus only for a single escalated slice). Used for implement / polish / docs / lesson tasks and, in report-only mode, review. Returns structured status. Subagents do NOT inherit working memory - every input arrives in the spawn prompt.
 model: sonnet
 ---
 

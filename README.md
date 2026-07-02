@@ -2,49 +2,37 @@
 
 > APEX turns feature requests into clean, integrated code, and leaves the codebase better than it found it. Every session stays in scope, verifies its own work, and learns from what went wrong - so the next one reaches further with less effort. APEX is allowed to grow new skills, but every skill file must stay lean: nothing new gets added inside unless something else earns its place. Today it ships features solo or via delegated executors. The goal is whole modules - you're the CEO with the vision, APEX is the CTO that ships it.
 
-An opinionated operating system for Claude Code. APEX replaces ad-hoc "just go fix it" prompting with a deliberate, self-improving pipeline: hypothesize, discover, plan, execute, verify, learn.
+An opinionated operating system for Claude Code. APEX keeps the speed of ad-hoc "just go fix it" prompting while adding the three things it lacks: model routing, bounded-context delegation, and deterministic guardrails.
 
 ---
 
 ## Why
 
-Out of the box an LLM assistant is fast but forgetful, confident but shallow, and drifts off scope the moment work gets delegated. Long sessions lose state. Subagents silently edit files nobody asked about. Discovery hallucinates findings that look plausible but cite wrong line ranges. Docs go stale. Audits rely on "I already checked that." Destructive commands and secret files are one typo away. Hard-won lessons evaporate the moment the session ends. APEX exists to remove those failure modes.
+Out of the box an LLM assistant is fast but forgetful, confident but shallow, and drifts off scope the moment work gets delegated. Long sessions lose state. Subagents silently edit files nobody asked about. Docs go stale. Audits rely on "I already checked that." Destructive commands and secret files are one typo away. Hard-won lessons evaporate the moment the session ends. APEX exists to remove those failure modes.
 
 ---
 
 ## How
 
-The main coding workflow enters through `/apex <prompt>`. One entry point, one linear 15-step flow, three execution tiers sized to the work.
+The main coding workflow enters through `/apex <prompt>`. One entry point; a fenced-dynamic orchestrator. There is no fixed step sequence - the orchestrator sequences the work itself, the way a senior engineer would, inside hard rails enforced by hooks.
 
-### Linear 15-step flow (every run)
+### Session shape
 
-Step 0 queues tasks 1-15. The trivial detector at step 3 collapses 4-13 into completed-skipped; the economy gate at step 7 picks Sonnet for executors and trims the tail.
+1. **Setup.** `skills/apex/scripts/mint-worktree.sh` mints a throwaway git worktree `.apex-worktrees/<session>/` on branch `apex/<session>`, symlinks dep caches, and writes a session manifest. The orchestrator `cd`s in; that arms the fence.
+2. **Route once.** One lane decision per session - trivial, standard, or complex - sets the executor model and whether to decompose hard and add a review pass. Never re-litigated per file.
+3. **Drive.** Understand and reuse existing code, decompose into smallest single-purpose tasks, dispatch `agents/executor.md` subagents (parallel when file sets are disjoint), reconcile their reports against `git status --porcelain`.
+4. **Verify.** Targeted typecheck/test/lint by default; `skills/apex/scripts/verify-build.sh` for cross-cutting ripple. Failures feed an executor fix-loop (cap 3). A clean exit gates completion.
+5. **Commit per verified slice** on `apex/<session>`, then hand off: `/apex-merge` folds the branch back onto its base and removes the worktree. `/apex` never merges or pushes itself.
 
-1. Analyze prompt + read project context.
-2. Create session manifest (`{session}` token; survives context compaction).
-3. Trivial pre-flight (single named file + no cross-file deps -> jump to step 14).
-4. Hypothesis (interpretation, complexity hint, alternatives, discovered paths).
-5. Load lessons + project docs.
-6. Discovery (LSP -> Glob -> Grep -> Screener LLM gate; emits scope JSON with claim provenance).
-7. Economy pre-flight (tier classifier).
-8. Execute (per-task `executor.md` dispatch; Sonnet under economy, main session model under standard).
-9. Polish (in-scope unused-imports / dead-code / leftover comments).
-10. Verify (lint + build; bounded fix-loop with `executor.md`, cap 3).
-11. Tail (`documentation.md` + `learn.md` in standard; only `documentation.md` in economy).
-12. VERSION bump + git stage / commit / push.
-13. Self-reflect (`reflector.md`, Haiku, foreground, silent).
-14. Cleanup session artifacts.
-15. Inline summary.
+### Lanes
 
-### Tiers
+| Lane     | Executor model | Shape                                                                             |
+|----------|----------------|------------------------------------------------------------------------------------|
+| trivial  | none (inline)  | one obvious edit to a named file; edit inline, commit, done                        |
+| standard | Sonnet         | bounded, mechanical, multi-file; delegate to `agents/executor.md`                  |
+| complex  | Sonnet         | judgment / cross-cutting; hard decomposition + reviewer pass; Opus per-slice only  |
 
-| Tier     | Decided at | Effect                                                                        |
-|----------|------------|-------------------------------------------------------------------------------|
-| trivial  | step 3     | Inline single Edit/Write -> jump to 14. Skips 4-13.                           |
-| economy  | step 7     | Step 8 executors = Sonnet; step 11 `learn` skipped.                           |
-| standard | step 7     | Step 8 executors = main session model; full tail (`documentation` + `learn`). |
-
-Every executor runs in its own fresh 1M-token context with a scoped allowed-files list. Edits outside scope are blocked at the tool call by the scope-check hook, not caught in review.
+Every executor runs in its own fresh context inside the session worktree. Edits outside the worktree are blocked at the tool call by the worktree fence hook (`worktree-fence-hook.sh`), not caught in review.
 
 ---
 
@@ -52,29 +40,28 @@ Every executor runs in its own fresh 1M-token context with a scoped allowed-file
 
 Ten load-bearing ideas. Everything else in the repo is there to implement them.
 
-1. **Complexity-gated routing.** Trivial detection at step 3 short-circuits the full flow. The economy gate at step 7 picks Sonnet executors when the work fits. Effort matches the task; one-liners stay one-liners.
-2. **Hypothesis before discovery, discovery before code.** The hypothesis is written down at step 4 so bias is visible. Discovery confirms or corrects it. Nothing gets edited before the picture is verified.
-3. **Deterministic enumeration first, LLMs second.** Step 6 cascades LSP -> Glob -> Grep mechanically. The Screener LLM filters the keep/drop set but never invents file paths. The ground-truth list is never a hallucination.
-4. **Pointers, not bodies.** Discovery findings persist on disk as scope JSON; executors and the orchestrator read pointers. The main session never bloats with implementation noise.
-5. **Anti-hallucination as a phase.** Every claim - file path, line range, reason - is recorded with provenance and re-readable. Bad claims are dropped mechanically; bad-claim ratios trigger re-runs.
-6. **Session state that survives context clearing.** A `{session}` manifest persists across context compaction and API failures. Long runs do not lose state.
-7. **Scoped delegation, enforced at the tool call.** Every executor has an allowed-files list. Edits outside it are blocked by the scope-check hook, not caught in review. The file-health hook splits oversized files before writes land.
-8. **Verify, do not trust.** Step 10 runs lint and build. Failures block completion and feed `executor.md` a bounded fix-loop (cap 3). "It looked right" is not a verdict.
-9. **Lessons and discovery findings as persistent memory.** Every session reads the lessons index first and writes back what it learned. Discovery scope JSON persists per session. Next run starts with what the last run discovered; duplicates merge, stale entries age out.
-10. **Self-improving, safe, lean, resilient.** Step 13 reflection appends signals to the improvement log every run; `apex-improve` consumes those signals weekly to evolve the framework. Destructive commands, `.env` reads, and force-pushes to main are blocked outright. Skill files stay lean by rule: the file-health hook splits any file that crosses the threshold; nothing new gets added unless something else earns its place.
+1. **Dynamic orchestration, hard rails.** No fixed step march, no read-gates. The orchestrator sequences the work; hooks enforce the boundaries. Judgment where it helps, determinism where it matters.
+2. **The worktree is the scope.** Every session runs in a throwaway git worktree on its own branch. No file-level allow-lists to compute or maintain - the blast radius is one disposable branch, and the fence hook blocks writes outside it at the tool call.
+3. **Think / do split.** The orchestrator reasons, plans, routes, and verifies at low token volume; bounded `executor.md` subagents on the cheap model do the high-volume reading and editing. That split is the cost win.
+4. **Route once.** One lane decision per session sizes the effort. One-liners stay one-liners; cross-cutting work gets hard decomposition and a review pass. Opus is a per-slice exception, never a lane default.
+5. **Reuse before writing.** Grep and read the existing code, find the pattern, match it exactly. Nothing gets invented that the codebase already has.
+6. **Verify, do not trust.** Lint and build gate completion. Failures feed `executor.md` a bounded fix-loop (cap 3). Executor reports are reconciled against `git status --porcelain` - the filesystem, not the promises.
+7. **Guardrails as hooks, not habits.** `protect-env-hook.sh` (no `.env*` reads or writes), `block-destructive-hook.sh` (no `rm -rf`, no history rewrites), and the worktree fence fire regardless of what the model decides.
+8. **Commit per verified slice.** Each independently-verified slice lands as its own commit on `apex/<session>`. Committed clean work can never be stranded or re-clobbered by a later runaway; `/apex-merge` folds the whole branch.
+9. **Lessons as persistent memory.** Sessions append what they learned; `apex-lessons` curates the index. The next run starts with what the last run discovered.
+10. **Self-improving, safe, lean, resilient.** Reflection signals and the tech-watch feed accumulate in a log; `apex-improve` consumes them to evolve the framework itself. Skill files stay lean by rule: the file-health hook splits any file that crosses the threshold; nothing new gets added unless something else earns its place.
 
 ---
 
 ## What You Get
 
-- **Effort matches the task.** Trivial edits skip the ceremony. Cross-cutting changes get discovery, hypothesis, claim verification, and delegated executors.
-- **No surprise edits.** Non-trivial work is scoped before any file is touched; the scope-check hook blocks out-of-scope writes at the tool call.
-- **Findings you can trust.** Deterministic enumeration plus claim-provenance means "discovery said so" actually means something.
-- **Fewer silent failures.** Bad-claim thresholds force re-runs instead of letting hallucinations drive routing.
-- **Shorter, cleaner sessions.** Discovery returns pointers, executors run in fresh contexts, the main session stays small.
+- **Effort matches the task.** Trivial edits skip the ceremony. Cross-cutting changes get hard decomposition, delegated executors, and a review pass.
+- **No surprise edits.** Every session runs inside a dedicated git worktree minted by `mint-worktree.sh`; the worktree fence hook blocks writes outside it at the tool call.
+- **No lost work.** A runaway executor can only trash one throwaway branch; every verified slice is already committed behind it.
+- **Shorter, cheaper sessions.** The orchestrator thinks; Sonnet executors in fresh bounded contexts do the bulk. The main session stays small.
 - **Done means tested.** Every implementation run ends with build, lint, and a bounded fix-loop. Failures block completion.
-- **Code and docs stay healthy.** The file-health hook splits files before they hit the complexity cliff. `documentation.md` updates project docs alongside the code that changed them.
-- **Cumulative learning.** `learn.md` distills lessons every standard-tier run. `apex-lessons` curates them. `apex-improve` evolves the framework itself from accumulated reflection signals.
+- **Code and docs stay healthy.** The file-health hook splits files before they hit the complexity cliff. Doc updates ship in the same session when behavior, contracts, or signatures changed.
+- **Cumulative learning.** `learn.md` distills lessons; `apex-lessons` curates them; `apex-improve` evolves the framework itself from accumulated reflection signals.
 - **Trustworthy autonomy.** Fail-closed guardrails mean APEX can run without supervision and still stay on rails.
 - **A framework that evolves with you.** The reflector log + tech-watch fetcher feed `apex-improve`, which proposes edits to the framework on a weekly cadence.
 
@@ -82,10 +69,10 @@ Ten load-bearing ideas. Everything else in the repo is there to implement them.
 
 ## Skills
 
-- **apex/** - Main coding orchestrator (entry: `apex/SKILL.md`). Sub-skills: `discover.md` (step 6), `execute.md` (step 8).
+- **apex/** - Main coding orchestrator, fenced-dynamic (entry: `apex/SKILL.md`; `scripts/` holds the worktree fence, guard hooks, and verify scripts).
 - **apex-init/** - Initialize a new project with apex-compatible structure (`.claude-tmp`, docs, `CLAUDE.md`).
 - **apex-fix/** - Standalone lint/build fix loop. Mints a synthetic session, runs `verify-build.sh`, spawns `executor.md` capped at 3 attempts.
-- **apex-merge/** - Integrate `apex/<session>` worktree branches back into their recorded base branches. Manual trigger; runs from the main worktree.
+- **apex-merge/** - Integrate `apex/<session>` worktree branches back into their recorded base branches; replays logged side-effects; removes worktrees. Manual trigger; runs from the main worktree.
 - **apex-lessons/** - Curate lessons. Two phases: extract (consolidate pending) + analyze (triage / dedupe / route).
 - **apex-improve/** - Self-improvement engine. Consumes reflector log + tech-watch updates + Claude Code version stamp. Slash-invokable.
 - **apex-tech-watch/** - Weekly tech-watch fetcher. Reads `sources.json`, summarizes via WebFetch / WebSearch, appends to `tech-updates.md`. Cron-driven (Sunday 06:00 local). Output consumed by `apex-improve`.
@@ -93,11 +80,10 @@ Ten load-bearing ideas. Everything else in the repo is there to implement them.
 
 ## Agents
 
-- **executor.md** - Per-task implementation. Step 8 dispatch + step 10 verify fix-loop.
-- **screener.md** - Step 6 discovery gate. Filters cascade output (LSP / Glob / Grep) to keep / drop set.
-- **documentation.md** - Step 11 tail subagent. Updates project docs / architecture notes when structural changes warrant.
-- **learn.md** - Step 11 tail subagent. Project-specific lesson distiller. Skipped under economy tier.
-- **reflector.md** - Self-reflection at apex step 13, admin-apex task 11, apex-improve. Haiku, foreground, silent.
+- **executor.md** - The single `/apex` do-er: implement / polish / docs / lesson tasks, plus report-only review. Anchors to the session worktree first; minimal diff; returns structured status.
+- **learn.md** - Project-specific lesson distiller (spawned by `/apex-fix` after multi-retry fixes).
+- **reflector.md** - Self-reflection at admin-apex, apex-lessons, apex-merge, apex-tech-watch reflection points. Sonnet, foreground, silent.
+- **apex-merge-resolver.md** - Per-conflicted-file resolver spawned by `/apex-merge`. Reports a proposed resolution; never edits.
 
 ---
 
@@ -115,7 +101,7 @@ cp -R agents/* ~/.claude/agents/
 cp apex-core.md apex-core-overview.md VERSION ~/.claude/
 ```
 
-The hooks that enforce scope-checking, file-health splitting, `.env` protection, and destructive-command blocking are defined in `settings.json`. If you do not already have a `~/.claude/settings.json`, copy it directly; otherwise merge its `hooks` and `permissions` blocks into your existing file (do not blindly overwrite - your file also carries your own permissions and preferences):
+The hooks that enforce the worktree fence, file-health splitting, `.env` protection, destructive-command blocking, and session-end cleanup are defined in `settings.json`. If you do not already have a `~/.claude/settings.json`, copy it directly; otherwise merge its `hooks` and `permissions` blocks into your existing file (do not blindly overwrite - your file also carries your own permissions and preferences):
 
 ```bash
 cp settings.json ~/.claude/settings.json        # only if you have none yet
@@ -134,7 +120,7 @@ Restart Claude Code, then from any project:
 
 ```
 /apex-init                  # scaffold APEX structure in a new project
-/apex "task description"    # main coding orchestrator (15 steps, tier auto-decided)
+/apex "task description"    # main coding orchestrator (fenced-dynamic, lane auto-decided)
 /apex-fix                   # standalone lint/build fix loop
 /apex-merge                 # integrate apex/<session> worktree branches into their base
 /apex-lessons               # curate the lessons index
@@ -147,10 +133,10 @@ Restart Claude Code, then from any project:
 | Layer | Location | Convention |
 |-------|----------|------------|
 | Top-level skill (slash command) | `skills/<name>/SKILL.md` | `apex-<verb>` |
-| Skill sub-file (internal) | `skills/apex/<phase>.md` | `<phase>.md` (e.g. `discover.md`, `execute.md`) |
+| Skill sub-file (internal) | `skills/<skill>/<phase>.md` | `<phase>.md` (e.g. `apex-improve/analyze.md`) |
 | Agent | `agents/<role>.md` | `<role>.md` |
 | Script | `skills/apex/scripts/` or `skills/admin-apex/scripts/` | `<verb>-<noun>.{sh,py}`; `<purpose>-hook.sh` |
-| Schema | `skills/apex/schemas/` or `skills/admin-apex/schemas/` | `<artifact>.schema.json`; `$id == basename(path)` |
+| Schema | `skills/admin-apex/schemas/` | `<artifact>.schema.json`; `$id == basename(path)` |
 
 ---
 
@@ -168,6 +154,6 @@ The apex framework follows semver in `VERSION`. `admin-apex` task 9 bumps on its
 
 Authoritative sources (in load order):
 
-1. `apex-core.md` - full `/apex` behavioral contract (15 steps, tiers, conventions, failure handling)
+1. `apex-core.md` - full `/apex` behavioral contract (fenced-dynamic rails: worktree fence, verify gate, executor dispatch, apex-merge handoff)
 2. `apex-core-overview.md` - skeleton/skim view of the same contract
 3. `skills/admin-apex/SKILL.md` - framework maintainer reference (audit, evolve, sync-docs, mirror, version, push, self-reflect)

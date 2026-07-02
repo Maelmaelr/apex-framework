@@ -22,7 +22,7 @@ TaskCreate "6.5 Cleanup project apex scratch"
 TaskCreate "7. Self-reflect"
 ```
 
-**Deferred-tool guard.** `TaskCreate`/`TaskUpdate`/`TaskList` are deferred - batch-fetch via `ToolSearch select:TaskCreate,TaskUpdate,TaskList` before queuing. If a `TaskCreate` errors (`InputValidationError` / schema-not-loaded), do NOT fire the remaining lines - re-run that ToolSearch load, retry ONCE, then STOP and surface (an empty/flaky ToolSearch return fails every call identically; same contract as apex SKILL.md Step 0).
+**Deferred-tool guard.** `TaskCreate`/`TaskUpdate`/`TaskList` are deferred - batch-fetch via `ToolSearch select:TaskCreate,TaskUpdate,TaskList` before queuing. If a `TaskCreate` errors (`InputValidationError` / schema-not-loaded), do NOT fire the remaining lines - re-run that ToolSearch load, retry ONCE, then STOP and surface (an empty/flaky ToolSearch return fails every call identically; same contract as admin-apex / apex-improve Step 0).
 
 ## Inputs
 

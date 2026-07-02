@@ -1,6 +1,6 @@
 # apex-init: Create File Structure
 
-Called from `SKILL.md` after Step 2 (Gather Info). Returns to SKILL.md for Step 7 (Report). Extracted from `SKILL.md` to keep the orchestrator under the 175-line cap.
+Called from `SKILL.md` after Step 2 (Gather Info). Returns to SKILL.md for Step 7 (Report). Extracted from `SKILL.md` to keep the orchestrator within the file-health content budget.
 
 ## Step 3: Create .claude-tmp/
 
@@ -59,7 +59,7 @@ Match the secret-file names to the stack when a different convention is detected
 !.claude-tmp/apex-active/.gitkeep
 ```
 
-If the project will use `/apex` (per-session linked git worktrees), also append `.apex-worktrees/` - the apex mint-worktree.sh worktree root, untracked-by-design; `/apex-merge` filters it from the dirty-tree precheck. Projects missing this line get an avoidable AskUserQuestion (`commit-first` | `stash-first` | `abort`) on every `/apex-merge`.
+If the project will use `/apex` (per-session linked git worktrees), also append `.apex-worktrees/` - the apex mint-worktree.sh worktree root, untracked-by-design; `/apex-merge` filters it from the dirty-tree precheck. The precheck already excludes the untracked `.apex-worktrees/` root from its unconditional dirty-main auto-commit, so this line mainly keeps the worktree root out of `git add .` and IDE/status noise.
 
 ## Step 4: Create .claude/ Structure
 
@@ -104,7 +104,7 @@ docs/
 
 Read template from ~/.claude/skills/apex-init/context-template.md. Use detected project info to fill in `{placeholders}` with actual values.
 
-`docs/project-context.md` is the canonical entry point that the apex chain reads at SKILL.md Step 1 (orchestrator) and re-reads on demand at executor / documentation. The template is a starting structure; the team should curate it as the project grows so module names, security-sensitive paths, and architectural boundaries stay accurate.
+`docs/project-context.md` is the canonical architecture entry point: the /apex orchestrator reads it best-effort during understand (absent = silent skip), and executors re-read relevant sections when their brief points at them. The template is a starting structure; the team should curate it as the project grows so module names, security-sensitive paths, and architectural boundaries stay accurate.
 
 ### features/index.md Template
 

@@ -7,7 +7,8 @@
 #
 # Args (positional):
 #   $1  -- schema name (with or without .schema.json suffix); resolves under
-#          skills/apex/schemas/ unless --admin is set.
+#          $APEX_SCHEMA_DIR when exported -- no default schema set ships with
+#          /apex itself, so callers pass --admin or export APEX_SCHEMA_DIR.
 #   $2  -- absolute path to the JSON file to validate.
 #
 # Flags:

@@ -75,8 +75,8 @@ fi
 
 # git stash creation (push/save/bare/create/store) -- apex agents must NEVER stash.
 # Per-apex-session worktrees eliminate cross-session sibling overlap, but inside
-# ONE worktree the orchestrator + concurrent subagents (executor, discoverer,
-# screener, reviewer, polish, learn, documentation) share a single working tree.
+# ONE worktree the orchestrator + concurrent subagents (executor, learn,
+# reflector, apex-merge-resolver) share a single working tree.
 # A bare `git stash` (alias for `git stash push`) from any one of them silently
 # captures EVERY co-resident agent's uncommitted edits into a single stash ref,
 # which presents as catastrophic work loss for parallel siblings. Only read-only

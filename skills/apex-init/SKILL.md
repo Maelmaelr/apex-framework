@@ -49,7 +49,7 @@ Use AskUserQuestion:
 **Question:** "Short project description (1-2 sentences)?"
 - Options: "Enter description" (Recommended), "Skip (use directory name)"
 
-apex-init always creates the full APEX-compatible structure (`.claude-tmp/` + `.claude/` + `docs/` + `CLAUDE.md`); the apex chain reads all of it (manifest dir, lessons files, `docs/project-context.md` at SKILL.md Step 1), so a partial init would leave a non-functional project - there is no structure sub-choice. Creation is idempotent: create.md skips any file/dir that already exists, so re-runs only backfill what is missing.
+apex-init always creates the full APEX-compatible structure (`.claude-tmp/` + `.claude/` + `docs/` + `CLAUDE.md`); the apex chain reads all of it (manifest dir, lessons files, `docs/project-context.md` best-effort during understand per apex-core.md), so a partial init would leave a non-functional project - there is no structure sub-choice. Creation is idempotent: create.md skips any file/dir that already exists, so re-runs only backfill what is missing.
 
 ## Steps 3-6: Create File Structure
 

@@ -26,9 +26,9 @@ check() {  # label expected-exit got-exit
 # Synthetic inventory exercising the structural detectors without disk reads
 # (oversized = doc word-budget compare; schema-mismatch = pure id-vs-basename).
 INV_DRIFT='{"skills":[{"path":"skills/apex/big.md","lines":222,"words":3000}],"agents":[],'
-INV_DRIFT+='"scripts":[],"schemas":[{"path":"skills/apex/schemas/x.schema.json","id":"WRONG.json"}],'
+INV_DRIFT+='"scripts":[],"schemas":[{"path":"skills/admin-apex/schemas/x.schema.json","id":"WRONG.json"}],'
 INV_DRIFT+='"hooks":[],"spec_docs":[],"version":"0"}'
-INV_SCHEMA='{"skills":[],"agents":[],"scripts":[],"schemas":[{"path":"skills/apex/schemas/x.schema.json",'
+INV_SCHEMA='{"skills":[],"agents":[],"scripts":[],"schemas":[{"path":"skills/admin-apex/schemas/x.schema.json",'
 INV_SCHEMA+='"id":"WRONG.json"}],"hooks":[],"spec_docs":[],"version":"0"}'
 
 # 1. Missing --mode -> argparse usage error, exit 2.
@@ -65,8 +65,8 @@ inv=$(mktemp); prior=$(mktemp); out=$(mktemp); isoroot=$(mktemp -d)
 printf '%s' "$INV_SCHEMA" > "$inv"
 {
   printf '{"run":"x","clusters":['
-  printf '{"id":"schema","kind":"inconsistency","items":["skills/apex/schemas/x.schema.json (id=WRONG.json)"]},'
-  printf '{"id":"missing","kind":"unused","items":["skills/apex/schemas/x.schema.json"]}]}'
+  printf '{"id":"schema","kind":"inconsistency","items":["skills/admin-apex/schemas/x.schema.json (id=WRONG.json)"]},'
+  printf '{"id":"missing","kind":"unused","items":["skills/admin-apex/schemas/x.schema.json"]}]}'
 } > "$prior"
 CLAUDE_PROJECT_DIR="$isoroot" python3 "$ENG" --inventory "$inv" --mode polish --run abcd1234 \
   --prior-drift "$prior" --out "$out" >/dev/null 2>&1

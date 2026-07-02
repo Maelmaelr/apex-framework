@@ -43,6 +43,9 @@
 #                       on first-fail-stop. No main-scope.json / no jq -> falls
 #                       back to normal (no-flag) behavior, so it is safe to pass
 #                       universally.
+#                       NOTE: nothing in the current fenced-dynamic model writes
+#                       {session}-main-scope.json (retired discovery artifact);
+#                       without it this flag degrades to normal behavior.
 #
 # Exit codes:
 #   0  clean (all available commands passed) OR no recognized manifest
@@ -159,8 +162,10 @@ run_or_fail() {
 # F2: a lint failure implicating NO in-scope allowed_file is foreign /
 # pre-existing debt, not this session's work. We still first-fail-stop (never
 # fail open - masking a real in-scope regression is worse than a noisy foreign
-# one), but append a greppable NOTE so the step-10 orchestrator runs the scoped
-# in-scope lint/tsc/build (legacy scoped mode). No main-scope.json / no jq ->
+# one), but append a greppable NOTE telling the orchestrator to verify in-scope
+# lint/tsc/build separately (legacy scoped mode; {session}-main-scope.json has
+# no live producer since the fenced-dynamic transition, so this branch is a
+# no-op unless a caller supplies one). No main-scope.json / no jq ->
 # no-op. Returns 0 if an in-scope allowed_file is implicated, 1 if the failure
 # is entirely foreign (used by --in-scope-only).
 annotate_foreign_lint() {

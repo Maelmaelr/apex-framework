@@ -8,7 +8,7 @@
 #   - python3 -m py_compile on every skills/apex/scripts/*.py AND
 #     skills/admin-apex/scripts/*.py
 #   - jsonschema parse + $id == basename(path) assertion on every
-#     skills/apex/schemas/*.json AND skills/admin-apex/schemas/*.json
+#     skills/admin-apex/schemas/*.json
 #
 # No project app code, no lint, no test suite. This is the apex-scoped gate.
 #
