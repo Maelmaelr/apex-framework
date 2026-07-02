@@ -1,12 +1,10 @@
 #!/usr/bin/env bash
 # SessionEnd hook + manual entry point (worktree-only).
-# Spec: apex-core.md Failure handling / "session-end-hook.sh";
-#       tmp/worktree-migration-spec.md Phase 4b "SessionEnd changes".
+# Spec: apex-core.md Failure handling / "session-end-hook.sh".
 #
-# Wraps cleanup-session.sh. Hypothesis is preserved or atomically swept by
-# cleanup-session.sh's worktree-remove (worktree-resident artifact); the legacy
-# belt-and-suspenders `rm {session}-hypothesis.json` is gone with the shared
-# .claude-tmp/apex-active/ era.
+# Wraps cleanup-session.sh. Session artifacts are worktree-resident, so they
+# are preserved or atomically swept by cleanup-session.sh's worktree-remove;
+# no per-artifact rm is needed.
 #
 # Invocation modes:
 #   1. SessionEnd (no positional arg):
@@ -18,9 +16,8 @@
 #        - Then sweep stale sibling worktrees (manifest-less crash orphans +
 #          dead-owner fully-merged leftovers) via sweep_stale_worktrees
 #   2. Manual mode (positional arg = apex {session} token):
-#        - Trusted own-session caller (mid-/apex abort: step 6
-#          cascade-empty / 10 verify cap-3 / unexpected error). Target the
-#          supplied token directly.
+#        - Trusted own-session caller (mid-/apex abort: verify fix-loop
+#          cap-3 / unexpected error). Target the supplied token directly.
 #
 # Runs on success completion AND on abort / crash. Idempotent.
 # Exit code: 0 always (treat as pass for SessionEnd hook contract).
@@ -63,8 +60,8 @@ except Exception:
     dir="${wt}.claude-tmp/apex-active"
     [[ -d "$dir" ]] || continue
     for manifest in "$dir"/*.json; do
-      # 8-hex.json filename guard: excludes -hypothesis.json, -*-scope.json,
-      # etc. by shape.
+      # 8-hex.json filename guard: excludes {session}-*.json sibling
+      # artifacts by shape.
       [[ "$(basename "$manifest")" =~ ^[0-9a-f]{8}\.json$ ]] || continue
       local matched
       matched=$(python3 -c "
@@ -121,7 +118,7 @@ sweep_stale_worktrees() {
   #       cleanup-session.sh keep/remove decision so a fully-merged worktree
   #       (clean + no commits past base) that no other codepath reaps gets
   #       collected - cleanup-session.sh runs only ONCE, at the owning session's
-  #       own step-13/14, so a branch integrated outside /apex-merge (or whose
+  #       own SessionEnd, so a branch integrated outside /apex-merge (or whose
   #       /apex-merge step-5 cleanup was interrupted) otherwise lingers forever
   #       with its manifest intact, invisible to the (a) orphan branch. The
   #       decision stays in cleanup-session.sh: merged-clean -> remove; unmerged
@@ -153,7 +150,7 @@ sweep_stale_worktrees() {
 run_cleanup() {
   # Forwards cleanup-session.sh's stdout (the main-worktree path on every
   # branch where it resolves) to our own stdout so manual-mode callers (apex
-  # mid-flow abort, e.g., step 6/8/10 cascade) can capture and `cd` out
+  # mid-flow abort) can capture and `cd` out
   # of the (possibly removed) worktree. SessionEnd-hook callers (CC harness)
   # do not consume stdout - the inherited CC session is ending anyway - but
   # forwarding is harmless and keeps the hook contract symmetric with manual

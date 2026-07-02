@@ -19,7 +19,7 @@ Spec: `skills/apex-merge/SKILL.md` step 4 (merge loop). Read this BEFORE resolvi
 
 ## Content conflicts (the resolver)
 
-The content resolver only handles `<<<<`-marked UU/AA hunks. Remaining content conflicts spawn `agents/apex-merge-resolver.md` (Sonnet, foreground) with the full-context bundle (conflicted body, base-side + apex-side diffs, apex hypothesis, base/apex commit logs). Resolver returns per-hunk `resolved_block` entries by default (full `proposed_body` only for multi-hunk synthesis); orchestrator splices into the conflicted file via Bash (`printf`/redirect or `git apply`), NEVER the `Edit` / `Write` tools - the splice is a mechanical block replacement keyed on conflict markers, and Edit-context matching against marker-riddled bodies is fragile.
+The content resolver only handles `<<<<`-marked UU/AA hunks. Remaining content conflicts spawn `agents/apex-merge-resolver.md` (Sonnet, foreground) with the full-context bundle (conflicted body, base-side + apex-side diffs, base/apex commit messages, apex commit log). Resolver returns per-hunk `resolved_block` entries by default (full `proposed_body` only for multi-hunk synthesis); orchestrator splices into the conflicted file via Bash (`printf`/redirect or `git apply`), NEVER the `Edit` / `Write` tools - the splice is a mechanical block replacement keyed on conflict markers, and Edit-context matching against marker-riddled bodies is fragile.
 
 ## Decision (per file)
 

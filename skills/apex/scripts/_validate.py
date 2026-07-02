@@ -16,9 +16,11 @@ violations slip through. Emits a one-line warning to stderr the first time the
 fallback fires per process.
 
 Schema directory resolution:
-  1. `APEX_SCHEMA_DIR` env var if set + non-empty (consumers wanting to point at a
-     sibling schema dir like skills/admin-apex/schemas/ export it before invoking).
-  2. Default: skills/apex/schemas/ (relative to this file).
+  1. `APEX_SCHEMA_DIR` env var if set + non-empty (consumers point at a schema dir
+     like skills/admin-apex/schemas/ by exporting it before invoking).
+  2. Default: skills/apex/schemas/ (relative to this file). The apex hot path
+     ships no schemas today, so this dir may be absent - callers are expected
+     to set APEX_SCHEMA_DIR (validate-json.sh --admin does).
 """
 from __future__ import annotations
 import json
@@ -71,7 +73,7 @@ def _load_schema(name: str) -> dict:
 def _build_registry() -> Optional[Any]:
     """Pre-load every *.schema.json under _SCHEMA_DIR into a referencing.Registry.
 
-    Each schema is registered under its bare filename (e.g. 'screened.schema.json'),
+    Each schema is registered under its bare filename (e.g. 'evolve-plan.schema.json'),
     so relative $refs in sibling schemas resolve regardless of the dir's absolute
     path. Mirrors the prior RefResolver(base_uri=file://{dir}/) behavior.
     """

@@ -168,4 +168,4 @@ TaskCreate "7. Self-reflect"
 
 ## Scope
 
-Merges `apex/*` branches only - pre-rename anything else you want preserved. No multi-base coordination: each branch lands on its own recorded base; cross-base conflicts surface as merge conflicts on the second branch. See spec: `tmp/worktree-migration-spec.md`.
+Merges `apex/*` branches only - pre-rename anything else you want preserved. No multi-base coordination: each branch lands on its own recorded base; cross-base conflicts surface as merge conflicts on the second branch.

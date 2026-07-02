@@ -15,7 +15,8 @@
 # sibling Claude Code sessions; cc_session_id alone is insufficient because
 # concurrent claude processes can hold valid jsonl files indefinitely.
 #
-# Mirrors apex/scripts/create-session.sh:74-92 PID classification.
+# Same PID classification as apex/scripts/session-end-hook.sh
+# (pid_is_live_claude): pid dead OR comm basename != "claude" = stale.
 #
 # Idempotent. Always exit 0; warnings to stderr.
 

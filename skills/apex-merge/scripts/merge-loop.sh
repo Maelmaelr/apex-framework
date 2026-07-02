@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # /apex-merge step 4: per-branch merge loop.
-# Spec: skills/apex-merge/SKILL.md step 4 + tmp/worktree-migration-spec.md.
+# Spec: skills/apex-merge/SKILL.md step 4.
 #
 # Reads <run>-discovery.json (written by SKILL step 2), iterates each entry whose
 # status is "needs-merge", performs `git checkout <base>; git merge --no-ff <branch>`,

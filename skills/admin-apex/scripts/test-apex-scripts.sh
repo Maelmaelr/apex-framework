@@ -316,7 +316,7 @@ session_end_manual_clean_fixture() {
   printf '{"session":"%s","pid":1,"cc_session_id":"X","worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n' \
     "$token" "$PWD/$wt" "$token" \
     > "$wt/.claude-tmp/apex-active/$token.json"
-  printf 'hyp\n' > "$wt/.claude-tmp/apex-active/$token-hypothesis.json"
+  printf 'sidecar\n' > "$wt/.claude-tmp/apex-active/$token-sidecar.json"
   # Manual mode: cd into the worktree so cleanup-session.sh's APEX_ACTIVE
   # resolution lands on the worktree-resident apex-active dir.
   ( cd "$wt" && bash "$REPO_ROOT/skills/apex/scripts/session-end-hook.sh" "$token" )

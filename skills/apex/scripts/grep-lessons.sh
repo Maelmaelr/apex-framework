@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Step 5: load lessons -- grep curated project lessons by hypothesis keywords.
-# Spec: apex-core.md step 5 + Conventions / Project lessons paths.
+# Load lessons -- grep curated project lessons by task keywords.
+# Spec: apex-core.md Conventions / Project lessons paths.
 #
 # Reads:
 #   <project-root>/.claude/lessons-index.md  (curated index)
@@ -10,7 +10,7 @@
 #
 # Args:
 #   <project-root>            required (orchestrator passes its CWD)
-#   <term1> [<term2> ...]     >=1 keyword from the hypothesis (case-insensitive
+#   <term1> [<term2> ...]     >=1 keyword from the task (case-insensitive
 #                             fixed-string match against the index)
 #
 # Output (stdout):
@@ -48,7 +48,7 @@ fi
 INDEX_FILE="$PROJECT_ROOT/.claude/lessons-index.md"
 LESSONS_FILE="$PROJECT_ROOT/.claude/lessons.md"
 
-# Project hasn't curated lessons yet -- step 5 is best-effort, exit cleanly.
+# Project hasn't curated lessons yet -- lesson loading is best-effort, exit cleanly.
 if [[ ! -f "$INDEX_FILE" ]] || [[ ! -f "$LESSONS_FILE" ]]; then
   exit 0
 fi

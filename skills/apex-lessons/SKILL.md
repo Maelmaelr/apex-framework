@@ -39,7 +39,7 @@ After Step 2, proceed to Step 3 (git sync).
 
 Always commits + pushes at session end (apex-improve Step 9 does NOT own project commit, so apex-lessons commits there too).
 
-Project-scoped inline commit + push: tracked-modified + untracked-non-ignored, dotenv closed-set + `git check-ignore` filter, per-file `git add`, commit with diff-derived one-liner, then push (matches /apex step 12 global session-end policy).
+Project-scoped inline commit + push: tracked-modified + untracked-non-ignored, dotenv closed-set + `git check-ignore` filter, per-file `git add`, commit with diff-derived one-liner, then push (commit + push at session end is this skill's global policy).
 
 ```
 mapfile -t paths < <(
@@ -78,4 +78,4 @@ Standard apex safety guardrails apply (hook + global-`CLAUDE.md` enforced - no s
 - Do not skip per-phase reflect + cleanup - early-exit reasons are gap signals worth reflecting on.
 - Do not run extract and analyze in parallel - extract writes to `lessons.md`; analyze reads it.
 - Do not collapse the two phases into one run token - separate runs preserve per-phase reflection signals.
-- Do not skip the push in Step 3 (commit + push is the global session-end policy; matches /apex step 12).
+- Do not skip the push in Step 3 (commit + push is the global session-end policy).

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Step 10 (--with-tests): project-aware test runner scoped to modified files.
-# Spec: apex-core.md step 10; invoked by verify-build.sh when --with-tests is set.
+# Verify gate (--with-tests): project-aware test runner scoped to modified files.
+# Spec: apex-core.md Model / Deterministic guardrails (verify gate); invoked by
+# verify-build.sh when --with-tests is set.
 #
 # Auto-detect contract:
 #   - If no session manifest at .claude-tmp/apex-active/{session}.json (or

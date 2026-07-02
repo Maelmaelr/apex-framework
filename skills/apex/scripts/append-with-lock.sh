@@ -2,16 +2,14 @@
 # Append stdin content to <target> under a portable Python fcntl.flock LOCK_EX
 # guard. Spec: agents/reflector.md output contract.
 #
-# Centralizes the lock-and-append idiom that scripts/reflect-traces.sh
-# previously implemented inline (pre-extraction) so the reflector agent can use a
+# Centralizes the lock-and-append idiom so the reflector agent can use a
 # single helper call instead of re-deriving the lock logic per invocation.
 #
 # Why a helper exists: macOS lacks `flock(1)`. A literal `flock <lockfile> -c
 # 'cat >> <target>'` silently fails on macOS (the binary is missing from
 # /usr/local/bin); the LLM-composed Bash command swallows the error and the
 # structured analysis block is lost. Python's `fcntl.flock` is portable across
-# macOS / Linux / BSD and is the canonical primitive used in the reflect-traces
-# script already.
+# macOS / Linux / BSD.
 #
 # Behavior:
 #   - Acquires LOCK_EX on "<target>.lock" (creating the lockfile if absent).
@@ -21,7 +19,7 @@
 #   - Releases lock on close (fcntl.LOCK_UN).
 #   - Empty stdin -> exit 0 silently (caller's no-op contract).
 #   - Lock acquire failure (extremely unusual on POSIX) -> degrades to unlocked
-#     append rather than abort; the same fail-silent posture as reflect-traces.sh.
+#     append rather than abort (fail-silent posture).
 #
 # Args:
 #   $1   <target>   absolute or repo-relative path to the append target.

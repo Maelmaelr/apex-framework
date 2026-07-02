@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Step 10: project-aware lint + build verifier.
-# Spec: apex-core.md step 10.
+# Project-aware lint + build verifier (the /apex verify gate).
+# Spec: apex-core.md Model / Deterministic guardrails (verify gate).
 #
 # Detects project type by manifest (priority order):
 #   package.json    -> node (pnpm | yarn | bun | npm by lockfile)
@@ -38,7 +38,7 @@
 #                       implicates NO file in {session}-main-scope.json
 #                       allowed_files is treated as foreign / pre-existing
 #                       debt and the script exits 0 (errors file removed).
-#                       Defends step 10 against sibling baseline-dirty lint
+#                       Defends the verify gate against sibling baseline-dirty lint
 #                       failures that would otherwise abort the in-scope verify
 #                       on first-fail-stop. No main-scope.json / no jq -> falls
 #                       back to normal (no-flag) behavior, so it is safe to pass
@@ -172,14 +172,14 @@ annotate_foreign_lint() {
   done < <(jq -r '.allowed_files[]?' "$scope_json" 2>/dev/null || true)
   local note='## NOTE: no in-scope allowed_file implicated - lint failure appears foreign/pre-existing; '
   note+='orchestrator should verify in-scope lint/typecheck/build separately before treating the '
-  note+='run as blocked (apex-core.md step 10).'
+  note+='run as blocked (apex-core.md Model / Deterministic guardrails).'
   printf '%s\n' "$note" >> "$ERRORS_FILE"
   return 1
 }
 
 # Scope-isolated lint --fix pre-pass (node). A repo-wide `lint --fix` reformats
 # files OUTSIDE allowed_files into the commit (recurring scope-drift -> spurious
-# step-12 AskUserQuestion), so auto-fix ONLY the in-scope lintable files via the
+# commit-time AskUserQuestion), so auto-fix ONLY the in-scope lintable files via the
 # project-local eslint directly (the npm lint script's globs can't be narrowed
 # by appending paths - eslint treats positionals as extra patterns). No scope
 # json / jq / local eslint / in-scope JS-TS file -> no auto-fix at all, never a

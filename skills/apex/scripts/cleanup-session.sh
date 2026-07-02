@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Step 14 / 13 session cleanup (worktree-only).
-# Spec: apex-core.md step 14 / Failure handling; tmp/worktree-migration-spec.md
-#       Phase 4b "SessionEnd changes".
+# Session cleanup (worktree-only).
+# Spec: apex-core.md Failure handling.
 #
-# Post-Phase-4 every apex session lives in its own git worktree at
+# Every apex session lives in its own git worktree at
 # <main>/.apex-worktrees/<session>/ on branch apex/<session>. The cleanup
 # decision is at branch level (read the manifest, fork on worktree state):
 #   - clean working tree + no commits past base_branch
@@ -15,9 +14,9 @@
 #     -> keep everything, warn (user owns the dirty state)
 #
 # Worktree-removal sweeps all inner artifacts atomically: manifest, traces,
-# hypothesis, dispatch-summary, AND the executor side-effects log at
+# AND the executor side-effects log at
 # <worktree>/.claude-tmp/apex-active/<session>-side-effects.jsonl (logged by
-# step 8 state-mutating commands; replayed by apex-merge step 4.5 BEFORE the
+# executor state-mutating commands; replayed by apex-merge step 4.5 BEFORE the
 # branch's worktree is removed at apex-merge step 5). No separate cleanup
 # rule needed for side-effects.jsonl - the worktree-remove path covers it.
 #
@@ -32,7 +31,7 @@
 #
 # Stdout: on every branch where worktree_path resolves (worktree-remove +
 #         dirty-keep + commits-keep), prints the absolute path of the main
-#         worktree on the last line. Callers (apex orchestrator step 13/14,
+#         worktree on the last line. Callers (apex orchestrator teardown,
 #         session-end-hook.sh manual mode) capture this and `cd` there so the
 #         shell leaves the (possibly removed) worktree subdirectory and is
 #         back on the main worktree / base branch.
@@ -107,7 +106,7 @@ fi
 # Resolve main worktree from manifest's worktree_path (dirname twice):
 # WT_PATH = <MAIN>/.apex-worktrees/<session>, so MAIN = dirname(dirname(WT_PATH)).
 # Derived from the manifest, NOT git, so it survives a removed-worktree subtree
-# below. Printed to stdout on every success exit so apex orchestrator step 13/14
+# below. Printed to stdout on every success exit so the apex orchestrator
 # (and session-end-hook.sh manual mode) can cd out of the (possibly removed)
 # worktree subdirectory. Falls back to git common-dir resolution when dirname
 # parents fail (e.g., manifest worktree_path is a non-standard layout).
