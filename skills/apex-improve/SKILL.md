@@ -30,7 +30,7 @@ Track per-file `delta_lines` through Step 4 and surface in Step 6. Growth is **a
 
 | File | Source | Empty / missing -> |
 |------|--------|---------------------|
-| `~/.claude/tmp/apex-workflow-improvements.md` | reflect-traces.sh + agents/reflector.md (per session) | nothing to consume from session-reflection track |
+| `~/.claude/tmp/apex-workflow-improvements.md` | agents/reflector.md (admin-apex / lessons / merge / tech-watch phases) | nothing to consume from the reflection track |
 | `~/.claude/tmp/tech-updates.md` | apex-tech-watch (weekly cron / launchd) | **missing** or **mtime > 14 days** -> Step 2 emits a `tech-watch never-run / stale` finding with `target_files: []` (Principle 2: weekly currency silently broken otherwise). Both surface in Step 6 report only. See `analyze.md` for finding shape. Otherwise: nothing to consume. |
 | `~/.claude/tmp/apex-claude-code-version.txt` | apex-improve writes on completion | missing -> CC version drift since last run; treat as a soft signal that current best practices may have shifted |
 | `.claude-tmp/admin-apex-active/*-deferred-findings.json` (prior runs) | analyze.md cap-overflow + uncertain-defer + admin-apex audit deferrals | **none consumable** -> no backlog to reprocess. Step 2 ingests the manifest-absent set (run complete), reprocessing findings a past run could not resolve. The backlog is EXEMPT from the orphan sweep, so it persists across arbitrary idle gaps until a run consumes it. See `analyze.md` "Prior-run deferred-findings". |

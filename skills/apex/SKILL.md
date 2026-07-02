@@ -1,91 +1,53 @@
 ---
 name: apex
-description: Main coding orchestrator. Linear 15-step flow with three tiers (trivial / economy / standard). Trivial decided at step 3; economy decided at step 7. Determinism via session manifest, scope-check hook, file-health hook, bounded fix-loop. Inline orchestrator + delegates to skills/agents per step.
+description: Main coding orchestrator, fenced-dynamic. You drive the work yourself like a senior engineer - no fixed step sequence - inside hard rails: a git worktree fence, file-health, env + destructive guards, and a verify gate. Ships a feature end-to-end (backend + frontend) in one session, then hands off to /apex-merge.
 ---
 
 # /apex
 
-Main session orchestrator. This SKILL plus the lazy-loaded `steps/NN-*.md` per-step contracts are the complete runtime spec - self-contained, read nothing else to run /apex.
+Dynamic coding orchestrator. You sequence the work; the worktree fences you. There is no fixed step march and no read-gate - you decide the order, the way a senior engineer would, within the rails below. The whole point is to be as fast and cheap as native dynamic work while keeping the three things native lacks: model routing, bounded-context delegation, and deterministic guardrails.
 
-## Step 0: queue tasks
+## Mission
 
-```
-TaskCreate "1.  Analyze + read project-context.md"
-TaskCreate "2.  Create session manifest"
-TaskCreate "3.  Trivial pre-flight"
-TaskCreate "4.  Hypothesis"
-TaskCreate "5.  Load lessons"
-TaskCreate "6.  Discovery"
-TaskCreate "7.  Economy pre-flight"
-TaskCreate "8.  Execute"
-TaskCreate "9.  Polish"
-TaskCreate "10. Verify"
-TaskCreate "11. Tail (documentation [+learn])"
-TaskCreate "12. Commit + persist bump_hint"
-TaskCreate "13. Self-reflect"
-TaskCreate "14. Cleanup session"
-TaskCreate "15. Inline summary"
-```
+Ship the task end-to-end in one session: reuse existing code, adapt to the task, code cleanly, verify, test, polish, update docs when behavior changed, learn when the change taught something reusable. Then hand off to `/apex-merge`.
 
-All 15 always queued. Trivial branch at step 3 marks 4-13 completed-skipped.
+## Setup (always first)
 
-**Deferred-tool guard.** `TaskCreate`/`TaskUpdate`/`TaskList` are deferred (schema absent at session start) - load once via `ToolSearch select:TaskCreate,TaskUpdate,TaskList` before queuing. If a `TaskCreate` errors (`InputValidationError` / "schema not sent to the API"), do NOT fire the remaining queue calls - re-run that ToolSearch load, then retry ONCE; a second failure -> STOP and surface to the user (an empty/flaky ToolSearch return makes every call fail identically, so re-firing all 15 is the failure mode not the fix).
+From the project root, run `bash ~/.claude/skills/apex/scripts/mint-worktree.sh` (absolute path - the script lives in your home, not the project). It mints `.apex-worktrees/<session>/` on branch `apex/<session>`, symlinks deps, writes the manifest, and prints `<session>`. Capture the token - never fabricate it. Non-zero exit -> abort cleanly (no worktree, nothing to clean).
 
-## Tier matrix
+**Then `cd .apex-worktrees/<session>` as your own top-level Bash call** and confirm with `pwd` that you are inside the worktree before any edit. This is non-negotiable and it is what arms the fence: the script's internal `cd` runs in a subshell and does NOT move your session. The fence only activates when your session cwd is under `.apex-worktrees/*` - if you stay in the main tree it silently fail-opens and your edits land in the wrong tree. Once inside, use project-relative paths; every edit lands in the worktree and the fence enforces it.
 
-| Tier     | Decided at | Effect                                                                                                  |
-|----------|------------|---------------------------------------------------------------------------------------------------------|
-| trivial  | step 3     | Step 3.1 inline `Edit`/`Write` + commit -> jump to 14. Skips 4-13.                                      |
-| economy  | step 7     | Step 8 executors run on Sonnet; step 9 polish + step 10.5 review skipped; step 11 skips `learn`.        |
-| standard | step 7     | Step 8 executors run on Opus; full tail (step 9 polish always; step 11 documentation unless `code-only-no-docs` mode; learn runs when the difficulty gate holds - no tier-conditional skip path under standard). |
+## Route once
 
-Step 13 reflector is **background** in non-trivial paths (economy + standard); the reflector owns the post-reflect `cleanup-session.sh` call as its final action. Step 14 only runs on the trivial path (where step 13 was skipped).
+Read the prompt and glance at the surface. Pick ONE lane and do not re-litigate it per file:
 
-## Per-step dispatch (read-before-work gate)
+- **trivial** - one obvious edit to a named file, no new public symbol, no cross-file ripple: make the edit inline, commit, done. No subagents.
+- **standard** - bounded, mechanical, multi-file: delegate to `agents/executor.md` on Sonnet.
+- **complex** - judgment, architecture, or cross-cutting change: executors still on Sonnet (the cheap model does the bulk), decomposed hard into small minimal-diff tasks, plus a reviewer pass at the end. Escalate a SINGLE executor slice to Opus only when that one edit genuinely needs reasoning - never the whole fan-out.
 
-Dispatch each step N in this exact order - the order is load-bearing for the `step-read-gate-hook.sh` gate (settings.json, wired at all touchpoints):
-1. `TaskUpdate(taskId=N, status="in_progress", metadata={step: N})` - the step-start signal; stamps the gate's `active_step`/`active_since`.
-2. `Read(skills/apex/steps/NN-*.md)` - loads the contract. It MUST follow the step-1 `TaskUpdate`: a read taken before the step became active does not satisfy the gate (`read_steps[N] >= active_since`).
-3. Step work (`Edit` / `Write` / `MultiEdit` / `NotebookEdit` / `Task` / `Bash`) - the gate denies the first work tool of step N until its contract has been read since activation, then passes for the rest of the step.
+This decision sets the default executor model (Sonnet for standard and complex) and whether to decompose hard + review. Opus is a per-slice exception, never a lane default.
 
-The trivial branch still marks step 3 `in_progress` with `metadata={step: 3}` before its 3.1 inline `Edit`. Step 0 (the `TaskCreate` queue) runs before any step is active, so the gate fail-opens there. The gate is orchestrator-only and fail-opens on every non-apex / unset-step / parse-error path (`skills/apex/scripts/step-read-gate-hook.sh`). R3-a perf + a real-transcript canary green were signed off over a captured standard run at VERSION 10.0.0 (replay via `skills/apex/scripts/replay-canary.sh`).
+## The one hard rule: think / do split
 
-## Step contracts (terse)
+You (the orchestrator) reason, plan, route, and verify. For the standard and complex lanes you MUST NOT hand-edit scope files yourself - delegate the high-volume work (reading the codebase, writing the code) to bounded `agents/executor.md` subagents on the routed model. This split is the entire cost win: the expensive model thinks at low token volume; the cheap model does the bulk at high volume. Inline editing is reserved for the trivial lane. Spawn executors in parallel (`run_in_background`) when their file sets are disjoint; sequence them when one depends on another.
 
-1. **Analyze** - lazy step. Read `skills/apex/steps/01-analyze.md` before executing. Inline analyze + project-context read; early-scope-narrowing / review-only / deploy-doc / switch-verb / plan-completed gates; abort = clean exit (no manifest yet, skip session-end-hook).
-2. **Session manifest** - lazy step. Read `skills/apex/steps/02-manifest.md` before executing. `create-session.sh` mints the worktree + manifest; exit 0 -> `{session}` token (test -d the worktree, never fabricate); exit 1 -> abort cleanly.
-3. **Trivial pre-flight** - lazy step. Read `skills/apex/steps/03-trivial.md` before executing. Inline trivial gate (single named file, no new public symbol, no cross-file dep); trivial -> 3.1 inline edit+commit, jump to 14, skip 4-13.
-4. **Hypothesis** - lazy step. Read `skills/apex/steps/04-hypothesis.md` before executing. Inline emit of `original_prompt` + hypothesis + `alternatives` + `goals` -> `{session}-hypothesis.json` (producer-validated); mandatory under EVERY mode.
-5. **Load lessons + project docs** - lazy step. Read `skills/apex/steps/05-lessons.md` before executing. `grep-lessons.sh` + screener gate (K=25 inline; Haiku >25); propagate `goals[]`-axis-filtered kept lessons to steps 6/8/9/10/11.
-6. **Discovery** - lazy step. Read `skills/apex/steps/06-discovery.md` before executing. `agents/discoverer.md` cache-check then LSP -> `discovery-expand.sh` (one-call deterministic expansion) -> screener cascade (or inline-skip); writes `{session}-main-scope.json` + scope-check pointer.
-7. **Economy pre-flight** - lazy step. Read `skills/apex/steps/07-economy.md` before executing. Inline deterministic tier rule -> `{session}-tier.json`; drives step-8 executor model + step-9 polish / step-10.5 review / step-11 learn skips.
-8. **Execute** - lazy step. Read `skills/apex/steps/08-execute.md` before executing. 8.0 diff_anchor resolve (`git merge-base $base_branch HEAD` from manifest); 8.1 wc-l split queue; 8.2 goals-driven task split (B0-B3 pre-splits: concerns-aware, decomposition scout, scope-size hard split + B1 enum-exception, coupled-merge sequential ceiling, read-only audit cluster; barrel-file owner sub-goal; disjoint-scopes validation); 8.3 dispatch `agents/executor.md` per task (Sonnet economy / Opus standard; parallel via `run_in_background` when N>=2; explicit spawn-prompt context E1-E3 + helper_snapshot; dispatch-summary actuals + post-dispatch self-report reconciliation + cross-scope rollup). Orchestrator MUST NOT inline `Edit` / `Write` / `MultiEdit` / `NotebookEdit` of scope files at step 8.
-9. **Polish** - lazy step. Read `skills/apex/steps/09-polish.md` before executing (standard ALWAYS runs; economy skips - the skip gate is here so economy short-circuits without the read). In-scope-only cleanup via `agents/polish.md`; returns one-line summary, no-op if nothing actionable.
-10. **Verify** - lazy step. Read `skills/apex/steps/10-verify.md` before executing. `verify-build.sh --session {session} --with-tests --in-scope-only` (project-aware, first-fail-stop); exit 0 -> 10.5 review; non-zero -> scope-partition fix-loop (in-scope-changed -> `agents/executor.md` Sonnet, cap 3; in-scope-foreign-line / out-of-scope parked to `~/.claude/tmp/git-agent-errors.log`). **10.5 Review** (runs only after exit 0) fires under standard tier on a non-trivial diff (>=3 in-scope files + complexity / structural-deletion / verb signal, or the doc-consistency carve-out) -> `agents/reviewer.md` (Sonnet, foreground; cap 2 reviews + 1 fix); economy skips polish + review.
-11. **Tail** - lazy step. Read `skills/apex/steps/11-tail.md` before executing. `agents/documentation.md` (UNLESS `code-only-no-docs`) + `agents/learn.md` (standard, difficulty-gate `count>=1`); economy = doc only.
-12. **Commit + persist bump_hint** - lazy step. Read `skills/apex/steps/12-commit.md` before executing. Inline `git add -A` / commit / push `apex/{session}`; classify diff -> `bump_hint` persisted in manifest; empty diff is valid.
-13. **Self-reflect** - lazy step. Read `skills/apex/steps/13-reflect.md` before executing. `reflect-traces.sh` + background `agents/reflector.md` (owns post-reflect `cleanup-session.sh` + non-convergence detection).
-14. **Cleanup session (trivial-only)** - lazy step. Read `skills/apex/steps/14-cleanup.md` before executing. Runs ONLY when step 13 was skipped (trivial path; non-trivial cleanup comes from the step-13 reflector); `cleanup-session.sh`, idempotent, worktree-only.
-15. **Inline summary** - lazy step. Read `skills/apex/steps/15-summary.md` before executing. 15.0 cd-back sweep first; emit the fixed deterministic sections (Original request / Hypothesis vs reality / Root cause / Per-goal status / Mid-run notes / Result); then close task 15.
+## Drive (your judgment, not a checklist)
 
-## Cross-step invariants
+Sequence freely. A typical shape, not a mandated order:
 
-Coordination that spans steps - the orchestrator owns these because no single step file does; each step file holds its own mechanics, this is the canonical map (do NOT re-state the coupling per step file).
-- **Scope is seeded up-front, never grown at the tail (steps 1/6 -> 8/11/12).** Step 1 pre-coordinates the doc-touch surface (`full-scope`, report-only deliverable paths; `code-only-no-docs` instead skips the step-11 doc agent and admits no doc paths) and step 6 folds the doc-surface + co-located test files into `allowed_files` at scope-finalization - so steps 8/11/12 act inside a fixed scope and never reactively expand it. A reactive step-12 doc/scope expand means step 1/6 under-populated `allowed_files`.
-- **Doc-fold feeds the tail (step 6 -> 11/12).** The doc-surface files step 6 folds into `allowed_files` are exactly what step 11's documentation agent edits and step 12 stages; a doc edit stranded outside `allowed_files` at step 12 is an under-populated step 6, not a step-12 bug.
-- **Tier drives the tail (step 7 -> 8/9/10.5/11).** The step-7 tier selects the step-8 executor model (Sonnet economy / Opus standard) and gates step-9 polish + step-10.5 review + step-11 learn (economy skips all three) - see the Tier matrix above; step files must not re-derive the tier.
+- **understand / reuse** - reuse before you write: Grep/Read the existing code, find the pattern, match it exactly. Fan out an `Explore` agent only when the surface is genuinely wide.
+- **implement** - decompose into the SMALLEST single-purpose tasks (one resolver, one callsite, one component - never one broad "do X across all of apps/api"), and give each executor a brief that NAMES its exact target files and demands a minimal diff: no new files, no refactors, no file splits. A broad multi-file brief on a capable model is the runaway trap - it over-refactors and balloons. Every brief MUST pass the absolute worktree path and tell the executor to `cd` into it and verify `pwd` first - a subagent does NOT inherit your worktree cwd, so telling it to "use project-relative paths" without that anchor silently writes to the MAIN tree (the cwd-based fence fails open for it). Dispatch, then reconcile reports against `git status --porcelain` - trust the filesystem, not the promises. Await each async executor's completion (the harness re-invokes you when an agent finishes) - never `sleep` or `grep`-poll the worktree for sentinel strings. If an executor returns `partial` (it hit its scope ceiling), redispatch the residual as an even smaller task - never just re-run the same broad brief.
+- **verify** - default to targeted: run the touched packages' own typecheck + test + lint (the smallest set that exercises your change). Escalate to a whole-repo pass - `bash ~/.claude/skills/apex/scripts/verify-build.sh --session <session> --with-tests` (omit `--in-scope-only`: the whole worktree is in scope) - when the change is cross-cutting or the ripple is uncertain. Either way: a clean exit before you claim done - never assert success without a clean verifying read. Non-zero -> fix-loop with an `executor` on Sonnet, cap 3 attempts; if still failing, surface to the user with the error output.
+- **polish / review** - complex lane: spawn an `executor` to clean the diff (unused imports, dead code, leftover comments), then a second `executor` in `report-only` mode to review the diff against the CLAUDE.md rules. Skip for trivial/standard unless the diff clearly warrants it.
+- **docs** - update in-scope docs ONLY when behavior, contracts, or signatures changed (an `executor` doc task). No doc churn otherwise.
+- **commit** - checkpoint each independently-verified slice with its own commit on `apex/<session>` as it lands; do not batch everything to one end-commit. Committed clean work can never be stranded or re-clobbered by a later runaway. An empty diff is valid. (`/apex-merge` folds the whole branch, so multiple commits are fine.)
 
-## Mid-flow abort cleanup
+## Rails (enforced by hooks - know them, do not fight them)
 
-Any orchestrator exit bypassing step 14 runs `bash skills/apex/scripts/session-end-hook.sh {session}` inline. Triggers:
-- AskUserQuestion-abort at step 1 (no manifest yet -> skip session-end-hook)
-- Step 6 cascade-empty + abort
-- Step 6 cascade-empty + proceed-with-prompt-paths but zero validated paths
-- Step 10 verify cap-3 + `abort`
-- Any unexpected error path
+- **worktree fence** - every edit must stay inside your worktree (`skills/apex/scripts/worktree-fence-hook.sh`). The worktree IS the scope: no file-level allow-list, no discovery-computed scope. Blast radius is one throwaway branch. If an executor runs away or will not stop cleanly, do NOT fight in-place `git restore` (the destructive hook blocks it, and a dying background agent re-clobbers your restore at the next tool boundary) - your committed slices are safe and the uncommitted mess is disposable. Stop early and surface to the user (re-mint a fresh worktree and redispatch smaller, or reset to the last clean commit) instead of burning the session on restore battles. And NEVER tear down your own worktree from inside the session - removal belongs to `/apex-merge` or the user, run from the MAIN tree. Deleting it forces you to `cd` out to the main tree, and a killed executor's queued edits can then replay against that cwd and land in MAIN (this is how a runaway once leaked into main). If asked to clean up, surface to the user; do not self-teardown.
+- **file-health** - per-file size and line-length caps (`file-health-hook.sh`). When a file is at its cap, splitting it is a deliberate task YOU (the orchestrator) dispatch on purpose - never a side-effect an executor does mid-task to fit its edit.
+- **no secrets, no destruction** - `protect-env-hook.sh` (never read/write `.env*`) and `block-destructive-hook.sh` (no `rm -rf`, no history rewrites) fire regardless of your choices.
 
-Claude Code SessionEnd hook catches the case where the entire CC session ends mid-/apex; the inline call covers "user aborts /apex but stays in the same CC session" so the worktree-resident manifest is swept and the worktree dir is cleaned. After the inline `session-end-hook.sh {session}` call, the orchestrator MUST `cd "$(session-end-hook.sh ... output | tail -1)"` (the forwarded cleanup-session.sh stdout, the main-worktree absolute path) so the shell leaves the (possibly removed) worktree before /apex returns control to the user.
+## Learn + integrate
 
-## Parallel CC sessions on one project
-
-Two Claude Code sessions running /apex against the same project repo mint independent worktrees (`<main>/.apex-worktrees/<sessionA>/`, `<main>/.apex-worktrees/<sessionB>/`) on independent branches (`apex/<sessionA>`, `apex/<sessionB>`). Each has its own index, working tree, and `.claude-tmp/apex-active/`; the sessions do not observe each other's edits during execution. Each lands back on its recorded `base_branch` via its own `/apex-merge` run; textual overlap surfaces as a conflict in the standard `/apex-merge` step 4 resolver flow. No coordination is required at mint - worktree isolation is the coordination.
+When the change taught something reusable, spawn an `executor` to append a one-line lesson to `.claude-tmp/lessons-tmp.md` (apex-lessons curates it later). Then tell the user to run `/apex-merge` to fold `apex/<session>` back onto its base branch (which also removes the worktree). `/apex` never merges or pushes itself.

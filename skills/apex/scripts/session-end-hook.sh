@@ -89,7 +89,7 @@ if d.get('cc_session_id') == sid:
 }
 
 # True iff PID is a live process whose comm basename is "claude" (recycled-PID
-# safe). Mirrors sweep-stale-runs.sh / create-session.sh owner classification.
+# safe). Mirrors sweep-stale-runs.sh owner classification.
 pid_is_live_claude() {
   local pid="$1"
   [[ -n "$pid" && "$pid" =~ ^[0-9]+$ ]] || return 1
@@ -114,9 +114,8 @@ sweep_stale_worktrees() {
   # Sweep two classes of leftover .apex-worktrees/<token>/ dirs at SessionEnd:
   #   (a) manifest-LESS dirs - the crash-orphan case (manifest already wiped or
   #       never written, but the worktree directory survived). Removed inline;
-  #       cleanup-session.sh would no-op without a manifest. Without this the
-  #       next /apex create-session re-encounters the orphan and blocks on user
-  #       interaction.
+  #       cleanup-session.sh would no-op without a manifest. Without this,
+  #       crash-orphan worktree dirs accumulate under .apex-worktrees/.
   #   (b) manifest-PRESENT dirs whose owning session is no longer live (recorded
   #       pid dead OR recycled to a non-claude process). Re-run the
   #       cleanup-session.sh keep/remove decision so a fully-merged worktree

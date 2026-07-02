@@ -22,8 +22,8 @@
 # Notes:
 #   - macOS BSD `ps -o comm=` returns the absolute executable path; basename
 #     normalises to the binary name.
-#   - PID-rollover guard mirrored from create-session.sh: `comm` basename must
-#     equal "claude". Any other binary in the ancestry chain is skipped.
+#   - PID-rollover guard: `comm` basename must equal "claude". Any other
+#     binary in the ancestry chain is skipped.
 #   - MAX_DEPTH=8 covers cmux / tmux / screen / shell wrappers without infinite
 #     loops on broken process trees.
 

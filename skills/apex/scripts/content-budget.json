@@ -3,12 +3,7 @@
   "central_prose": 11400,
   "tiers": {
     "agents/executor.md": 4000,
-    "agents/discoverer.md": 4000,
-    "skills/apex-merge/SKILL.md": 3500,
-    "skills/apex/steps/01-analyze.md": 3500,
-    "skills/apex/steps/05-lessons.md": 3000,
-    "skills/apex/steps/06-discovery.md": 3500,
-    "skills/apex/steps/08-execute.md": 4500
+    "skills/apex-merge/SKILL.md": 3500
   },
   "central_prose_members": ["apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"],
   "near_cap_ratio": 0.85,
@@ -18,16 +13,11 @@
     "docs": [
       "apex-core.md",
       "skills/apex/SKILL.md",
-      "skills/apex/steps/08-execute.md",
       "agents/executor.md",
-      "agents/discoverer.md",
       "skills/apex-merge/SKILL.md",
       "skills/admin-apex/SKILL.md",
       "skills/admin-apex/evolve.md",
-      "agents/lesson-screener.md",
-      "agents/reflector.md",
-      "agents/documentation.md",
-      "agents/screener.md"
+      "agents/reflector.md"
     ]
   }
 }

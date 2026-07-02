@@ -98,6 +98,6 @@ Task 9 (commit) and task 10 (mirror + push) are not atomic across concurrent /ap
 
 ## Mid-flight drift example
 
-Task 6 op 3 expects `agents/discoverer.md`. Re-snapshot at op 3 shows `discoverer.md` is gone (a sibling /apex session moved it). Surface AskUserQuestion. `restart` -> SKILL re-enters task 3; `commit-partial` -> jump to task 7 with ops 1-2 only; `rollback` -> `git restore` on `{run}-dirty-paths.txt`.
+Task 6 op 3 expects `agents/executor.md`. Re-snapshot at op 3 shows `executor.md` is gone (a sibling session moved it). Surface AskUserQuestion. `restart` -> SKILL re-enters task 3; `commit-partial` -> jump to task 7 with ops 1-2 only; `rollback` -> `git restore` on `{run}-dirty-paths.txt`.
 
 See `apex-core.md` Conventions for the JSON-Schema validation contract; admin-apex schemas live at `skills/admin-apex/schemas/`. Spec-doc rewrites are `sync-docs.md` (task 7); VERSION bump + commit is task 9.

@@ -6,13 +6,13 @@ model: sonnet
 
 # learn
 
-Spec: `skills/apex/steps/11-tail.md`.
+Spec: `skills/apex-fix/SKILL.md` Step 2 (the invoking orchestrator).
 
 Required reads at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit the parent session's user-global rules - load them explicitly before any action).
 
 ## Input
 
-Spawn prompt passes `project_root` (absolute path to the session worktree) + `diff_anchor` verbatim. **FIRST action, before any read**: `cd "$project_root"` and assert `git branch --show-current` matches the session branch named in the spawn prompt - subagent CWD inheritance is unreliable, and a wrong-tree diff silently no-ops the run (cluster: learn-agent-wrong-tree). Compute the diff as `git -C "$project_root" diff {diff_anchor}`; resolve every session artifact (`fix-attempts.json`, traces) as an absolute path under `$project_root/.claude-tmp/apex-active/`, never relative. /apex orchestrator resolves `diff_anchor` as `git merge-base <manifest.base_branch> HEAD` (the apex/<session> branch's fork point - stable across the session lifecycle since the worktree branched off at session mint). apex-fix orchestrator passes the pre-fix HEAD sha captured at Step 0. Either way the diff stays valid through step 12's commit.
+Spawn prompt passes `project_root` (absolute path to the session worktree) + `diff_anchor` verbatim. **FIRST action, before any read**: `cd "$project_root"` and assert `git branch --show-current` matches the session branch named in the spawn prompt - subagent CWD inheritance is unreliable, and a wrong-tree diff silently no-ops the run (cluster: learn-agent-wrong-tree). Compute the diff as `git -C "$project_root" diff {diff_anchor}`; resolve every session artifact (`fix-attempts.json`, traces) as an absolute path under `$project_root/.claude-tmp/apex-active/`, never relative. The apex-fix orchestrator passes the pre-fix HEAD sha captured at its Step 0 as `diff_anchor`; a worktree-resident caller may instead pass `git merge-base <base_branch> HEAD` (the apex/<session> fork point). Either way the diff stays valid for the life of the spawn.
 
 ## Output
 
@@ -40,8 +40,4 @@ NOT patterns (drop, even if interesting): trivial bug fixes, env-var defaults, t
 
 **Default = drop.** A normal-difficulty session SHOULD append zero lessons. One lesson per ~5-10 sessions is the calibration target. If you find yourself writing more than one entry, you are catching trivia - re-read criterion 1.
 
-`reflector` (step 13) is the apex-workflow counterpart; this agent stays project-scoped.
-
-## Tiers
-
-`economy`: SKIPPED. `standard`: parallel with `documentation.md`.
+`reflector` is the apex-framework counterpart (framework-workflow findings); this agent stays project-scoped.

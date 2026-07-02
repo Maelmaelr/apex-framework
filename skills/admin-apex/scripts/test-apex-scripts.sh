@@ -118,10 +118,10 @@ PY
 
 check_bash skills/apex/scripts/*.sh skills/admin-apex/scripts/*.sh
 check_py   skills/apex/scripts/*.py skills/admin-apex/scripts/*.py
-check_schemas skills/apex/schemas/*.json skills/admin-apex/schemas/*.json
+check_schemas skills/admin-apex/schemas/*.json
 
-# Fixture tests for v2 scripts that have orchestrator-visible exit-code
-# contracts (apex-conflict-check, cleanup-session, session-end, reflect-traces,
+# Fixture tests for scripts that have orchestrator-visible exit-code
+# contracts (cleanup-session, session-end, mint-worktree, worktree-fence,
 # find-claude-pid). One assertion per script covers the critical exit code path
 # the orchestrator reads.
 check_fixtures() {
@@ -361,13 +361,6 @@ finalize_floor_via_plan_fixture() {
 }
 run_fixture "admin-apex-finalize.sh floor-check-via-plan-index" 1 finalize_floor_via_plan_fixture
 
-# 7. v2 step-13 reflect-traces.sh fail-silent contract: missing or bad args
-#    still exit 0 (the heuristic block is best-effort, never blocks the flow).
-run_fixture "reflect-traces.sh missing-args" 0 \
-  bash "$REPO_ROOT/skills/apex/scripts/reflect-traces.sh"
-run_fixture "reflect-traces.sh invalid-token" 0 \
-  bash "$REPO_ROOT/skills/apex/scripts/reflect-traces.sh" --session BADTOKEN
-
 # 8. verify-tests.sh: missing required args -> exit 2 (invocation error).
 run_fixture "verify-tests.sh missing-args" 2 \
   bash "$REPO_ROOT/skills/apex/scripts/verify-tests.sh"
@@ -385,20 +378,6 @@ run_fixture "verify-tests.sh no-manifest-skip" 0 verify_tests_no_manifest_fixtur
 #     flag does not break the no-manifest fast path.
 run_fixture "verify-build.sh --with-tests no-manifest" 0 \
   bash "$REPO_ROOT/skills/apex/scripts/verify-build.sh" --session deadbeef --with-tests
-
-# 10a. review-result.schema.json: a step-10.5 doc-consistency finding with authority validates.
-review_result_doc_consistency_fixture() {
-  local inst; inst=$(mktemp)
-  local doc_json='{"session":"abcdef01","attempt":1,"findings":[{"kind":"doc-consistency",'
-  doc_json+='"file":"README.md","line":12,"summary":"doc describes superseded flag",'
-  doc_json+='"authority":"doc-stale"}],"action":"fix-needed"}'
-  printf '%s' "$doc_json" > "$inst"
-  bash "$REPO_ROOT/skills/apex/scripts/validate-json.sh" review-result.schema.json "$inst"
-  local rc=$?
-  rm -f "$inst"
-  return $rc
-}
-run_fixture "review-result.schema.json doc-consistency+authority" 0 review_result_doc_consistency_fixture
 
 # 11. audit-detectors.py engine fixtures live in a sibling file (this harness is
 #     near the 400-line cap); run it and fold its pass/fail into the totals.
@@ -440,14 +419,11 @@ else
   echo "FAIL suite test-content-budget.sh" >&2; failed=$((failed + 1))
 fi
 
-# 16-21. Sibling-fixture suites (each lives in its own file - test-apex-scripts.sh
+# 16-19. Sibling-fixture suites (each lives in its own file - test-apex-scripts.sh
 # is at the file-health cap); this harness invokes each and folds pass/fail.
-if bash "$REPO_ROOT/skills/admin-apex/scripts/test-transcript-step-read.sh"; then
-  echo "PASS suite test-transcript-step-read.sh"; pass=$((pass + 1))
-else echo "FAIL suite test-transcript-step-read.sh" >&2; failed=$((failed + 1)); fi
-if bash "$REPO_ROOT/skills/admin-apex/scripts/test-step-gate.sh"; then
-  echo "PASS suite test-step-gate.sh"; pass=$((pass + 1))
-else echo "FAIL suite test-step-gate.sh" >&2; failed=$((failed + 1)); fi
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-worktree-scripts.sh"; then
+  echo "PASS suite test-worktree-scripts.sh"; pass=$((pass + 1))
+else echo "FAIL suite test-worktree-scripts.sh" >&2; failed=$((failed + 1)); fi
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-merge-reload.sh"; then
   echo "PASS suite test-merge-reload.sh"; pass=$((pass + 1))
 else echo "FAIL suite test-merge-reload.sh" >&2; failed=$((failed + 1)); fi
@@ -457,15 +433,6 @@ else echo "FAIL suite test-stamp-merge-result.sh" >&2; failed=$((failed + 1)); f
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-protect-env.sh"; then
   echo "PASS suite test-protect-env.sh"; pass=$((pass + 1))
 else echo "FAIL suite test-protect-env.sh" >&2; failed=$((failed + 1)); fi
-# 21. Workstream-B item-5 acceptance: real-/apex read-before-work replay fixture.
-if bash "$REPO_ROOT/skills/admin-apex/scripts/test-replay-acceptance.sh"; then
-  echo "PASS suite test-replay-acceptance.sh"; pass=$((pass + 1))
-else echo "FAIL suite test-replay-acceptance.sh" >&2; failed=$((failed + 1)); fi
-# 22. resolve-apex-active.sh (WS0 worktree-marker-leak) fixtures: worktree-path
-#     anchoring + fail-closed contract live in a sibling file (file-health cap).
-if bash "$REPO_ROOT/skills/admin-apex/scripts/test-resolve-apex-active.sh"; then
-  echo "PASS suite test-resolve-apex-active.sh"; pass=$((pass + 1))
-else echo "FAIL suite test-resolve-apex-active.sh" >&2; failed=$((failed + 1)); fi
 
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"

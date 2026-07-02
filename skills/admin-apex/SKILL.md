@@ -49,7 +49,7 @@ AskUserQuestion (header: "admin-apex mode"; options: `audit-only`, `audit+apply`
 
 Mint `{run}` (`openssl rand -hex 4`), `mkdir -p "$HOME/.claude/.claude-tmp/admin-apex-active"`, resolve `cc_session_id` via `bash skills/apex/scripts/get-cc-session-id.sh` (env-then-jsonl resolver - aborts on failure; NEVER default to empty - empty makes `session-end-hook.sh` unable to match this manifest), and resolve the live claude PID via `PID=$(bash skills/apex/scripts/find-claude-pid.sh 2>/dev/null || echo $PPID)` (walks up the process tree until comm basename == "claude"; falls back to `$PPID` ONLY if the helper exits non-zero - non-standard launcher signal). **Write** `$HOME/.claude/.claude-tmp/admin-apex-active/{run}.json` with `{"run":"{run}","cc_session_id":"<resolved>","pid":<PID>,"producer":"admin-apex"}`. The `cc_session_id` arms `scripts/session-end-hook.sh` to sweep this run's artifacts when the CC session ends (covers hard-stops, soft-skips, mid-flight rollback, abort, dismiss); the `pid` arms `scripts/sweep-stale-runs.sh` to drain orphans from prior crashed sessions. Capturing `$PPID` directly inside a `bash -c` subshell leaks the transient zsh pid - sibling sweeps then mark this run stale and clean it mid-flight.
 
-Then run `bash skills/admin-apex/scripts/sweep-stale-runs.sh` (best-effort; idempotent). It cleans only sibling manifests where the recorded PID is dead OR `ps -o comm=` does not match `claude` - active sibling sessions are preserved (mirrors `apex/scripts/create-session.sh` PID classification).
+Then run `bash skills/admin-apex/scripts/sweep-stale-runs.sh` (best-effort; idempotent). It cleans only sibling manifests where the recorded PID is dead OR `ps -o comm=` does not match `claude` - active sibling sessions are preserved (PID-liveness classification: recorded pid dead OR comm basename not `claude`).
 
 **User-driven concern capture.** After manifest write, source a free-text concern in this order: (1) `$ARGUMENTS` (slash-command tail; strip wrapping quotes); (2) if empty AND mode == `audit+apply`, AskUserQuestion `inject | skip` (skip / dismiss / `audit-only` mode = no concern). Non-blank concern -> `Write` verbatim to `$HOME/.claude/.claude-tmp/admin-apex-active/{run}-user-concern.md`; blank -> no file. Detector contract: `audit.md` `user-driven` row; cluster->op mapping: `evolve.md` `user-driven` row.
 
@@ -134,9 +134,9 @@ Spawn-prompt template (substitute `{run}`):
 
 ```
 You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and
-follow the `admin-apex task 11` row of the invocation table. No reflect-traces.sh
-heuristic block exists for this phase; inputs are this run's summary trace + JSON
-artifacts plus `git diff --stat HEAD~1` and `git log -1 --pretty=%B`.
+follow the `admin-apex task 11` row of the invocation table. Inputs are this
+run's summary trace + JSON artifacts plus `git diff --stat HEAD~1` and
+`git log -1 --pretty=%B`.
 
 Token:    {run}             # 8-hex; used in place of {session}
 Phase:    admin-apex

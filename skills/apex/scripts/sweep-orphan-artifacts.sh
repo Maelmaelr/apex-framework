@@ -25,8 +25,8 @@
 #     once their manifest is gone and they age past --age-hours.
 #
 # What it does NOT do:
-#   - Does NOT touch {token}.json manifests (that's sweep-stale-runs.sh /
-#     create-session.sh's PID-rollover classifier).
+#   - Does NOT touch {token}.json manifests (that's sweep-stale-runs.sh's
+#     PID-rollover classifier).
 #   - Does NOT touch {token}-* artifacts when the manifest is still present
 #     (those are owned by the active run; cleanup-{run,session}.sh handles them).
 #   - Does NOT touch artifacts younger than --age-hours (defends against

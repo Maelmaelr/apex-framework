@@ -116,23 +116,17 @@ TaskCreate "7. Self-reflect"
      "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-merge-result.json" 2>/dev/null \
      | grep -c 'resolver=' || true)
    ```
-   `RESOLVED_CONFLICTS == 0` -> silent skip + `step-4.6: skipped (no conflicts to fix)`. `RESOLVED_CONFLICTS >= 1` -> first narrow scope to the conflict-touched files so apex-fix's executor cannot drift outside the resolved set. Build a synthetic apex-style scope pointer keyed to the current `cc_session_id`:
+   `RESOLVED_CONFLICTS == 0` -> silent skip + `step-4.6: skipped (no conflicts to fix)`. `RESOLVED_CONFLICTS >= 1` -> count the lintable resolver-touched files (markdown-only resolutions skip apex-fix entirely):
    ```bash
-   FIX_SESSION=$(openssl rand -hex 4)
-   SCOPE_DIR="$HOME/.claude/.claude-tmp/apex-active"
-   mkdir -p "$SCOPE_DIR/${FIX_SESSION}-scopes"
-   CC_ID=$(bash $HOME/.claude/skills/apex/scripts/get-cc-session-id.sh)
-   # Conflict-touched paths from this run's merge-result (status=merged AND detail names a resolver hop), filtered to lintable extensions only (.ts|.tsx|.js|.jsx|.mjs|.cjs|.json); markdown-only resolver hops produce an empty array and skip apex-fix entirely.
-   # Single-pass flatten: the prior two-stage form (jq -r .paths | jq -Rs split) re-parsed pretty-printed
-   # array lines ('"file.ts",'), so the extension test never matched and allowed_files came out empty.
-   jq '[.[] | select(.status=="merged") | select((.detail // "") | test("resolver=")) | .paths // [] | .[]
-        | select(test("\\.(ts|tsx|js|jsx|mjs|cjs|json)$"))] | {allowed_files: .}' \
-     "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-merge-result.json" \
-     > "$SCOPE_DIR/${FIX_SESSION}-main-scope.json"
-   echo "${FIX_SESSION}" > "$SCOPE_DIR/${FIX_SESSION}-scopes/${CC_ID}.txt"
-   # Then invoke apex-fix only when allowed_files is non-empty; on return (or empty-skip) remove the synthetic scope pointer.
+   # Conflict-touched paths from this run's merge-result (status=merged AND detail names a resolver
+   # hop), filtered to lintable extensions only (.ts|.tsx|.js|.jsx|.mjs|.cjs|.json).
+   # Single-pass flatten: the prior two-stage form (jq -r .paths | jq -Rs split) re-parsed
+   # pretty-printed array lines ('"file.ts",'), so the extension test never matched.
+   LINTABLE=$(jq '[.[] | select(.status=="merged") | select((.detail // "") | test("resolver=")) | .paths // [] | .[]
+        | select(test("\\.(ts|tsx|js|jsx|mjs|cjs|json)$"))] | length' \
+     "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-merge-result.json")
    ```
-   When `allowed_files` is empty (every resolver hop was markdown-only), `rm -rf "$SCOPE_DIR/${FIX_SESSION}-scopes" "$SCOPE_DIR/${FIX_SESSION}-main-scope.json"` and record `step-4.6: skipped (no lintable resolver-touched files)`. Otherwise invoke `apex-fix` via Skill (`Skill(skill="apex-fix")`). After return (regardless of outcome), `rm -rf "$SCOPE_DIR/${FIX_SESSION}-scopes" "$SCOPE_DIR/${FIX_SESSION}-main-scope.json"`. Clean exit -> `step-4.6: apex-fix clean (resolved_conflicts=N)`. Non-zero exit -> AskUserQuestion (`proceed-anyway` | `abort-merge-run`; dismiss = `proceed-anyway`). `abort-merge-run` halts before Step 5 (worktrees + branches preserved; SessionEnd hook does NOT sweep `<run>` on this branch). `proceed-anyway` continues with `step-4.6: apex-fix fail (resolved_conflicts=N, cap-reached)` recorded.
+   `LINTABLE == 0` (every resolver hop was markdown-only) -> record `step-4.6: skipped (no lintable resolver-touched files)`. Otherwise invoke `apex-fix` via Skill (`Skill(skill="apex-fix")`) - its executor brief already confines edits to the files referenced in the verify errors output. Clean exit -> `step-4.6: apex-fix clean (resolved_conflicts=N)`. Non-zero exit -> AskUserQuestion (`proceed-anyway` | `abort-merge-run`; dismiss = `proceed-anyway`). `abort-merge-run` halts before Step 5 (worktrees + branches preserved; SessionEnd hook does NOT sweep `<run>` on this branch). `proceed-anyway` continues with `step-4.6: apex-fix fail (resolved_conflicts=N, cap-reached)` recorded.
 
 5. **Cleanup merged branches** - inline. For each branch that integrated - merge-result status `merged`, plus the `cleanup-only` branches from `<run>-discovery.json` (no commits past base, already current) - run in THIS order (worktree removal must precede branch deletion):
    - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty`). **Dirty-classification fast-path**: before the AskUserQuestion prompt, classify each `git -C "$WORKTREE" status --porcelain` line. A line is safe when it is a deletion of a path tracked on BASE HEAD (`D ` prefix, `git -C "$WORKTREE" cat-file -e BASE:<path>` confirms it exists on base; stale checkout safe to drop) OR `bash skills/apex-merge/scripts/dirty-classify.sh --is-ignorable <path>` exits 0 (harness state + the auto-generated/regen allowlist - next-env.d.ts, data/model-specs/*.json, .venv, etc.; extend the allowlist IN that script when reflectors flag new patterns). When EVERY line is safe -> auto-force without prompting and record `step-5: auto-force <branch> (deletions-only|auto-generated-only)`. Any real source modification / unrecognized untracked file falls through to the standard AskUserQuestion: `force-remove` (discard) | `keep-worktree` (skip cleanup) | `merge-to-main` (apply the worktree diff onto base + commit, then force-remove - for a cleanup-only branch whose worktree holds uncommitted work worth keeping).
@@ -145,7 +139,7 @@ TaskCreate "7. Self-reflect"
    - `B=$(git symbolic-ref --short HEAD)`; push ONLY when `git rev-list origin/$B..HEAD` is non-empty - skips the no-op round-trip on a clean zero-branch run. Update `<run>-merge-result.json` per entry: `pushed: true|false|"not-attempted"`.
    - Print + append to `<run>-summary.md`: `step-6: merged N branches, K conflicts auto-resolved, M conflicts manual, P branches skipped, cleaned Q worktrees, pushed-precheck=<yes|no> pushed-merges=<yes|no|skipped>`. The split keeps zero-branch runs unambiguous: a dirty-autocommit push is not an integration push (cluster: merge-zero-branch-artifacts).
 
-6.5. **Cleanup project apex scratch** - inline, unconditional, runs before Step 7 (idempotent; no-op when absent). The main worktree's gitignored `.claude-tmp/apex-active/` + `.claude-tmp/apex-discovery-cache/` accumulate stale per-session manifests, scope pointers, and discovery cache across /apex runs - stale `{session}-scopes/{cc_session_id}.txt` pointers can arm the scope-check hook and block later edits (`resolve-one-conflict.md`). Both are local scratch (gitignored - never tracked or pushed); live /apex sessions run under `.apex-worktrees/<session>/.claude-tmp/`, not here, so wiping main's copies drops only stale state. Run from the main worktree (Step 1 enforces cwd):
+6.5. **Cleanup project apex scratch** - inline, unconditional, runs before Step 7 (idempotent; no-op when absent). The main worktree's gitignored `.claude-tmp/apex-active/` + `.claude-tmp/apex-discovery-cache/` accumulate stale per-session artifacts (including leftovers from earlier apex generations). Both are local scratch (gitignored - never tracked or pushed); live /apex sessions run under `.apex-worktrees/<session>/.claude-tmp/`, not here, so wiping main's copies drops only stale state. Run from the main worktree (Step 1 enforces cwd):
    ```bash
    TOP=$(cd "$(git rev-parse --show-toplevel)" && pwd -P)
    CLEANED=""

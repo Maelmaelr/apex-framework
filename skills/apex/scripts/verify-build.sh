@@ -23,8 +23,8 @@
 #   ruff:   `ruff check --fix .` (single pass; fixes in-place, reports the rest).
 #   clippy: `cargo clippy --fix --allow-dirty --allow-staged ... -- -D warnings`
 #            (--allow-dirty needed because the executor has just edited files).
-# Auto-fix files are mutated in place; intentional and out of scope for the
-# apex scope-check hook (verify-build.sh runs outside the executor tool gate).
+# Auto-fix files are mutated in place; intentional (verify-build.sh runs
+# outside the editor tool hooks).
 # Python tooling (ruff/mypy/pytest) resolves via the project venv when present:
 # a local .venv/venv/env bin dir is prepended to PATH before dispatch.
 #
@@ -160,7 +160,7 @@ run_or_fail() {
 # pre-existing debt, not this session's work. We still first-fail-stop (never
 # fail open - masking a real in-scope regression is worse than a noisy foreign
 # one), but append a greppable NOTE so the step-10 orchestrator runs the scoped
-# in-scope lint/tsc/build (apex-core.md step 10). No main-scope.json / no jq ->
+# in-scope lint/tsc/build (legacy scoped mode). No main-scope.json / no jq ->
 # no-op. Returns 0 if an in-scope allowed_file is implicated, 1 if the failure
 # is entirely foreign (used by --in-scope-only).
 annotate_foreign_lint() {
@@ -303,7 +303,7 @@ case "$PROJECT_TYPE" in
     esac
 
     # Worktree dep bootstrap (Layer 3 defensive): node_modules missing means
-    # create-session.sh's Layer 1 symlink found nothing to link, or a non-/apex
+    # mint-worktree.sh's dep symlink found nothing to link, or a non-/apex
     # caller is verifying a fresh clone. Install once with the PM's frozen-
     # lockfile equivalent so a real "lockfile drift" surfaces instead of a
     # masked "module not found"; failures feed the normal first-fail-stop.

@@ -22,8 +22,7 @@
 #
 #       --- LINES ...
 #
-#   Line numbers are absolute in lessons.md and feed update-hit.sh directly
-#   (range tokens like `522-573` are accepted by update-hit.sh).
+#   Line numbers are absolute in lessons.md.
 #   Total output capped at MAX_OUTPUT_LINES (240) with a TRUNCATED footer
 #   when the cap fires; orchestrator should re-run with fewer / more specific
 #   terms. Cap walked 120 -> 180 -> 240: 120 silently dropped subsections of

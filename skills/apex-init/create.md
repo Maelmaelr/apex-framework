@@ -59,7 +59,7 @@ Match the secret-file names to the stack when a different convention is detected
 !.claude-tmp/apex-active/.gitkeep
 ```
 
-If the project will use `/apex` (per-session linked git worktrees), also append `.apex-worktrees/` - the apex create-session worktree root, untracked-by-design; `/apex-merge` filters it from the dirty-tree precheck. Projects missing this line get an avoidable AskUserQuestion (`commit-first` | `stash-first` | `abort`) on every `/apex-merge`.
+If the project will use `/apex` (per-session linked git worktrees), also append `.apex-worktrees/` - the apex mint-worktree.sh worktree root, untracked-by-design; `/apex-merge` filters it from the dirty-tree precheck. Projects missing this line get an avoidable AskUserQuestion (`commit-first` | `stash-first` | `abort`) on every `/apex-merge`.
 
 ## Step 4: Create .claude/ Structure
 

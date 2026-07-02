@@ -40,7 +40,7 @@ Parallel files that MUST move together when an env var or config key is added, r
 - Prod / staging compose or deploy: TODO (e.g., `docker-compose.prod.yml`, `deploy/render.yaml`, `k8s/values.prod.yaml`, `terraform/vars.tf`)
 - CI secrets surface: TODO (e.g., `.github/workflows/*.yml` env blocks, repository secret names)
 
-Curate this list as the project grows. The apex executor re-reads this section whenever a slice adds / removes / renames an env var (see `~/.claude/agents/executor.md` "Architecture context").
+Curate this list as the project grows. The /apex orchestrator passes the relevant sections into executor briefs (see `~/.claude/agents/executor.md`).
 
 <!-- SECTION: modification-checklist -->
 ## Modification Checklist

@@ -12,9 +12,9 @@ Spawn-prompt template (substitute `{run}`):
 
 ```
 You are agents/reflector.md. Read it at $HOME/.claude/agents/reflector.md and
-follow the `lessons-analyze` row of the invocation table. No reflect-traces.sh
-heuristic block exists for this phase; inputs are this run's per-task summary
-trace + JSON artifacts at .claude-tmp/lessons-analyze-active/{run}-*.
+follow the `lessons-analyze` row of the invocation table. Inputs are this
+run's per-task summary trace + JSON artifacts at
+.claude-tmp/lessons-analyze-active/{run}-*.
 
 Token:    {run}              # 8-hex; used in place of {session}
 Phase:    lessons-analyze

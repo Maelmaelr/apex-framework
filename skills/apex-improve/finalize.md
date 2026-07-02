@@ -17,7 +17,7 @@ Re-snapshots inventory, re-runs the orphan-refs / missing-refs / schema-mismatch
 ## Step 5b: Cleanup + version stamp (inline)
 
 ```
-# 5a. Archive consumed signals (next session reflect-traces.sh + apex-tech-watch append fresh blocks)
+# 5a. Archive consumed signals (the reflector + apex-tech-watch append fresh blocks)
 ARCHIVE_DIR="$HOME/.claude/tmp/improvements-archive"; mkdir -p "$ARCHIVE_DIR"
 DATE=$(date -u +%Y-%m-%dT%H-%M-%SZ)
 WORKFLOW="$HOME/.claude/tmp/apex-workflow-improvements.md"

@@ -72,7 +72,7 @@ Continue processing the in-scope rewrites; do NOT block the current admin-apex r
 
 For every Edit call:
 - Run `grep-apex-refs.sh <old>` first to enumerate occurrences.
-- Run `Read` on the file before composing `old_string` so the line snippet is verbatim (the file-health hook + scope-check hook fire on Edit; reading first matches apex orchestrator convention).
+- Run `Read` on the file before composing `old_string` so the line snippet is verbatim (the file-health hook fires on Edit; reading first matches apex orchestrator convention).
 - Use `replace_all: false` (default). If multiple identical lines need rewriting in one file, expand `old_string` with surrounding context to make each match unique.
 
 ## Doc-only ops
