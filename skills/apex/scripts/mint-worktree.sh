@@ -7,8 +7,9 @@
 #   2. git worktree add at <main>/.apex-worktrees/<session>/ on branch
 #      apex/<session> off HEAD; cd into it.
 #   3. Symlink gitignored dep caches (node_modules/.venv/... + monorepo
-#      subpackages) + .env* from the main worktree so verify-build does not
-#      fail on missing deps. Run an optional project bootstrap hook.
+#      subpackages) + .env* (root AND per-subpackage, e.g. apps/api/.env)
+#      from the main worktree so verify-build and test runs match the
+#      primary checkout. Run an optional project bootstrap hook.
 #   4. Write a MINIMAL manifest {session, branch, base_branch, worktree_path}.
 #      /apex-merge reads only base_branch (jq, default main) and derives the
 #      worktree from `git worktree list` - so no schema validation, no pid,
@@ -107,6 +108,12 @@ if [[ $_is_monorepo -eq 1 ]]; then
       if [[ -e "$_pkgdir$_sub" && ! -e "$_rel/$_sub" ]]; then
         ln -s "$_pkgdir$_sub" "$_rel/$_sub" 2>/dev/null || true
       fi
+    done
+    for _envf in "$_pkgdir".env "$_pkgdir".env.*; do
+      [[ -f "$_envf" ]] || continue
+      _envbn="$(basename "$_envf")"
+      [[ -e "$_rel/$_envbn" ]] && continue
+      ln -s "$_envf" "$_rel/$_envbn" 2>/dev/null || true
     done
   done
   shopt -u nullglob
