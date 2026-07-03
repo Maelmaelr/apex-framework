@@ -13,10 +13,19 @@
 #      /apex-merge reads only base_branch (jq, default main) and derives the
 #      worktree from `git worktree list` - so no schema validation, no pid,
 #      no cc_session_id. Integration + worktree removal are owned by /apex-merge.
-#   5. Echo {session} to stdout.
+#   5. Arm the session-record fence: write the worktree root to BOTH
+#      $APEX_FENCE_DIR/<cc_session_id> and $APEX_FENCE_DIR/pid-<claude-pid>
+#      (default dir ~/.claude/tmp/apex-fence/) so worktree-fence-hook.sh +
+#      block-destructive-hook.sh enforce the boundary even for unanchored
+#      subagents whose cwd never entered the worktree. The pid key survives
+#      /clear session-id rotation. Best-effort: neither key resolvable ->
+#      fence stays cwd-only. Stale sibling records (worktree gone) swept here.
+#   6. Echo {session} to stdout.
 #
 # Deliberately absent (machinery the fenced-dynamic model does not have):
-#   pid (stale-sweep), cc_session_id (SessionEnd sweep), schema validation.
+#   pid (stale-sweep), manifest cc_session_id (SessionEnd sweep), schema
+#   validation. The fence record above is the one cc_session_id use: keyed
+#   OUTSIDE the manifest, self-healing (hooks drop it when the worktree goes).
 #
 # Exit codes: 0 ok ({session} on stdout); 1 unrecoverable (bad cwd, no git, etc.)
 
@@ -131,6 +140,34 @@ m = {"session": sess, "branch": br, "base_branch": base, "worktree_path": wt}
 with open(path, "w", encoding="utf-8") as f:
     f.write(json.dumps(m) + "\n")
 PY
+
+# Arm the session-record fence (header step 5). Sweep stale sibling records
+# first (their worktree is gone; hooks also self-heal, this keeps the dir lean).
+FENCE_DIR="${APEX_FENCE_DIR:-$HOME/.claude/tmp/apex-fence}"
+if mkdir -p "$FENCE_DIR" 2>/dev/null; then
+  shopt -s nullglob
+  for _rec in "$FENCE_DIR"/*; do
+    [[ -f "$_rec" ]] || continue
+    _wt="$(head -n 1 "$_rec" 2>/dev/null || true)"
+    if [[ -z "$_wt" || ! -d "$_wt" ]]; then
+      rm -f "$_rec" 2>/dev/null || true
+    fi
+  done
+  shopt -u nullglob
+  _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  _ARMED=0
+  if _CC_SID="$(bash "$_SCRIPT_DIR/get-cc-session-id.sh" 2>/dev/null)" && [[ -n "$_CC_SID" ]]; then
+    printf '%s\n' "$WORKTREE_PATH" > "$FENCE_DIR/$_CC_SID" 2>/dev/null && _ARMED=1
+  fi
+  if _CPID="$(bash "$_SCRIPT_DIR/find-claude-pid.sh" 2>/dev/null)" && [[ -n "$_CPID" ]]; then
+    printf '%s\n' "$WORKTREE_PATH" > "$FENCE_DIR/pid-$_CPID" 2>/dev/null && _ARMED=1
+  fi
+  if [[ "$_ARMED" -eq 0 ]]; then
+    echo "mint-worktree.sh: no session id / claude pid resolved; fence stays cwd-only" >&2
+  fi
+else
+  echo "mint-worktree.sh: cannot create $FENCE_DIR; fence stays cwd-only" >&2
+fi
 
 echo "$SESSION"
 exit 0

@@ -45,7 +45,9 @@ mint_worktree_happy_fixture() {
   git -c user.email=t@t -c user.name=t add .gitignore >/dev/null
   git -c user.email=t@t -c user.name=t commit -q -m init >/dev/null
   local out
-  out=$(bash "$REPO_ROOT/skills/apex/scripts/mint-worktree.sh") || return 1
+  # APEX_FENCE_DIR sandbox: mint arms fence records; never pollute the real
+  # ~/.claude/tmp/apex-fence with fixture worktree paths.
+  out=$(APEX_FENCE_DIR="$PWD/fence-dir" bash "$REPO_ROOT/skills/apex/scripts/mint-worktree.sh") || return 1
   [[ "$out" =~ ^[0-9a-f]{8}$ ]] || return 1
   [[ -d ".apex-worktrees/$out" ]] || return 1
   git show-ref --verify --quiet "refs/heads/apex/$out" || return 1
@@ -123,6 +125,50 @@ fence_event_cwd_fixture() {
   return 0
 }
 run_fixture "worktree-fence-hook.sh event-cwd-activation" 0 fence_event_cwd_fixture
+
+# 8. worktree-fence-hook.sh record-armed: cwd outside any worktree but the
+#    session minted one (mint-worktree.sh record at $APEX_FENCE_DIR/<sid>) ->
+#    boundary enforced even for relative targets (resolved against the event
+#    cwd); unknown sid fail-opens; a stale record (worktree gone) self-heals.
+fence_record_fixture() {
+  local hook="$REPO_ROOT/skills/apex/scripts/worktree-fence-hook.sh" out
+  mkdir -p .apex-worktrees/feed0004 fence-dir
+  printf '%s\n' "$PWD/.apex-worktrees/feed0004" > fence-dir/FIX-SID
+  rec_write() {  # $1 = session_id, $2 = file_path; prints the hook verdict JSON
+    printf '{"tool_name":"Write","session_id":"%s","cwd":"/Users/fake/proj","tool_input":{"file_path":"%s"}}' \
+      "$1" "$2" | APEX_FENCE_DIR="$PWD/fence-dir" bash "$hook"
+  }
+  out=$(rec_write FIX-SID "src/app.ts") || return 1
+  [[ "$out" == *'"deny"'* ]] || return 1
+  out=$(rec_write FIX-SID "/Users/fake/proj/x.ts") || return 1
+  [[ "$out" == *'"deny"'* ]] || return 1
+  out=$(rec_write FIX-SID "$PWD/.apex-worktrees/feed0004/f.ts") || return 1
+  [[ "$out" == *'"allow"'* ]] || return 1
+  out=$(rec_write NO-SID "src/app.ts") || return 1
+  [[ "$out" == *'"allow"'* ]] || return 1
+  printf '%s\n' "$PWD/gone" > fence-dir/STALE-SID
+  out=$(rec_write STALE-SID "src/app.ts") || return 1
+  [[ "$out" == *'"allow"'* ]] || return 1
+  [[ ! -f fence-dir/STALE-SID ]] || return 1
+  return 0
+}
+run_fixture "worktree-fence-hook.sh record-armed" 0 fence_record_fixture
+
+# 9. mint-worktree.sh arms the session-record fence when the session id
+#    resolves (CC_SESSION_ID fast-path); record content = worktree root.
+#    Compare against pwd -P: mint resolves physical paths (macOS /var symlink).
+mint_worktree_fence_record_fixture() {
+  git init -q -b main . >/dev/null
+  printf '.claude-tmp/\n.apex-worktrees/\n' > .gitignore
+  git -c user.email=t@t -c user.name=t add .gitignore >/dev/null
+  git -c user.email=t@t -c user.name=t commit -q -m init >/dev/null
+  local out
+  out=$(CC_SESSION_ID="MINT-FIX-SID" APEX_FENCE_DIR="$PWD/fence-dir" \
+    bash "$REPO_ROOT/skills/apex/scripts/mint-worktree.sh") || return 1
+  [[ "$(head -n 1 fence-dir/MINT-FIX-SID)" == "$(pwd -P)/.apex-worktrees/$out" ]] || return 1
+  return 0
+}
+run_fixture "mint-worktree.sh fence-record" 0 mint_worktree_fence_record_fixture
 
 echo ""
 echo "test-worktree-scripts.sh: pass=$pass fail=$failed"

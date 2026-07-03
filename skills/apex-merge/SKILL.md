@@ -37,6 +37,18 @@ TaskCreate "7. Self-reflect"
    COMMON=$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)
    [[ "$TOP" == "$COMMON" ]] || { echo "/apex-merge must run from the main worktree" >&2; exit 1; }
    ```
+   Then disarm the session-record fence for this repo BEFORE any main-tree write (`mint-worktree.sh` arms `$APEX_FENCE_DIR/<cc_session_id>` records so unanchored apex writes cannot leak into MAIN; integration is the sanctioned main-tree writer, and a same-session /apex -> /apex-merge run would otherwise be denied at the auto-commit below):
+   ```bash
+   FENCE_DIR="${APEX_FENCE_DIR:-$HOME/.claude/tmp/apex-fence}"
+   if [[ -d "$FENCE_DIR" ]]; then
+     for f in "$FENCE_DIR"/*; do
+       [[ -f "$f" ]] || continue
+       case "$(head -n 1 "$f" 2>/dev/null)" in
+         "$TOP"/.apex-worktrees/*) rm -f "$f" ;;
+       esac
+     done
+   fi
+   ```
    Main worktree may be dirty. `.apex-worktrees/` is untracked-by-design (its mode-160000 gitlinks must never be committed). Per explicit user request, project `.claude/` + `.claude-tmp/` ARE swept into the auto-commit and land on main (operator config + apex artifacts integrate with the merge); everything else is auto-committed unconditionally with NO dirty-count prompt and NO source-path warning ("just commit, don't ask" is the intended contract; recover manually via `git restore` / `git stash` / `git revert` if needed). ONE exception - the fence-leak signature: before committing, intersect the dirty paths with each apex/* branch's changed files (`git diff --name-only $(git merge-base <base> <B>)..<B>` per discovered branch). A non-empty intersection means a worktree session's edits likely leaked into MAIN (subagent fence fail-open) - AskUserQuestion (`commit-anyway` | `abort-merge`) instead of silently laundering the leak into main's history; empty intersection -> auto-commit as documented. The verbatim `git status --porcelain` set lands in `${RUN}-precheck-auto-committed.txt` for audit. The auto-commit MUST NEVER carry `--no-verify` (CLAUDE.md non-negotiable; pre-commit hook failure -> AskUserQuestion `abort-merge | retry-after-fix`, never bypass). First unstage any `.apex-worktrees/*` gitlinks; then a `git ls-files -u` guard aborts on unmerged (UU) index entries left by an orphaned stash-pop, so conflict markers are never staged onto main (cluster: merge-precheck-unmerged-index). The follow-on `git add -A` MUST carry `':!.apex-worktrees'` so it does not re-stage what `git rm --cached` just unstaged:
    ```bash
    if [[ -n "$(git ls-files .apex-worktrees 2>/dev/null)" ]]; then

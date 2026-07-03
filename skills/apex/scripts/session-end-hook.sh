@@ -9,6 +9,9 @@
 # Invocation modes:
 #   1. SessionEnd (no positional arg):
 #        - Read session_id from hook stdin event JSON
+#        - Disarm the session's fence records ($APEX_FENCE_DIR/<session_id> +
+#          pid-<claude-pid>, default dir ~/.claude/tmp/apex-fence/; written by
+#          mint-worktree.sh), and sweep dead-owner pid records
 #        - Match against worktree-resident manifests under
 #          <main>/.apex-worktrees/*/.claude-tmp/apex-active/*.json
 #        - Derive apex {session} token, run cleanup-session.sh against the
@@ -215,8 +218,39 @@ if [[ -n "$SESSION_ARG" ]]; then
   # forwarded.
   run_cleanup "$SESSION_ARG" ""
 else
-  # SessionEnd hook mode: locate worktree-resident manifest by cc_session_id.
-  if MATCHED=$(derive_session_from_stdin); then
+  # SessionEnd hook mode: read the event once. First disarm this session's
+  # fence record (mint-worktree.sh writes it; a session that ends is done
+  # mutating its worktree), then locate the worktree-resident manifest by
+  # cc_session_id.
+  STDIN_JSON=$(cat 2>/dev/null || true)
+  SID=$(printf '%s' "$STDIN_JSON" | python3 -c "
+import json, sys
+try:
+    print(json.load(sys.stdin).get('session_id', ''))
+except Exception:
+    pass
+" 2>/dev/null || true)
+  FENCE_DIR="${APEX_FENCE_DIR:-$HOME/.claude/tmp/apex-fence}"
+  if [[ -n "$SID" ]]; then
+    rm -f "$FENCE_DIR/$SID" 2>/dev/null || true
+  fi
+  # Own pid-keyed record (mint writes both keys; the ending session's claude
+  # ancestor is this hook's own), then dead-owner pid records (claude gone or
+  # pid recycled to a non-claude binary). Live sibling sessions keep theirs.
+  OWN_CPID="$(bash "$SCRIPT_DIR/find-claude-pid.sh" 2>/dev/null || true)"
+  if [[ -n "$OWN_CPID" ]]; then
+    rm -f "$FENCE_DIR/pid-$OWN_CPID" 2>/dev/null || true
+  fi
+  shopt -s nullglob
+  for _rec in "$FENCE_DIR"/pid-*; do
+    _p="${_rec##*/pid-}"
+    if [[ "$_p" =~ ^[0-9]+$ ]] && pid_is_live_claude "$_p"; then
+      continue
+    fi
+    rm -f "$_rec" 2>/dev/null || true
+  done
+  shopt -u nullglob
+  if MATCHED=$(printf '%s' "$STDIN_JSON" | derive_session_from_stdin); then
     SESSION="${MATCHED%%	*}"
     TARGET_ACTIVE="${MATCHED#*	}"
     run_cleanup "$SESSION" "$TARGET_ACTIVE"

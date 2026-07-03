@@ -133,6 +133,47 @@ check deny  'git branch -D apex/deadbeef'                  "$teardown_tmp/.apex-
 check allow 'git commit -m x'                              "$teardown_tmp/.apex-worktrees/deadbeef"
 rm -rf "$teardown_tmp"
 
+# Worktree-fence tripwire, cwd-armed: Bash writes + benign git mutations must
+# stay inside the worktree (scratch allow-listed); relative targets resolve
+# under the cwd and pass; git effective tree = -C path else cwd.
+fence_tmp=$(mktemp -d)
+WT="$fence_tmp/.apex-worktrees/feed0005"
+mkdir -p "$WT/sub" "$fence_tmp/fence-dir"
+printf '%s\n' "$WT" > "$fence_tmp/fence-dir/BD-SID"
+check deny  'echo x > /Users/nobody/main.txt'        "$WT/sub"
+check allow 'echo x > out.log'                       "$WT/sub"
+check allow 'pnpm build > /tmp/b.log 2>&1'           "$WT/sub"
+check deny  'tee /Users/nobody/etc.conf'             "$WT/sub"
+check deny  'git -C /Users/nobody/proj commit -m x'  "$WT/sub"
+check allow 'git -C /Users/nobody/proj log'          "$WT/sub"
+check allow 'git commit -m slice'                    "$WT/sub"
+
+# Worktree-fence tripwire, record-armed: cwd outside any worktree, session
+# record present -> plain git writes + relative redirects deny (they would
+# mutate MAIN); reads and non-writing commands still pass.
+rec_verdict() {  # command-string; prints allow|deny
+  printf '{"tool_name":"Bash","session_id":"BD-SID","cwd":"/Users/nobody/proj","tool_input":{"command":%s}}' \
+    "$(python3 -c 'import json,sys; print(json.dumps(sys.argv[1]))' "$1")" \
+    | APEX_FENCE_DIR="$fence_tmp/fence-dir" bash "$HOOK" 2>/dev/null \
+    | python3 -c 'import json,sys; print(json.load(sys.stdin)["hookSpecificOutput"]["permissionDecision"])' \
+      2>/dev/null
+}
+check_rec() {  # expected command-string
+  local expected="$1" c="$2" got
+  got=$(rec_verdict "$c")
+  if [[ "$got" == "$expected" ]]; then
+    echo "PASS [record $expected] $c"; pass=$((pass + 1))
+  else
+    { echo "FAIL (record) $c"; echo "    expected=$expected got=$got"; } >&2
+    failed=$((failed + 1))
+  fi
+}
+check_rec deny  'git commit -am leak'
+check_rec deny  'echo x > out.txt'
+check_rec allow 'git status'
+check_rec allow 'echo hi'
+rm -rf "$fence_tmp"
+
 echo ""
 echo "test-block-destructive.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

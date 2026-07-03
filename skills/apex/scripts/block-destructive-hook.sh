@@ -32,6 +32,15 @@
 #     home tree (framework scratch excepted), or on absolute paths outside
 #     tmp scratch
 #   - shell readers/copiers of .env* (example/sample/template excepted)
+#   - worktree-fence tripwire (armed apex sessions only; shares the fence
+#     hook's arming model - cwd inside .apex-worktrees/ OR a session record
+#     at $APEX_FENCE_DIR/<cc_session_id> written by mint-worktree.sh):
+#     redirect / tee / sed -i / cp / mv write targets resolving outside the
+#     worktree (scratch + MAIN .claude-tmp allow-listed), and benign-form git
+#     tree mutations (add/commit/checkout/...) whose effective tree - the -C /
+#     --work-tree path, else the cwd - sits outside the worktree. Catches the
+#     Bash writes the edit-tool fence cannot see; still a tripwire, not a
+#     boundary.
 set -euo pipefail
 
 ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
@@ -39,7 +48,7 @@ ALLOW='{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":
 INPUT=$(cat)
 
 DECISION=$(GUARD_INPUT="$INPUT" python3 - <<'PY' 2>/dev/null || true
-import json, os, re, sys
+import json, os, re, subprocess, sys
 
 def emit(decision, reason=None):
     h = {"hookEventName": "PreToolUse", "permissionDecision": decision}
@@ -51,17 +60,157 @@ def emit(decision, reason=None):
 def deny(reason):
     emit("deny", "GUARDRAIL: " + reason)
 
+data = {}
 try:
     data = json.loads(os.environ.get("GUARD_INPUT", "") or "{}")
     cmd = ((data.get("tool_input") or {}).get("command", "") or "").strip()
 except Exception:
+    data = {}
     cmd = ""
-if not cmd:
+if not cmd or not isinstance(data, dict):
     emit("allow")
 
 ASK = " Ask user via AskUserQuestion before proceeding."
 CWD = os.getcwd() + "/"
 IN_WORKTREE = "/.apex-worktrees/" in CWD
+
+# --- worktree-fence arming (shared model with worktree-fence-hook.sh) ---
+MARK = "/.apex-worktrees/"
+EVENT_CWD = str(data.get("cwd") or "")
+
+def wt_root_of(path):
+    # Worktree root when path sits inside .apex-worktrees/<token>/, else None.
+    p = path + "/"
+    if MARK not in p:
+        return None
+    head, tail = p.split(MARK, 1)
+    tok = tail.split("/", 1)[0]
+    return head + MARK + tok if tok else None
+
+if wt_root_of(os.getcwd()):
+    BASE_CWD = os.getcwd()
+elif wt_root_of(EVENT_CWD):
+    BASE_CWD = EVENT_CWD
+else:
+    BASE_CWD = EVENT_CWD or os.getcwd()
+WT_ROOT = wt_root_of(os.getcwd()) or wt_root_of(EVENT_CWD)
+def claude_pid():
+    # Closest claude ancestor pid (mirrors find-claude-pid.sh). The record's
+    # pid key survives /clear session-id rotation.
+    pid = os.getppid()
+    for _ in range(8):
+        try:
+            comm = subprocess.run(["ps", "-o", "comm=", "-p", str(pid)],
+                                  capture_output=True, text=True, timeout=2).stdout.strip()
+        except Exception:
+            return None
+        if os.path.basename(comm) == "claude":
+            return pid
+        try:
+            pp = subprocess.run(["ps", "-o", "ppid=", "-p", str(pid)],
+                                capture_output=True, text=True, timeout=2).stdout.strip()
+            pid = int(pp)
+        except Exception:
+            return None
+        if pid in (0, 1):
+            return None
+    return None
+
+RECORD_ARMED = False
+REC_PATH = ""
+if WT_ROOT is None:
+    fdir = os.environ.get("APEX_FENCE_DIR") or os.path.expanduser("~/.claude/tmp/apex-fence")
+    try:
+        have_recs = bool(os.listdir(fdir))
+    except Exception:
+        have_recs = False
+    rec = ""
+    if have_recs:
+        # Two keys, first hit wins: event session_id, then pid-<claude-pid>.
+        # The pid walk (ps calls) only runs when records exist and sid missed.
+        sid = str(data.get("session_id") or os.environ.get("CC_SESSION_ID") or "").strip()
+        if sid and os.path.isfile(os.path.join(fdir, sid)):
+            rec = os.path.join(fdir, sid)
+        else:
+            cp = claude_pid()
+            if cp and os.path.isfile(os.path.join(fdir, "pid-" + str(cp))):
+                rec = os.path.join(fdir, "pid-" + str(cp))
+    if rec:
+        try:
+            with open(rec, encoding="utf-8") as fh:
+                wt = fh.readline().strip()
+        except Exception:
+            wt = ""
+        if wt and os.path.isdir(wt):
+            WT_ROOT, RECORD_ARMED, REC_PATH = wt, True, rec
+
+SCRATCH = (os.path.expanduser("~/.claude/tmp") + "/", "/tmp/", "/private/tmp/",
+           "/var/folders/", "/private/var/folders/")
+
+def fence_hint():
+    hint = (" This apex session's writes must stay under its worktree ("
+            + WT_ROOT + ") or framework scratch (/tmp, ~/.claude/tmp).")
+    if RECORD_ARMED:
+        hint += (" Unanchored context: cd " + WT_ROOT + " first. If main-tree work is"
+                 " intentional (apex finished), disarm: rm " + REC_PATH)
+    return hint
+
+def escapes_fence(tok):
+    # Resolved path when tok is a path-like write target OUTSIDE the armed
+    # worktree and its allow-list; None when safe or not path-like.
+    t = tok.strip("'\"")
+    if not t or t.startswith(("&", "-", "/dev/")) or ("/" not in t and "." not in t):
+        return None
+    ap = os.path.abspath(os.path.join(BASE_CWD, os.path.expanduser(t)))
+    if (ap + "/").startswith(WT_ROOT + "/"):
+        return None
+    if (ap + "/").startswith(WT_ROOT.split(MARK, 1)[0] + "/.claude-tmp/"):
+        return None  # MAIN-anchored lessons/apex scratch (sanctioned side-channel)
+    if any((ap + "/").startswith(s) for s in SCRATCH):
+        return None
+    return ap
+
+REDIR = re.compile(r"(?<![<>])>{1,2}\s*([^\s;|&<>]+)")
+GIT_WRITE = ("add", "commit", "apply", "am", "merge", "rebase", "cherry-pick",
+             "revert", "restore", "checkout", "switch", "reset", "rm", "mv",
+             "clean", "stash", "tag", "push")
+
+def check_tree_writes(seg):
+    # Fence tripwire for Bash file writes (the fence hook covers only the
+    # four edit tools). Conservative: only path-like targets are classified.
+    if WT_ROOT is None:
+        return
+    targets = REDIR.findall(seg)
+    targets += re.findall(r"\btee\s+(?:-[a-zA-Z]+\s+)*([^\s;|&]+)", seg)
+    if re.search(r"\bsed\b", seg) and re.search(r"(?:^|\s)-i", seg):
+        targets += [t for t in seg.split() if t.startswith("/")]
+    m = re.match(r"(?:cp|mv)\s+(.+)$", seg)
+    if m:
+        args = [t for t in m.group(1).split() if not t.startswith("-")]
+        if len(args) >= 2:
+            targets.append(args[-1])
+    for tok in targets:
+        ap = escapes_fence(tok)
+        if ap:
+            deny("Bash write to " + ap + " escapes the apex worktree." + fence_hint())
+
+def check_git_tree(seg):
+    # Benign-form git mutations against a tree outside the fence: git -C /
+    # --work-tree pointing elsewhere, or plain git writes from an unanchored
+    # (record-armed) context whose effective tree is the main checkout.
+    if WT_ROOT is None:
+        return
+    m = re.match(r"git((?:\s+-[cC]\s+\S+|\s+--(?:git-dir|work-tree)(?:=\S+|\s+\S+))*)"
+                 r"\s+([a-zA-Z-]+)", seg)
+    if not m or m.group(2) not in GIT_WRITE:
+        return
+    pm = (re.search(r"-C\s+(\S+)", m.group(1))
+          or re.search(r"--work-tree[=\s](\S+)", m.group(1)))
+    root = pm.group(1).strip("'\"") if pm else BASE_CWD
+    ap = os.path.abspath(os.path.join(BASE_CWD, os.path.expanduser(root)))
+    if not (ap + "/").startswith(WT_ROOT + "/"):
+        deny("git " + m.group(2) + " targets a tree outside the apex worktree ("
+             + ap + ")." + fence_hint())
 
 # git invocations tolerate prefix options before the subcommand
 # (git -c X=Y reset --hard / git -C path checkout -- were real bypasses).
@@ -147,6 +296,9 @@ for s in [x.strip() for x in re.split(r"\s*(?:&&|\|\||;)\s*", cmd) if x.strip()]
                         or re.match(GIT + r"branch\s+(-D|-d|--delete)\b", s)):
         deny("Never remove a worktree or delete a branch from inside an apex session; removal"
              " belongs to /apex-merge or the user, run from the MAIN tree.")
+    # --- worktree-fence tripwire (armed apex sessions only) ---
+    check_git_tree(s)
+    check_tree_writes(s)
     # --- dangerous rm ---
     check_rm(s)
     # --- .env access via shell (CLAUDE.md Security Non-Negotiable) ---

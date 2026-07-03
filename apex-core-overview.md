@@ -24,7 +24,9 @@ The lane decision is made once and never re-litigated per file. Opus is a per-sl
 1. Setup: bash ~/.claude/skills/apex/scripts/mint-worktree.sh   (from the project root)
    - mints {session} (8-hex), worktree <main>/.apex-worktrees/<session>/ on branch apex/<session>,
      symlinks dep caches + .env* from main, runs docs/apex-bootstrap.sh if present,
-     writes minimal manifest {session, branch, base_branch, worktree_path}
+     writes minimal manifest {session, branch, base_branch, worktree_path}, arms the
+     session-record fence (~/.claude/tmp/apex-fence/{<cc_session_id>, pid-<claude-pid>}
+     = worktree root)
    - exit 1 (non-git cwd / ~/.claude cwd / secondary worktree / detached HEAD) -> abort cleanly
    - then: cd .apex-worktrees/<session> as a top-level Bash call + confirm pwd
      (this arms the worktree fence - the script's internal cd cannot move the session)
@@ -57,10 +59,10 @@ The lane decision is made once and never re-litigated per file. Opus is a per-sl
 
 | Rail              | Hook script (skills/apex/scripts/)  | Gate                                                                 |
 | ----------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| worktree fence    | `worktree-fence-hook.sh`            | PreToolUse Edit/Write/MultiEdit/NotebookEdit; active only when cwd ($PWD, else event `cwd`) is inside `.apex-worktrees/*`; denies absolute targets outside the session worktree (scratch `~/.claude/tmp` + `/tmp` + `/private/tmp` + `/var/folders` allowed) |
+| worktree fence    | `worktree-fence-hook.sh`            | PreToolUse Edit/Write/MultiEdit/NotebookEdit; cwd-armed when cwd ($PWD, else event `cwd`) is inside `.apex-worktrees/*`, else record-armed via the mint-time records at `$APEX_FENCE_DIR/<cc_session_id>` + `pid-<claude-pid>` (catches unanchored subagents; pid key survives /clear - relative targets then resolve under the event cwd and are classified too); denies targets outside the session worktree (scratch `~/.claude/tmp` + `/tmp` + `/private/tmp` + `/var/folders` allowed); stale record (worktree gone) self-heals to fail-open |
 | file-health       | `file-health-hook.sh`               | blocks Edit/Write on files > 400 LOC gaining > 10 net lines; word budgets per `content-budget.json` |
 | protect-env       | `protect-env-hook.sh`               | `.env*` never read, written, or Grep-targeted                         |
-| block-destructive | `block-destructive-hook.sh`         | no dangerous recursive `rm`, no history rewrites/force pushes, no `git stash` in any form, no worktree self-teardown from inside a session |
+| block-destructive | `block-destructive-hook.sh`         | no dangerous recursive `rm`, no history rewrites/force pushes, no `git stash` in any form, no worktree self-teardown from inside a session; fence tripwire when armed (same arming model as the fence): Bash redirect/tee/sed -i/cp/mv targets and benign git tree mutations (`-C`/`--work-tree` path, else cwd) outside the worktree deny |
 
 Session cleanup: `session-end-hook.sh` (SessionEnd) reaps crash-orphaned worktrees and stale artifacts; committed or dirty worktrees are always preserved for `/apex-merge`, and pid-less manifests are reaped only past a 24h age gate (a live session's just-minted clean worktree is safe). `cleanup-session.sh` holds the keep/remove decision; `sweep-orphan-artifacts.sh` age-gates stray `{session}-*` siblings.
 
