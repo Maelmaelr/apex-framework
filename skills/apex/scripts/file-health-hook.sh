@@ -6,8 +6,7 @@
 #   - apex framework skills/** + agents/** docs gate on a CONTENT BUDGET
 #     (projected word count > DOC_WORD_CAP) rather than net line delta - physical
 #     newline count is gamed by one-paragraph-per-line markdown.
-#   - central prose specs (apex-core.md, apex-core-overview.md, README.md,
-#     repo-root CLAUDE.md) stay exempt (single-concern continuous documents).
+#   - repo-root CLAUDE.md stays exempt (single-concern continuous document).
 #   - all other .md (non-apex trees) stay exempt, unchanged.
 #
 # Code (non-.md):
@@ -40,10 +39,8 @@ ALLOW = "{\"hookSpecificOutput\":{\"hookEventName\":\"PreToolUse\",\"permissionD
 APEX_ROOT = os.path.join(os.path.expanduser("~"), ".claude")
 SKILLS_ROOT = os.path.join(APEX_ROOT, "skills") + os.sep
 AGENTS_ROOT = os.path.join(APEX_ROOT, "agents") + os.sep
-CENTRAL_SPECS = {os.path.join(APEX_ROOT, n) for n in
-                 ("apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md")}
-# Per-role skills/agents .md word caps live in content-budget.json (shared with
-# audit-detectors.py - one source, no duplicated-constant drift). DOC_WORD_CAP is
+CENTRAL_SPECS = {os.path.join(APEX_ROOT, "CLAUDE.md")}
+# Per-role skills/agents .md word caps live in content-budget.json. DOC_WORD_CAP is
 # the fail-safe fallback default used only when that file is missing/unparseable.
 DOC_WORD_CAP = 2500
 LINE_SPLIT_CAP = 400

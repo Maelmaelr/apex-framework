@@ -1,23 +1,7 @@
 {
   "default": 2500,
-  "central_prose": 11400,
   "tiers": {
     "agents/executor.md": 4000,
     "skills/apex-merge/SKILL.md": 3500
-  },
-  "central_prose_members": ["apex-core.md", "apex-core-overview.md", "README.md", "CLAUDE.md"],
-  "near_cap_ratio": 0.85,
-  "near_cap_exempt": ["skills/apex-merge/SKILL.md"],
-  "hash_roster": {
-    "ceiling": 0,
-    "docs": [
-      "apex-core.md",
-      "skills/apex/SKILL.md",
-      "agents/executor.md",
-      "skills/apex-merge/SKILL.md",
-      "skills/admin-apex/SKILL.md",
-      "skills/admin-apex/evolve.md",
-      "agents/reflector.md"
-    ]
   }
 }

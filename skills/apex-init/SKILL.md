@@ -19,7 +19,7 @@ Scan the current working directory:
 
 Run all checks below in parallel (single message with multiple Glob/Read/Bash calls):
 
-1. Check for existing APEX artifacts: `CLAUDE.md`, `.claude-tmp/`, `.claude/lessons.md`, `docs/project-context.md`
+1. Check for existing APEX artifacts: `CLAUDE.md`, `.claude-tmp/`, `.claude/commands/`, `docs/project-context.md`
 2. Check `git rev-parse --is-inside-work-tree 2>/dev/null`. If not a git repo, note in summary: `Git: no (consider running git init)`.
 3. Detect tech stack:
    - `package.json` -> Node.js (check for next, react, adonis, express, etc.)
@@ -40,7 +40,7 @@ Monorepo: {yes/no, with workspace list if yes}
 Existing: {list any APEX artifacts already present}
 ```
 
-If ALL artifacts exist (CLAUDE.md + .claude-tmp/ + docs/project-context.md + docs/features/index.md + the full `.claude/` structure created in Step 4: lessons.md + lessons-index.md + lessons-archive.md + commands/), print "Project already initialized. Nothing to do." and stop. Otherwise continue - re-runs backfill any missing artifact (including individual `.claude/` files when the dir already exists) without overwriting existing files.
+If ALL artifacts exist (CLAUDE.md + .claude-tmp/ + docs/project-context.md + docs/features/index.md + .claude/commands/), print "Project already initialized. Nothing to do." and stop. Otherwise continue - re-runs backfill any missing artifact without overwriting existing files.
 
 ## Step 2: Gather Info
 
@@ -49,7 +49,7 @@ Use AskUserQuestion:
 **Question:** "Short project description (1-2 sentences)?"
 - Options: "Enter description" (Recommended), "Skip (use directory name)"
 
-apex-init always creates the full APEX-compatible structure (`.claude-tmp/` + `.claude/` + `docs/` + `CLAUDE.md`); the apex chain reads all of it (manifest dir, lessons files, `docs/project-context.md` best-effort during understand per apex-core.md), so a partial init would leave a non-functional project - there is no structure sub-choice. Creation is idempotent: create.md skips any file/dir that already exists, so re-runs only backfill what is missing.
+apex-init always creates the full APEX-compatible structure (`.claude-tmp/` + `.claude/` + `docs/` + `CLAUDE.md`); the apex chain reads all of it (manifest dir, `docs/project-context.md` best-effort during understand), so a partial init would leave a non-functional project - there is no structure sub-choice. Creation is idempotent: create.md skips any file/dir that already exists, so re-runs only backfill what is missing.
 
 ## Steps 3-6: Create File Structure
 

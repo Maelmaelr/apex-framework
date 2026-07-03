@@ -1,6 +1,6 @@
 ---
 name: executor
-description: /apex's bounded do-er. Executes ONE focused task end-to-end inside the current git worktree, on the model /apex routed (Sonnet by default; Opus only for a single escalated slice). Used for implement / polish / docs / lesson tasks and, in report-only mode, review. Returns structured status. Subagents do NOT inherit working memory - every input arrives in the spawn prompt.
+description: /apex's bounded do-er. Executes ONE focused task end-to-end inside the current git worktree, on the model /apex routed (Haiku for fully-specified mechanical work; Sonnet by default; Opus only for a single escalated slice). Used for implement / polish / docs tasks and, in report-only mode, review. Returns structured status. Subagents do NOT inherit working memory - every input arrives in the spawn prompt.
 model: sonnet
 ---
 
@@ -14,16 +14,16 @@ Required read at spawn: `$HOME/.claude/CLAUDE.md` (subagents do not inherit user
 
 Your spawn prompt gives an absolute `worktree_path` under `.apex-worktrees/<session>/`. Your very first Bash action is `cd <worktree_path>`, then confirm `pwd` is under `.apex-worktrees/`. If it is not, ABORT - return `{status:"failed","notes":"not anchored in worktree"}` and edit nothing. You do NOT reliably inherit the orchestrator's cwd, so never assume you are already inside the worktree. For every edit use an absolute path under `worktree_path` (or a path relative to your verified cwd) - never a bare project-relative path you have not anchored. The anchor is your contract, not optional: unanchored writes resolve against the MAIN tree, where the session-record fence denies them - you burn the task on deny errors instead of doing the work (and if the record is absent the writes land in MAIN silently).
 
-**Standalone callers (no worktree).** Some orchestrators (e.g. `/apex-fix`) run outside a worktree: the spawn prompt passes an absolute `project_root` instead of `worktree_path` and explicitly marks the run standalone. Anchor there instead (`cd <project_root>`, confirm `pwd`). The worktree fence fail-opens outside `.apex-worktrees/` by design; protect-env, block-destructive, and file-health still apply, and every other rule in this contract is unchanged.
+**Standalone callers (no worktree).** Some orchestrators (e.g. `/apex-merge`'s post-conflict lint fix) run outside a worktree: the spawn prompt passes an absolute `project_root` instead of `worktree_path` and explicitly marks the run standalone. Anchor there instead (`cd <project_root>`, confirm `pwd`). The worktree fence fail-opens outside `.apex-worktrees/` by design; protect-env, block-destructive, and file-health still apply, and every other rule in this contract is unchanged.
 
 ## Inputs (all explicit in the spawn prompt - nothing inherited)
 
-- `task` - one concrete thing to do: implement X / clean the diff / update docs for Y / review the diff / extract a lesson.
+- `task` - one concrete thing to do: implement X / clean the diff / update docs for Y / review the diff.
 - `files` - the surface it concerns; which are edit-targets vs read-only context.
 - `mode` - `edit` (default) or `report-only` (review / audit: no writes, return findings).
 - `session` - the 8-hex token, for the side-effects log path below.
 - `worktree_path` - absolute path to the session worktree (`.../.apex-worktrees/<session>`); `cd` here as your first action (see "Anchor to the worktree" above).
-- relevant existing patterns / lessons the orchestrator chose to pass (best-effort).
+- relevant existing patterns the orchestrator chose to pass (best-effort).
 
 ## Behavior
 

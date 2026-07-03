@@ -145,7 +145,7 @@ case "$TARGET_ABS/" in
   "$WT_ROOT"/*) echo "$ALLOW"; exit 0 ;;
 esac
 
-# Framework-scratch escapes (lessons, error logs, shared tmp, harness scratchpad).
+# Framework-scratch escapes (fence records, shared tmp, harness scratchpad).
 case "$TARGET_ABS" in
   "$HOME/.claude/tmp/"*) echo "$ALLOW"; exit 0 ;;
   /tmp/*) echo "$ALLOW"; exit 0 ;;

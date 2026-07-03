@@ -1,244 +1,84 @@
 #!/usr/bin/env bash
-# Purpose: Mirror this run's allowlisted dirty paths from ~/.claude (private)
-#          to /Users/mael/dev/apex-framework (public), commit + push both repos.
-# Spec: skills/admin-apex/SKILL.md task 10 (mirror + push)
+# Mirror the public-eligible apex framework files from ~/.claude (private)
+# to /Users/mael/dev/apex-framework (public), commit + push both repos.
+# Invoked by /admin-apex as the final task, after the private commit lands.
 #
-# Per-run mirror (NOT a full reconciliation). Reads {run}-dirty-paths.txt and
-# {run}-docs-changed.txt from .claude-tmp/admin-apex-active/, applies an
-# allowlist (everything outside is private to ~/.claude and skipped), copies
-# survivors into the public mirror with identity path mapping, prunes dirs the
-# deletions emptied (git tracks no dirs, so they would linger), stages + commits
-# them with the same message as the just-made ~/.claude commit, then pushes
-# the public repo first (more visible failure surface) and ~/.claude second.
+# Full reconciliation, idempotent: allowlisted roots are synced verbatim -
+# additions/updates copied, and mirror files whose private source is gone are
+# deleted (this is how a retired skill or agent leaves the mirror). Everything
+# outside the allowlist is private to ~/.claude and never touches the mirror.
 #
-# Allowlist (mirrored to public; identity path mapping):
-#   - skills/apex/**
-#   - skills/admin-apex/**
-#   - skills/apex-improve/**            (self-improvement engine; closes the reflector loop)
-#   - skills/apex-merge/**              (worktree-mode integration skill; merges apex/<session>
-#                                        branches into recorded base)
-#   - skills/apex-tech-watch/**         (weekly tech-watch fetcher; produces tech-updates.md)
-#   - skills/apex-init/**               (project initializer; public users scaffold APEX structure)
-#   - skills/apex-fix/**                (standalone lint/build fix loop; referenced by generated CLAUDE.md)
-#   - skills/apex-lessons/**            (lessons curation: extract + analyze; referenced by generated CLAUDE.md)
-#   - agents/**
-#   - VERSION
-#   - apex-core.md
-#   - apex-core-overview.md
-#
-# Denylist (NEVER mirrored - private to ~/.claude or shape-incompatible):
-#   - settings.json                     (private user hooks; portable equivalent lives in dev repo)
-#   - CLAUDE.md                         (private global rules; user-specific PII)
-#   - skills/README.md                  (internal index; dev has its own public README at root)
-#   - skills/apex-git/**                (private orchestration: personal git wrapper)
-#   - plugins/**                        (private; installed_plugins.json + known_marketplaces.json are user-specific)
-#   - statusline/**                     (private; user-specific config + cached state)
-#   - tmp/**                            (private; reflector log + per-machine scratch)
-#   - everything else outside the allowlist
-#
-# Args:
-#   $1   <run-token>  required, e.g. "b6c67024"
+# Allowlist (identity path mapping):
+#   skills/apex/**  skills/admin-apex/**  skills/apex-merge/**  skills/apex-init/**
+#   agents/*.md that exist privately
+# Never mirrored: settings.json, CLAUDE.md, skills/README.md,
+#   skills/apex-git/** (personal), tmp/, everything else outside the allowlist.
 #
 # Env overrides:
-#   APEX_PRIVATE              default: $HOME/.claude
-#   APEX_FRAMEWORK_DEV        default: /Users/mael/dev/apex-framework
-#   APEX_MIRROR_NO_PUSH       if set non-empty, skip both pushes (commit-only)
-#   APEX_MIRROR_COMMIT_RANGE  default: HEAD~1..HEAD (single-commit, current behavior).
-#                             Override (e.g., HEAD~3..HEAD) for multi-commit runs:
-#                             the public commit message becomes the concatenated
-#                             messages of all private commits in the range, oldest
-#                             first. Single-commit default preserves byte-identical
-#                             behavior with the prior `git log -1 --pretty=%B` form.
-# Pre-dirty spec-doc reconcile: top-level allowlisted spec docs (apex-core.md,
-# apex-core-overview.md) are always swept and dedup-merged into the path set
-# when their private-vs-public content differs - even when not listed in
-# {run}-dirty-paths.txt. Covers spec-doc commits that landed outside an
-# admin-apex run.
+#   APEX_PRIVATE        default $HOME/.claude
+#   APEX_FRAMEWORK_DEV  default /Users/mael/dev/apex-framework
+#   APEX_MIRROR_NO_PUSH if set non-empty, commit-only (skip both pushes)
 #
-# Exit codes:
-#   0  mirrored + pushed (or nothing-to-do)
-#   2  bad args
-#   3  public mirror dir not found
-#   4  git add failed in public
-#   5  git commit failed in public
-#   6  git push failed in public
-#   7  git push failed in private
-
+# Exit codes: 0 ok/nothing-to-do; 3 mirror missing; 5 public commit failed;
+#             6 public push failed; 7 private push failed.
 set -euo pipefail
-
-if [[ $# -lt 1 ]]; then
-  echo "Usage: mirror-to-dev.sh <run-token>" >&2
-  exit 2
-fi
-RUN="$1"
 
 PRIVATE="${APEX_PRIVATE:-$HOME/.claude}"
 PUBLIC="${APEX_FRAMEWORK_DEV:-/Users/mael/dev/apex-framework}"
-
 [[ -d "$PUBLIC/.git" ]] || { echo "FATAL: public mirror not a git repo: $PUBLIC" >&2; exit 3; }
 
-ACTIVE="$PRIVATE/.claude-tmp/admin-apex-active"
-DIRTY="$ACTIVE/${RUN}-dirty-paths.txt"
-DOCS="$ACTIVE/${RUN}-docs-changed.txt"
+ROOTS=(skills/apex skills/admin-apex skills/apex-merge skills/apex-init)
 
-# Static allowlist + dynamic extension: any skills/* or agents/* path created or
-# renamed during THIS run is auto-added so a newly-created public-eligible skill
-# is mirrored on the first run that introduced it. The manual-allowlist-only
-# model would otherwise omit a skill dir in the run that created it; the
-# auto-extend below reads {run}-evolve-plan.json - joined to
-# {run}-applied-ops.json by plan_op_index - for create/rename ops and unions
-# their target paths into a per-run dynamic allowlist. The plan is authoritative
-# for op kind/target (applied-ops carries no kind/target per evolve.md's
-# plan-is-authoritative rule), so reading kind off applied-ops alone always
-# yielded '' and silently disabled this feature. The denylist
-# (settings.json / CLAUDE.md / skills/apex-git / README.md / plugins
-# / statusline / tmp) always wins and is checked BEFORE the auto-extend.
-DYNAMIC_ALLOWED=""
-APPLIED="$ACTIVE/${RUN}-applied-ops.json"
-PLAN="$ACTIVE/${RUN}-evolve-plan.json"
-if [[ -s "$APPLIED" ]]; then
-  DYNAMIC_ALLOWED=$(python3 -c "
-import json, sys
-try:
-    applied = json.load(open(sys.argv[1], encoding='utf-8'))
-except Exception:
-    sys.exit(0)
-try:
-    plan_ops = json.load(open(sys.argv[2], encoding='utf-8')).get('ops', [])
-except Exception:
-    plan_ops = []
-def op_for(entry):
-    # Plan is authoritative; join by index. Fall back to the entry itself for
-    # legacy applied-ops that inlined kind/target.
-    idx = entry.get('plan_op_index')
-    if isinstance(idx, int) and 0 <= idx < len(plan_ops):
-        return plan_ops[idx]
-    return entry
-paths = set()
-for entry in applied if isinstance(applied, list) else []:
-    if not isinstance(entry, dict):
-        continue
-    if entry.get('status') not in (None, 'applied'):
-        continue
-    op = op_for(entry)
-    if not isinstance(op, dict):
-        continue
-    if op.get('kind', '') in ('create', 'rename'):
-        for key in ('target', 'rename_to'):
-            v = op.get(key, '')
-            if isinstance(v, str) and (v.startswith('skills/') or v.startswith('agents/')):
-                paths.add(v)
-print('\n'.join(sorted(paths)))
-" "$APPLIED" "$PLAN" 2>/dev/null || true)
-fi
-
-denied_by_static() {
-  # Private orchestration skills + user-specific docs - NEVER mirrored even if
-  # an op creates a file under them.
-  case "$1" in
-    settings.json|CLAUDE.md|skills/README.md) return 0 ;;
-    skills/apex-git/*) return 0 ;;
-    plugins/*|statusline/*|tmp/*) return 0 ;;
-    *) return 1 ;;
-  esac
-}
-
-allowed() {
-  if denied_by_static "$1"; then return 1; fi
-  case "$1" in
-    skills/apex/*|skills/admin-apex/*|skills/apex-improve/*|skills/apex-merge/*|\
-    skills/apex-tech-watch/*|skills/apex-init/*|skills/apex-fix/*|skills/apex-lessons/*|\
-    agents/*|VERSION|apex-core.md|apex-core-overview.md)
-      return 0 ;;
-  esac
-  if [[ -n "$DYNAMIC_ALLOWED" ]]; then
-    while IFS= read -r dyn; do
-      [[ -z "$dyn" ]] && continue
-      # Allow exact match OR the file lives under a dyn-allowed dir.
-      if [[ "$1" == "$dyn" || "$1" == "$dyn"/* ]]; then return 0; fi
-      # Or the new path's dir matches a dyn-allowed file's dir (e.g. dyn = skills/new-skill/SKILL.md
-      # auto-extends to skills/new-skill/*).
-      dyn_dir="${dyn%/*}/"
-      if [[ "$1" == "$dyn_dir"* ]]; then return 0; fi
-    done <<< "$DYNAMIC_ALLOWED"
-  fi
-  return 1
-}
-
-paths=()
-while IFS= read -r line; do
-  paths+=("$line")
-done < <(cat "$DIRTY" "$DOCS" 2>/dev/null | awk 'NF' | sort -u)
-
-# Always sweep top-level spec docs and include any with private-vs-public
-# drift. Covers spec-doc commits that landed outside an admin-apex run.
-for sp in apex-core.md apex-core-overview.md; do
-  src="$PRIVATE/$sp"
-  dst="$PUBLIC/$sp"
-  [[ -f "$src" ]] || continue
-  if [[ ! -f "$dst" ]] || ! cmp -s "$src" "$dst"; then
-    already=0
-    for ep in ${paths[@]+"${paths[@]}"}; do
-      if [[ "$ep" == "$sp" ]]; then already=1; break; fi
-    done
-    if [[ $already -eq 0 ]]; then
-      paths+=("$sp")
-      echo "include (pre-dirty drift): $sp"
-    fi
+# Sync allowlisted skill roots: copy private -> public, delete public strays.
+for root in "${ROOTS[@]}"; do
+  if [[ -d "$PRIVATE/$root" ]]; then
+    mkdir -p "$PUBLIC/$root"
+    rsync -a --delete --exclude '__pycache__' "$PRIVATE/$root/" "$PUBLIC/$root/"
+  elif [[ -d "$PUBLIC/$root" ]]; then
+    rm -rf "$PUBLIC/$root"
   fi
 done
 
-mirrored=()
-# `${arr[@]+"${arr[@]}"}` keeps `set -u` happy on macOS bash 3.2 when arr is
-# empty (manifests on the soft-skip path: no allowlisted paths to mirror).
-for p in ${paths[@]+"${paths[@]}"}; do
-  if ! allowed "$p"; then
-    echo "skip (denylist or non-allowlisted): $p"
-    continue
-  fi
-  src="$PRIVATE/$p"
-  dst="$PUBLIC/$p"
-  if [[ -e "$src" ]]; then
-    mkdir -p "$(dirname "$dst")"
-    cp -p "$src" "$dst"
-    mirrored+=("$p")
-  elif [[ -e "$dst" ]]; then
-    rm -f "$dst"
-    mirrored+=("$p")
-  fi
+# Agents: mirror every private agents/*.md; drop mirror agents with no source.
+mkdir -p "$PUBLIC/agents"
+for src_agent in "$PRIVATE"/agents/*.md; do
+  [[ -e "$src_agent" ]] || continue
+  cp -p "$src_agent" "$PUBLIC/agents/$(basename "$src_agent")"
+done
+for pub_agent in "$PUBLIC"/agents/*.md; do
+  [[ -e "$pub_agent" ]] || continue
+  [[ -f "$PRIVATE/agents/$(basename "$pub_agent")" ]] || rm -f "$pub_agent"
 done
 
-# Deleted files can empty their parent dirs in the mirror; git tracks no dirs,
-# so without pruning they linger as stale untracked layout (steps/, schemas/).
+# Drain retired artifacts: top-level files and skills/ dirs the private tree
+# no longer carries (skills present privately but denylisted - e.g. apex-git -
+# were never mirrored; if one ever leaked, the private-dir guard keeps it
+# until the private dir is gone too, which is acceptable for a mirror).
+for stale in VERSION apex-core.md apex-core-overview.md; do
+  [[ -f "$PRIVATE/$stale" ]] || rm -f "$PUBLIC/$stale"
+done
+for pub_skill in "$PUBLIC"/skills/*/; do
+  [[ -d "$pub_skill" ]] || continue
+  rel="skills/$(basename "$pub_skill")"
+  [[ -d "$PRIVATE/$rel" ]] || rm -rf "$pub_skill"
+done
 find "$PUBLIC/skills" "$PUBLIC/agents" -type d -empty -not -path '*/.git*' -delete 2>/dev/null || true
 
-if [[ ${#mirrored[@]} -eq 0 ]]; then
-  echo "no allowlisted paths to mirror"
-  if [[ -z "${APEX_MIRROR_NO_PUSH:-}" ]]; then
-    ( cd "$PRIVATE" && git push origin "$(git rev-parse --abbrev-ref HEAD)" ) \
-      || { echo "push failed in $PRIVATE" >&2; exit 7; }
-  fi
-  exit 0
-fi
-
-( cd "$PUBLIC" && git add -- "${mirrored[@]}" ) \
-  || { echo "git add failed in $PUBLIC" >&2; exit 4; }
-
-if ( cd "$PUBLIC" && git diff --cached --quiet ); then
-  echo "mirrored ${#mirrored[@]} paths but no net change in $PUBLIC; skipping commit"
+git -C "$PUBLIC" add -A
+if git -C "$PUBLIC" diff --cached --quiet; then
+  echo "mirror already in sync; no public commit"
 else
-  RANGE="${APEX_MIRROR_COMMIT_RANGE:-HEAD~1..HEAD}"
-  msg=$(cd "$PRIVATE" && git log "$RANGE" --pretty=%B --reverse)
-  ( cd "$PUBLIC" && git commit -m "$msg" ) \
-    || { echo "git commit failed in $PUBLIC" >&2; exit 5; }
+  msg=$(git -C "$PRIVATE" log -1 --pretty=%B)
+  git -C "$PUBLIC" commit -m "$msg" || { echo "git commit failed in $PUBLIC" >&2; exit 5; }
+  echo "mirror committed: $(git -C "$PUBLIC" log -1 --pretty='%h %s')"
 fi
 
 if [[ -z "${APEX_MIRROR_NO_PUSH:-}" ]]; then
-  ( cd "$PUBLIC" && git push origin "$(git rev-parse --abbrev-ref HEAD)" ) \
+  git -C "$PUBLIC" push origin "$(git -C "$PUBLIC" rev-parse --abbrev-ref HEAD)" \
     || { echo "push failed in $PUBLIC" >&2; exit 6; }
-  ( cd "$PRIVATE" && git push origin "$(git rev-parse --abbrev-ref HEAD)" ) \
+  git -C "$PRIVATE" push origin "$(git -C "$PRIVATE" rev-parse --abbrev-ref HEAD)" \
     || { echo "push failed in $PRIVATE" >&2; exit 7; }
-  echo "mirrored ${#mirrored[@]} paths to $PUBLIC; pushed both repos."
+  echo "pushed both repos."
 else
-  echo "mirrored ${#mirrored[@]} paths to $PUBLIC; push skipped (APEX_MIRROR_NO_PUSH set)."
+  echo "push skipped (APEX_MIRROR_NO_PUSH set)."
 fi

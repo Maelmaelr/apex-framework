@@ -9,7 +9,7 @@ Dynamic coding orchestrator. You sequence the work; the worktree fences you. The
 
 ## Mission
 
-Ship the task end-to-end in one session: reuse existing code, adapt to the task, code cleanly, verify, test, polish, update docs when behavior changed, learn when the change taught something reusable. Then hand off to `/apex-merge`.
+Ship the task end-to-end in one session: reuse existing code, adapt to the task, code cleanly, verify, test, polish, update docs when behavior changed. Then hand off to `/apex-merge`.
 
 ## Setup (always first)
 
@@ -22,10 +22,11 @@ From the project root, run `bash ~/.claude/skills/apex/scripts/mint-worktree.sh`
 Read the prompt and glance at the surface. Pick ONE lane and do not re-litigate it per file:
 
 - **trivial** - one obvious edit to a named file, no new public symbol, no cross-file ripple: make the edit inline, commit, done. No subagents.
-- **standard** - bounded, mechanical, multi-file: delegate to `agents/executor.md` on Sonnet.
-- **complex** - judgment, architecture, or cross-cutting change: executors still on Sonnet (the cheap model does the bulk), decomposed hard into small minimal-diff tasks, plus a reviewer pass at the end. Escalate a SINGLE executor slice to Opus only when that one edit genuinely needs reasoning - never the whole fan-out.
+- **mechanical** - the brief fully specifies the change and no judgment is left (renames, locale-key fills, boilerplate replication, apply-this-exact-pattern-to-N-files): delegate to `agents/executor.md` on **Haiku**. If writing the brief means deciding something the executor would otherwise have to re-decide, it is not mechanical - route standard.
+- **standard** - bounded, multi-file, some local judgment: executors on **Sonnet**.
+- **complex** - architecture or cross-cutting change: decompose hard into small minimal-diff tasks, executors on **Sonnet** for the bulk, plus a reviewer pass at the end. Escalate a SINGLE hardest slice to **Opus** only when that one edit genuinely needs deep reasoning - never the whole fan-out.
 
-This decision sets the default executor model (Sonnet for standard and complex) and whether to decompose hard + review. Opus is a per-slice exception, never a lane default.
+The lane sets the default executor model, but routing is per-dispatch: a complex session can still send its rename sweep to Haiku, its feature slices to Sonnet, and one gnarly slice to Opus. Default down, not up - when unsure between two tiers, take the cheaper one and let a `partial`/`failed` return trigger the escalation.
 
 ## The one hard rule: think / do split
 
@@ -48,6 +49,6 @@ Sequence freely. A typical shape, not a mandated order:
 - **file-health** - per-file size and line-length caps (`file-health-hook.sh`). When a file is at its cap, splitting it is a deliberate task YOU (the orchestrator) dispatch on purpose - never a side-effect an executor does mid-task to fit its edit.
 - **no secrets, no destruction** - `protect-env-hook.sh` (never read/write `.env*`) and `block-destructive-hook.sh` (no `rm -rf`, no history rewrites) fire regardless of your choices.
 
-## Learn + integrate
+## Hand off
 
-When the change taught something reusable, spawn an `executor` to append a one-line lesson to `.claude-tmp/lessons-tmp.md` (apex-lessons curates it later). For non-trivial sessions, also append a short self-report block - `## <session> - apex - <date>` plus one line each for lane, dispatch count, any oversized dispatch or rail friction, and one workflow improvement - to `~/.claude/tmp/apex-workflow-improvements.md` via `bash ~/.claude/skills/apex/scripts/append-with-lock.sh ~/.claude/tmp/apex-workflow-improvements.md` (block on stdin); `/apex-improve` consumes it, and without it the /apex lane has no self-improvement signal. Then tell the user to run `/apex-merge` to fold `apex/<session>` back onto its base branch (which also removes the worktree). `/apex` never merges or pushes itself.
+Tell the user to run `/apex-merge` to fold `apex/<session>` back onto its base branch (which also removes the worktree). `/apex` never merges or pushes itself.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Verify gate (--with-tests): project-aware test runner scoped to modified files.
-# Spec: apex-core.md Model / Deterministic guardrails (verify gate); invoked by
+# Verify-gate test runner; invoked by
 # verify-build.sh when --with-tests is set.
 #
 # Auto-detect contract:
@@ -233,7 +233,7 @@ else: print('')
     # pnpm direct-exec mirrors the workspace branch above: `pnpm run test --
     # <flags>` is unreliable because pnpm's script-arg forwarding gets eaten
     # by any non-trivial `test` script; vitest 2.x then CACErrors on the
-    # leftover flags (3 reflectors, including one post-pnpm-workspace fix).
+    # leftover flags (recurring failure mode, including one post-pnpm-workspace fix).
     # `pnpm exec <runner>` lands args verbatim.
     # Heuristic test-file derivation used by vitest-v2 (no --related) and
     # the empty/unknown runner fallback. Inlined here so both branches share

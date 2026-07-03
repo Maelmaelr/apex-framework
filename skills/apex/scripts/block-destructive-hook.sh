@@ -165,7 +165,7 @@ def escapes_fence(tok):
     if (ap + "/").startswith(WT_ROOT + "/"):
         return None
     if (ap + "/").startswith(WT_ROOT.split(MARK, 1)[0] + "/.claude-tmp/"):
-        return None  # MAIN-anchored lessons/apex scratch (sanctioned side-channel)
+        return None  # MAIN-anchored apex scratch (sanctioned side-channel)
     if any((ap + "/").startswith(s) for s in SCRATCH):
         return None
     return ap

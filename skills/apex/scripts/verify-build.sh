@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Project-aware lint + build verifier (the /apex verify gate).
-# Spec: apex-core.md Model / Deterministic guardrails (verify gate).
+# Verify gate: whole-repo typecheck/build (+ optional tests) for /apex.
 #
 # Detects project type by manifest (priority order):
 #   package.json    -> node (pnpm | yarn | bun | npm by lockfile)
@@ -177,7 +177,7 @@ annotate_foreign_lint() {
   done < <(jq -r '.allowed_files[]?' "$scope_json" 2>/dev/null || true)
   local note='## NOTE: no in-scope allowed_file implicated - lint failure appears foreign/pre-existing; '
   note+='orchestrator should verify in-scope lint/typecheck/build separately before treating the '
-  note+='run as blocked (apex-core.md Model / Deterministic guardrails).'
+  note+='run as blocked (verify gate).'
   printf '%s\n' "$note" >> "$ERRORS_FILE"
   return 1
 }

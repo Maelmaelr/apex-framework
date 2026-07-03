@@ -2,7 +2,7 @@
 """verify-tests.sh helper: derive per-package test-file groups for pnpm workspaces.
 
 Extracted from verify-tests.sh (414L -> 321L) to satisfy the file-health 400-line
-gate (apex-improve run d58fe183). Behavior is byte-identical to the inline
+gate. Behavior is byte-identical to the inline
 heredoc it replaced - same walk depth, same runner detection, same expand
 heuristic, same tab-separated output shape, with one addition: vitest 2.x
 packages emit expanded test file paths (no `--related` flag, which was added

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # SessionEnd hook + manual entry point (worktree-only).
-# Spec: apex-core.md Failure handling / "session-end-hook.sh".
+
 #
 # Wraps cleanup-session.sh. Session artifacts are worktree-resident, so they
 # are preserved or atomically swept by cleanup-session.sh's worktree-remove;
@@ -266,7 +266,7 @@ except Exception:
   # or a stray main-anchored {session}-* write can still strand artifacts whose
   # manifest is already gone. sweep-orphan-artifacts.sh only reaps manifest-absent
   # {token}-* siblings older than --age-hours, so a live session (manifest present)
-  # and an in-flight writer (<24h) are never touched; deferred-findings are exempt.
+  # and an in-flight writer (<24h) are never touched.
   if [[ -x "$SCRIPT_DIR/sweep-orphan-artifacts.sh" ]]; then
     "$SCRIPT_DIR/sweep-orphan-artifacts.sh" \
       --dir "$MAIN_ROOT/.claude-tmp/apex-active" --age-hours 24 2>/dev/null || true

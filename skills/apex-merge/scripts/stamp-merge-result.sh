@@ -10,7 +10,7 @@
 #   - conflict-touched paths   : jq '.[]|select(.status=="merged")|select(.detail|test("resolver="))|.paths'
 # Neither ever matched before this script existed (`resolver=` only landed in
 # <run>-summary.md, never in merge-result detail; `.paths` was never written),
-# so step 4.6 silently skipped apex-fix after EVERY real conflict resolution.
+# so step 4.6 silently skipped the lint pass after EVERY real conflict resolution.
 # This script stamps both fields so both touchpoints fire.
 #
 # Rewrites IN PLACE the entry whose .branch == <branch>:
@@ -20,7 +20,7 @@
 # Any transient `conflict` detail / stale paths on the entry are dropped first.
 # Idempotent: re-stamping the same branch updates in place (never appends a dup).
 # Trivial-union-only merges are recorded directly by merge-loop.sh (detail
-# "trivial-union=N", no `resolver=`) and intentionally do NOT trigger apex-fix -
+# "trivial-union=N", no `resolver=`) and intentionally do NOT trigger the lint pass -
 # a bracket/backtick-balanced additive union cannot orphan an import.
 #
 # Args:

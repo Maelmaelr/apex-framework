@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Orphan {token}-* artifact sweep for .claude-tmp/{apex-active,admin-apex-active}.
-# Spec: apex-core.md Failure handling / "sweep-orphan-artifacts.sh".
+# Orphan {token}-* artifact sweep for .claude-tmp/apex-active.
+# Invoked by session-end-hook.sh as defense-in-depth against stranded artifacts.
 #
 # Cleans:
 #   - Files matching <dir>/{token}-* where:
@@ -11,35 +11,25 @@
 #       * artifact mtime is older than --age-hours threshold (defends against
 #         a still-writing producer that has not yet finalized its manifest)
 #
-# EXEMPT (never reaped): {token}-deferred-findings.json. The apex-improve /
-# admin-apex backlog is session-spanning and must persist across arbitrary idle
-# gaps (user decision: keep backlog). analyze.md consumes + consolidates it and
-# finalize.md prunes the consumed originals each run, so it never accumulates
-# unbounded; previously the >24h idle-gap reap dropped it whenever the improve
-# loop paused for a day.
-#
 # Why this exists (leak mode plugged):
-#   - Crashed CC sessions can leave {session}-* siblings (inventory, drift-report,
-#     traces, etc.) in apex-active / admin-apex-active when cleanup-session.sh /
-#     cleanup-run.sh aborts before reaching every target. This sweep drains those
-#     once their manifest is gone and they age past --age-hours.
+#   - Crashed CC sessions can leave {session}-* siblings (side-effects logs,
+#     traces, etc.) in apex-active when cleanup-session.sh aborts before
+#     reaching every target. This sweep drains those once their manifest is
+#     gone and they age past --age-hours.
 #
 # What it does NOT do:
-#   - Does NOT touch {token}.json manifests (that's sweep-stale-runs.sh's
-#     PID-rollover classifier).
+#   - Does NOT touch {token}.json manifests.
 #   - Does NOT touch {token}-* artifacts when the manifest is still present
-#     (those are owned by the active run; cleanup-{run,session}.sh handles them).
+#     (those are owned by the active run; cleanup-session.sh handles them).
 #   - Does NOT touch artifacts younger than --age-hours (defends against
 #     in-flight producers that have not yet written their manifest).
 #   - Does NOT wipe a co-running run's live artifacts: the manifest-absent
 #     branch re-checks {token}.json on disk just before deletion (TOCTOU
-#     close). This guard still matters for admin-apex-active
-#     where concurrent CC sessions can interleave; apex hot-path is worktree-
-#     resident so the surface is narrow but the guard is cheap.
+#     close). Concurrent CC sessions can interleave; the apex hot-path is
+#     worktree-resident so the surface is narrow but the guard is cheap.
 #
 # Args:
-#   --dir <path>           (required) - .claude-tmp/apex-active OR
-#                                       .claude-tmp/admin-apex-active. Absolute
+#   --dir <path>           (required) - .claude-tmp/apex-active. Absolute
 #                                       path or relative to caller cwd.
 #   --age-hours <N>        (optional; default 24) - Skip artifacts younger than
 #                          N hours. 0 disables the guard (use only in tests).
@@ -109,7 +99,7 @@ threshold = int(sys.argv[3])
 if not os.path.isdir(d):
     sys.exit(0)
 # 8-hex token followed by '-'; everything after the dash is the artifact
-# kind suffix (e.g., -deferred-findings.json, -inventory.json, -traces/...).
+# kind suffix (e.g., -side-effects.jsonl).
 pat = re.compile(r"^([0-9a-f]{8})-")
 try:
     names = sorted(os.listdir(d))
@@ -122,14 +112,6 @@ for n in names:
 for name in names:
     m = pat.match(name)
     if not m:
-        continue
-    # EXEMPT: the session-spanning {token}-deferred-findings.json backlog must
-    # persist across arbitrary idle gaps (user decision: keep backlog, never
-    # reap). analyze.md consumes + consolidates it and finalize.md prunes the
-    # consumed originals every run, so steady state holds at most one file - it
-    # never accumulates unbounded. Skipping it here removes the >24h idle-gap
-    # reap that previously dropped the backlog when the improve loop paused.
-    if name.endswith("-deferred-findings.json"):
         continue
     tok = m.group(1)
     # Manifest still present -> active run owns this artifact; skip.

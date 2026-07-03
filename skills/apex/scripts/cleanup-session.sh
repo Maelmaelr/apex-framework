@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Session cleanup (worktree-only).
-# Spec: apex-core.md Failure handling.
+
 #
 # Every apex session lives in its own git worktree at
 # <main>/.apex-worktrees/<session>/ on branch apex/<session>. The cleanup

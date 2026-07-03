@@ -8,11 +8,8 @@ Create directory and initial files (skip any that exist):
 
 ```
 .claude-tmp/
-  lessons-tmp.md
   apex-active/       (empty directory)
 ```
-
-**lessons-tmp.md**: Create as an empty file (zero bytes).
 
 Git does not track empty directories. Place a `.gitkeep` file in each empty leaf directory to preserve the structure on clone.
 
@@ -53,7 +50,7 @@ Match the secret-file names to the stack when a different convention is detected
 | Go | compiled binaries, `*.test`, `*.out` |
 | Python | `__pycache__/`, `*.pyc`, `.venv`, `.pytest_cache`, `build`, `dist`, `*.egg-info` |
 
-**Then append the apex artifact lines.** `.claude-tmp/` itself should be committed (it carries `lessons-tmp.md` + the dir skeleton) - do NOT gitignore it wholesale. But the per-session artifacts under `.claude-tmp/apex-active/` are transient and MUST NOT be committed; they have leaked to `main` and been pulled to prod (2-session). These two lines keep the dir alive via its `.gitkeep` while the session artifacts stay ignored:
+**Then append the apex artifact lines.** `.claude-tmp/` itself should be committed (the dir skeleton) - do NOT gitignore it wholesale. But the per-session artifacts under `.claude-tmp/apex-active/` are transient and MUST NOT be committed; they have leaked to `main` and been pulled to prod (2-session). These two lines keep the dir alive via its `.gitkeep` while the session artifacts stay ignored:
 ```
 .claude-tmp/apex-active/*
 !.claude-tmp/apex-active/.gitkeep
@@ -67,22 +64,7 @@ Create the project-level directory (skip any that exist):
 
 ```
 .claude/
-  lessons.md
-  lessons-index.md
-  lessons-archive.md
   commands/           (empty directory)
-```
-
-**lessons.md** content:
-```markdown
-# Lessons Learned
-```
-
-**lessons-index.md**: Create as an empty file (zero bytes).
-
-**lessons-archive.md** content:
-```markdown
-# Lessons Archive
 ```
 
 Place `.gitkeep` in `commands/` so the empty committed dir survives clone.
@@ -120,7 +102,7 @@ TODO: Add feature docs as the project grows.
 
 Generate a project-level `CLAUDE.md` at the project root (skip if exists).
 
-Leanness budget: this file loads on every turn and Claude Code degrades past a ~40k-char hard cliff. Keep the seed well under a 30k-char soft ceiling (typically <= ~200 lines) - reference deeper guidance via `docs/` rather than inlining. Ongoing appends (e.g. /apex-lessons routing) enforce the same 30k ceiling with evict-to-docs on breach.
+Leanness budget: this file loads on every turn and Claude Code degrades past a ~40k-char hard cliff. Keep the seed well under a 30k-char soft ceiling (typically <= ~200 lines) - reference deeper guidance via `docs/` rather than inlining.
 
 Tailor the template based on detected stack. Include:
 
@@ -141,7 +123,7 @@ Project-level slash commands in `.claude/commands/`.
 TODO: Add project-specific skills as needed.
 ```
 
-9. **APEX** section - standard block (lists the slash commands a project may invoke; framework-internal commands like `/admin-apex`, `/apex-improve`, `/apex-tech-watch` are intentionally omitted):
+9. **APEX** section - standard block:
 
 ```markdown
 ## APEX
@@ -149,7 +131,5 @@ TODO: Add project-specific skills as needed.
 \```bash
 /apex "task description"   # main coding orchestrator
 /apex-merge                # integrate apex/<session> worktree branches into their base
-/apex-fix                  # standalone lint/build fix loop
-/apex-lessons              # curate .claude/lessons.md (extract + analyze)
 \```
 ```
