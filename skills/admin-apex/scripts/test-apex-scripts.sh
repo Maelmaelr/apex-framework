@@ -433,6 +433,9 @@ else echo "FAIL suite test-stamp-merge-result.sh" >&2; failed=$((failed + 1)); f
 if bash "$REPO_ROOT/skills/admin-apex/scripts/test-protect-env.sh"; then
   echo "PASS suite test-protect-env.sh"; pass=$((pass + 1))
 else echo "FAIL suite test-protect-env.sh" >&2; failed=$((failed + 1)); fi
+if bash "$REPO_ROOT/skills/admin-apex/scripts/test-block-destructive.sh"; then
+  echo "PASS suite test-block-destructive.sh"; pass=$((pass + 1))
+else echo "FAIL suite test-block-destructive.sh" >&2; failed=$((failed + 1)); fi
 
 echo ""
 echo "test-apex-scripts.sh: pass=$pass fail=$failed"

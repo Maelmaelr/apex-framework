@@ -6,10 +6,11 @@
 # Spec: CLAUDE.md Security Non-Negotiable ("Never read/modify .env* files");
 #       skills/apex/scripts/protect-env-hook.sh header.
 #
-# The hook is tool-agnostic (keys only on tool_input.file_path / notebook_path),
-# so one fixture set covers every wired matcher (Edit|Write|MultiEdit|NotebookEdit
-# AND Read). Kept separate from test-apex-scripts.sh (400-line file-health cap),
-# which invokes this one and folds the result. Also runnable standalone.
+# The hook is tool-agnostic (keys on tool_input.file_path / notebook_path /
+# path), so one fixture set covers every wired matcher (Edit|Write|MultiEdit|
+# NotebookEdit AND Read|Grep). Kept separate from test-apex-scripts.sh (400-line
+# file-health cap), which invokes this one and folds the result. Also runnable
+# standalone.
 #
 # Exit codes: 0 all fixtures pass; 1 one or more failed.
 
@@ -53,6 +54,16 @@ if [[ "$nb" == "deny" ]]; then
   echo "PASS notebook_path .env -> deny ($nb)"; pass=$((pass + 1))
 else
   { echo "FAIL notebook_path .env -> deny"; echo "    expected=deny got=$nb"; } >&2; failed=$((failed + 1))
+fi
+
+# path field (Grep shape) is honored too (settings.json PreToolUse:Read|Grep).
+gr=$(printf '{"tool_name":"Grep","tool_input":{"pattern":"KEY","path":"/proj/.env"}}' \
+  | bash "$HOOK" \
+  | python3 -c "import json,sys;print(json.load(sys.stdin)['hookSpecificOutput']['permissionDecision'])" 2>/dev/null)
+if [[ "$gr" == "deny" ]]; then
+  echo "PASS Grep path .env -> deny ($gr)"; pass=$((pass + 1))
+else
+  { echo "FAIL Grep path .env -> deny"; echo "    expected=deny got=$gr"; } >&2; failed=$((failed + 1))
 fi
 
 echo ""

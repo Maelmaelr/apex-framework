@@ -36,18 +36,35 @@ fi
 # case (the claude process that owned the session has exited).
 dead_pid() { local p; ( true ) & p=$!; wait "$p" 2>/dev/null || true; echo "$p"; }
 
-# Seed a git repo (cwd) with one apex worktree + manifest. Echoes worktree path.
-seed_worktree() {
-  local token="$1" pid="$2" sid="$3" wt=".apex-worktrees/$1"
+# Seed a git repo (cwd) with one apex worktree, no manifest. Echoes worktree path.
+seed_repo_worktree() {
+  local token="$1" wt=".apex-worktrees/$1"
   git init -q -b main . >/dev/null
   printf '.claude-tmp/\n.apex-worktrees/\n' > .gitignore
   git -c user.email=t@t -c user.name=t add .gitignore >/dev/null
   git -c user.email=t@t -c user.name=t commit -q -m init >/dev/null
   git worktree add -q -b "apex/$token" "$wt" HEAD >/dev/null
   mkdir -p "$wt/.claude-tmp/apex-active"
+  echo "$wt"
+}
+
+# Seed with a pid-carrying manifest (legacy/admin schema). Echoes worktree path.
+seed_worktree() {
+  local token="$1" pid="$2" sid="$3" wt
+  wt=$(seed_repo_worktree "$token")
   local fmt='{"session":"%s","pid":%s,"cc_session_id":"%s",'
   fmt+='"worktree_path":"%s","branch":"apex/%s","base_branch":"main"}\n'
   printf "$fmt" "$token" "$pid" "$sid" "$PWD/$wt" "$token" \
+    > "$wt/.claude-tmp/apex-active/$token.json"
+  echo "$wt"
+}
+
+# Seed with a pid-less manifest (/apex mint schema). Echoes worktree path.
+seed_worktree_pidless() {
+  local token="$1" wt
+  wt=$(seed_repo_worktree "$token")
+  printf '{"session":"%s","branch":"apex/%s","base_branch":"main","worktree_path":"%s"}\n' \
+    "$token" "$token" "$PWD/$wt" \
     > "$wt/.claude-tmp/apex-active/$token.json"
   echo "$wt"
 }
@@ -94,8 +111,36 @@ sibling_preserve_case() {
   return 0
 }
 
+# pid-less (/apex mint schema) manifests: liveness is unknowable, so the reaper
+# age-gates on manifest mtime (APEX_REAP_AGE_HOURS, default 24). A fresh clean
+# worktree is a LIVE session's mint-to-first-edit window - never reap it.
+pidless_young_preserve_case() {
+  local wt; wt=$(seed_worktree_pidless beef0001)
+  fire_sessionend_nonmatch
+  [[ -d "$wt" ]] || return 1
+  git show-ref --verify --quiet "refs/heads/apex/beef0001" || return 1
+  return 0
+}
+
+# Past the age gate, a clean no-commits pid-less worktree is a stale leftover
+# and IS reaped (mtime backdated 25h; cheaper than a 24h wait, same contract).
+pidless_old_reap_case() {
+  local wt; wt=$(seed_worktree_pidless beef0002)
+  python3 -c "
+import os, sys, time
+ts = time.time() - 25 * 3600
+os.utime(sys.argv[1], (ts, ts))
+" "$wt/.claude-tmp/apex-active/beef0002.json"
+  fire_sessionend_nonmatch
+  [[ -d "$wt" ]] && return 1
+  git show-ref --verify --quiet "refs/heads/apex/beef0002" && return 1
+  return 0
+}
+
 run_case "sibling-reap (merged-clean dead-owner removed)" sibling_reap_case
 run_case "sibling-preserve (commits-past-base dead-owner kept)" sibling_preserve_case
+run_case "pidless-young-preserve (live mint window kept)" pidless_young_preserve_case
+run_case "pidless-old-reap (stale pid-less leftover removed)" pidless_old_reap_case
 
 echo "test-session-end-worktree.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

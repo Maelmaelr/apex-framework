@@ -97,6 +97,33 @@ fence_boundary_fixture() {
 }
 run_fixture "worktree-fence-hook.sh boundary" 0 fence_boundary_fixture
 
+# 6. worktree-fence-hook.sh: harness scratchpad (/private/tmp on macOS) and
+#    ~/.claude/tmp stay writable from inside a worktree (framework scratch).
+fence_scratch_fixture() {
+  local hook="$REPO_ROOT/skills/apex/scripts/worktree-fence-hook.sh" out p
+  mkdir -p .apex-worktrees/feed0002
+  for p in /private/tmp/claude-x/scratch.txt /tmp/scratch.txt "$HOME/.claude/tmp/x.log"; do
+    out=$(cd .apex-worktrees/feed0002 \
+      && printf '{"tool_name":"Write","tool_input":{"file_path":"%s"}}' "$p" \
+      | bash "$hook") || return 1
+    [[ "$out" == *'"allow"'* ]] || return 1
+  done
+  return 0
+}
+run_fixture "worktree-fence-hook.sh scratch-allow" 0 fence_scratch_fixture
+
+# 7. worktree-fence-hook.sh: activation falls back to the event JSON's cwd when
+#    the hook process cwd is NOT inside a worktree (harness-version drift).
+fence_event_cwd_fixture() {
+  local hook="$REPO_ROOT/skills/apex/scripts/worktree-fence-hook.sh" out
+  mkdir -p .apex-worktrees/feed0003
+  out=$(printf '{"tool_name":"Edit","cwd":"%s/.apex-worktrees/feed0003","tool_input":{"file_path":"/etc/hosts"}}' \
+      "$PWD" | bash "$hook") || return 1
+  [[ "$out" == *'"deny"'* ]] || return 1
+  return 0
+}
+run_fixture "worktree-fence-hook.sh event-cwd-activation" 0 fence_event_cwd_fixture
+
 echo ""
 echo "test-worktree-scripts.sh: pass=$pass fail=$failed"
 [[ $failed -eq 0 ]] || exit 1

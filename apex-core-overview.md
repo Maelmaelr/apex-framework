@@ -57,12 +57,12 @@ The lane decision is made once and never re-litigated per file. Opus is a per-sl
 
 | Rail              | Hook script (skills/apex/scripts/)  | Gate                                                                 |
 | ----------------- | ----------------------------------- | -------------------------------------------------------------------- |
-| worktree fence    | `worktree-fence-hook.sh`            | PreToolUse Edit/Write/MultiEdit/NotebookEdit; active only when cwd is inside `.apex-worktrees/*`; denies absolute targets outside the session worktree (scratch `~/.claude/tmp` + `/tmp` allowed) |
+| worktree fence    | `worktree-fence-hook.sh`            | PreToolUse Edit/Write/MultiEdit/NotebookEdit; active only when cwd ($PWD, else event `cwd`) is inside `.apex-worktrees/*`; denies absolute targets outside the session worktree (scratch `~/.claude/tmp` + `/tmp` + `/private/tmp` + `/var/folders` allowed) |
 | file-health       | `file-health-hook.sh`               | blocks Edit/Write on files > 400 LOC gaining > 10 net lines; word budgets per `content-budget.json` |
-| protect-env       | `protect-env-hook.sh`               | `.env*` never read or written                                         |
-| block-destructive | `block-destructive-hook.sh`         | no `rm -rf`, no history rewrites, no `git stash` in any form          |
+| protect-env       | `protect-env-hook.sh`               | `.env*` never read, written, or Grep-targeted                         |
+| block-destructive | `block-destructive-hook.sh`         | no dangerous recursive `rm`, no history rewrites/force pushes, no `git stash` in any form, no worktree self-teardown from inside a session |
 
-Session cleanup: `session-end-hook.sh` (SessionEnd) reaps crash-orphaned worktrees and stale artifacts; committed or dirty worktrees are always preserved for `/apex-merge`. `cleanup-session.sh` holds the keep/remove decision; `sweep-orphan-artifacts.sh` age-gates stray `{session}-*` siblings.
+Session cleanup: `session-end-hook.sh` (SessionEnd) reaps crash-orphaned worktrees and stale artifacts; committed or dirty worktrees are always preserved for `/apex-merge`, and pid-less manifests are reaped only past a 24h age gate (a live session's just-minted clean worktree is safe). `cleanup-session.sh` holds the keep/remove decision; `sweep-orphan-artifacts.sh` age-gates stray `{session}-*` siblings.
 
 ---
 

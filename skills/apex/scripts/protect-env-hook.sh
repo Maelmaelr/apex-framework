@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Guardrail hook: blocks access to .env* and credential files.
-# PreToolUse matchers (settings.json): Edit|Write|MultiEdit|NotebookEdit AND Read
-# (Read wired so opening a .env/credential file fails closed, not just writing it;
-# block-destructive-hook.sh covers the shell-read path). Tool-agnostic: keys only on
-# tool_input.file_path / notebook_path, so one decision table covers every matcher.
+# PreToolUse matchers (settings.json): Edit|Write|MultiEdit|NotebookEdit AND
+# Read|Grep (Read/Grep wired so opening or content-searching a .env/credential
+# file fails closed, not just writing it; block-destructive-hook.sh covers the
+# shell-read path). Tool-agnostic: keys on tool_input.file_path / notebook_path
+# / path (Grep), so one decision table covers every matcher.
 # Allows .env.example, .env.sample, .env.template (safe reference files).
 # Exit 0 always -- blocks via JSON output per hook protocol.
 set -euo pipefail
@@ -20,7 +21,7 @@ FILE_PATH=$(echo "$INPUT" | python3 -c "
 import json, sys
 data = json.load(sys.stdin)
 ti = data.get('tool_input', {})
-print(ti.get('file_path', '') or ti.get('notebook_path', ''))
+print(ti.get('file_path', '') or ti.get('notebook_path', '') or ti.get('path', ''))
 " 2>/dev/null || echo "")
 
 # No file_path means nothing to check

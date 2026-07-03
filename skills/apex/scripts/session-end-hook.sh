@@ -107,6 +107,23 @@ except Exception:
 " "$1" 2>/dev/null || true
 }
 
+# True iff the manifest file is younger than APEX_REAP_AGE_HOURS (default 24).
+# /apex manifests carry no pid, so liveness is unknowable; without an age gate
+# a freshly-minted worktree (clean, no commits yet - the mint-to-first-edit
+# window of a LIVE session) would be reaped by any sibling SessionEnd in the
+# same project. Age is the proxy: only stale pid-less manifests get the
+# cleanup-session.sh keep/remove decision. Env-overridable for tests.
+manifest_is_young() {
+  python3 -c "
+import os, sys, time
+try:
+    age = time.time() - os.path.getmtime(sys.argv[1])
+except OSError:
+    sys.exit(1)
+sys.exit(0 if age < float(sys.argv[2]) * 3600 else 1)
+" "$1" "${APEX_REAP_AGE_HOURS:-24}" 2>/dev/null
+}
+
 sweep_stale_worktrees() {
   # Sweep two classes of leftover .apex-worktrees/<token>/ dirs at SessionEnd:
   #   (a) manifest-LESS dirs - the crash-orphan case (manifest already wiped or
@@ -114,7 +131,9 @@ sweep_stale_worktrees() {
   #       cleanup-session.sh would no-op without a manifest. Without this,
   #       crash-orphan worktree dirs accumulate under .apex-worktrees/.
   #   (b) manifest-PRESENT dirs whose owning session is no longer live (recorded
-  #       pid dead OR recycled to a non-claude process). Re-run the
+  #       pid dead OR recycled to a non-claude process; pid-less /apex manifests
+  #       additionally require manifest age > APEX_REAP_AGE_HOURS, default 24,
+  #       before they qualify - see manifest_is_young). Re-run the
   #       cleanup-session.sh keep/remove decision so a fully-merged worktree
   #       (clean + no commits past base) that no other codepath reaps gets
   #       collected - cleanup-session.sh runs only ONCE, at the owning session's
@@ -135,7 +154,15 @@ sweep_stale_worktrees() {
     manifest="${wt}.claude-tmp/apex-active/${token}.json"
     if [[ -f "$manifest" ]]; then
       owner_pid="$(manifest_pid "$manifest")"
-      pid_is_live_claude "$owner_pid" && continue
+      if [[ -n "$owner_pid" ]]; then
+        # pid recorded (legacy / admin manifests): live claude owner = active
+        # sibling session; leave untouched. Dead/recycled -> re-run decision.
+        pid_is_live_claude "$owner_pid" && continue
+      else
+        # pid-less (/apex mint schema): liveness unknowable; age-gate so a
+        # live just-minted session's clean worktree is never reaped mid-run.
+        manifest_is_young "$manifest" && continue
+      fi
       run_cleanup "$token" "${wt}.claude-tmp/apex-active"
       continue
     fi
