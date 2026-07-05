@@ -51,4 +51,6 @@ Sequence freely. A typical shape, not a mandated order:
 
 ## Hand off
 
-Tell the user to run `/apex-merge` to fold `apex/<session>` back onto its base branch (which also removes the worktree). `/apex` never merges or pushes itself.
+Before you hand off, close the loop on what you did NOT ship. A run rarely fixes everything in one shot - you defer design decisions you must not blind-patch, findings you scoped out, follow-ups, "2 things left to add", "what I didn't cover". Do NOT just list them and stop for the user to ask. Automatically draft a concrete follow-up plan for that deferred set - short and phased, ordered by ROI, naming the target files and the one trap per phase - and commit it as a plan doc on `apex/<session>` so it lands on the base branch through the merge. Reach for `AskUserQuestion` only when a decision genuinely shapes the plan (which approach, or implement-now vs leave-as-plan) - never inline text questions, and never block on it when the plan is obvious. If nothing was deferred, say so in one line and move on.
+
+Then tell the user to run `/apex-merge` to fold `apex/<session>` back onto its base branch (which also removes the worktree). `/apex` never merges or pushes itself.
