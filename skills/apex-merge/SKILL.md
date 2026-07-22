@@ -1,6 +1,6 @@
 ---
 name: apex-merge
-description: Integrate apex/<session> worktree branches back into their recorded base branches. Enumerates `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`, reads each session manifest's base_branch, merges onto the recorded base, spawns agents/apex-merge-resolver.md per conflicted file. Manual trigger only; runs from the main worktree. VERSION bumping is owned by the project-side deploy skill, not this skill.
+description: Merge APEX worktree branches into their recorded base branches. Manual only.
 ---
 
 # /apex-merge

@@ -1,6 +1,6 @@
 ---
 name: apex
-description: Main coding orchestrator, fenced-dynamic. You drive the work yourself like a senior engineer - no fixed step sequence - inside hard rails: a git worktree fence, file-health, env + destructive guards, and a verify gate. Ships a feature end-to-end (backend + frontend) in one session, then hands off to /apex-merge.
+description: "APEX coding orchestrator: implement and verify in a fenced worktree, then hand off to /apex-merge."
 ---
 
 # /apex

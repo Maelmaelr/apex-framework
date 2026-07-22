@@ -1,6 +1,6 @@
 ---
 name: admin-apex
-description: APEX maintainer. Audits and evolves the apex framework in ~/.claude (skills, agents, hooks, budgets), validates scripts, commits the private repo, mirrors public-eligible files to /Users/mael/dev/apex-framework, pushes both. Manual trigger only.
+description: Maintain, validate, commit, mirror, and push the APEX framework. Manual only.
 ---
 
 # /admin-apex

@@ -1,6 +1,6 @@
 ---
 name: apex-init
-description: Initialize a new project with APEX-compatible structure (.claude-tmp, docs, CLAUDE.md).
+description: Initialize a project with the files and directories APEX requires.
 triggers:
   - apex-init
 ---
