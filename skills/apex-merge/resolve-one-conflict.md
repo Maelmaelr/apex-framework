@@ -1,6 +1,6 @@
 ---
 name: resolve-one-conflict
-description: Per-conflict-file contract for /apex-merge step 4. Lazy-loaded by the orchestrator before resolving EACH conflicted file in the unbounded merge loop, so the contract is recent at every iteration (Workstream B item-4 / B/item-6 per-iteration reload). Covers what merge-loop.sh already resolved (trivial-union), the index-state cases the resolver cannot touch (DU/UD/DD), the content-resolver spawn + Bash-splice, and the accept/reject/abort decision.
+description: Per-conflict-file contract for autonomous /apex-merge step 4. Covers trivial unions, index-state decisions, resolver dispatch, automatic application, and verification.
 ---
 
 # resolve one conflict (apex-merge step 4, per file)
@@ -15,17 +15,17 @@ Spec: `skills/apex-merge/SKILL.md` step 4 (merge loop). Read this BEFORE resolvi
 
 ## DU/UD + DD index-state conflicts (NOT the resolver)
 
-**DU/UD (delete/modify) + DD index-state conflicts**: merge-loop.sh tags these separately in stdout + the result `detail` (`du-ud=<paths>`) because one side deleted the path - there are NO `<<<<` markers to splice, so the content resolver cannot handle them. Do NOT spawn the resolver for them; per tagged path AskUserQuestion (`keep-deleted` | `keep-modified`; dismiss = `keep-modified` to preserve work) and resolve via `git rm <path>` (keep-deleted) or `git add <path>` (keep-modified).
+**DU/UD (delete/modify) + DD index-state conflicts**: merge-loop.sh tags these separately in stdout + the result `detail` (`du-ud=<paths>`) because one side deleted the path - there are NO `<<<<` markers to splice. Inspect the complete stage bodies, both diffs, commit messages, references, and tests. Keep the deletion only when the path is intentionally obsolete; otherwise keep the modified side as the loss-minimizing fallback. Resolve and stage immediately. Do not ask the user.
 
 ## Content conflicts (the resolver)
 
-The content resolver only handles `<<<<`-marked UU/AA hunks. Remaining content conflicts spawn `agents/apex-merge-resolver.md` (Sonnet, foreground) with the full-context bundle (conflicted body, base-side + apex-side diffs, base/apex commit messages, apex commit log). Resolver returns per-hunk `resolved_block` entries by default (full `proposed_body` only for multi-hunk synthesis); orchestrator splices into the conflicted file via Bash (`printf`/redirect or `git apply`), NEVER the `Edit` / `Write` tools - the splice is a mechanical block replacement keyed on conflict markers, and Edit-context matching against marker-riddled bodies is fragile.
+Remaining content conflicts spawn `agents/apex-merge-resolver.md` (Sonnet, foreground) with the full-context bundle: conflicted body, merge-base/base/apex bodies, both diffs, both sides' commit messages, the apex commit log, and focused related tests/call sites/contracts. The resolver returns per-hunk `resolved_block` entries by default and a full `proposed_body` for cross-hunk synthesis or malformed markers. The orchestrator applies the returned data mechanically, never with a fuzzy context edit.
 
-## Decision (per file)
+## Apply and verify (per file)
 
-Then AskUserQuestion (`accept` | `reject-edit-manually` | `abort-merge`; dismiss = reject-edit-manually). Per-option `description` carries a one-line diff sketch + recommendation only; full rationale lives in `<run>-merge-result.json`. On accept: write file; **post-accept base-loss check**: diff the accepted body against the base side (`git show :2:P`, ours / HEAD) and surface any base-side hunk that silently vanished before continuing - accept can drop base-side changes in shared utility files; then `git add P`. On reject: user manual edit, then `git add P`. On abort: `git merge --abort`, then stamp the terminal entry (below) + skip cleanup, continue.
+Apply the resolver's best result immediately. Reject it internally and repair it before staging if any conflict marker remains, a cheap parser fails, related contracts break, or the base-loss review finds an unexplained vanished base hunk. Run the narrowest relevant test when available. Retry the resolver/repair loop up to three times with the verbatim failure evidence; a persistent failure is a hard stop with the merge and worktree preserved, never an abort-or-skip choice. Then `git add P`.
 
 ## Terminal stamp (per branch, after the last file)
 
-merge-loop.sh left a transient `conflict` entry for this branch; the orchestrator owns the terminal rewrite. Once EVERY conflicted file on the branch is resolved, `git merge --continue`, then record the terminal status so step 4.6's lint pass has a scope:
-`bash skills/apex-merge/scripts/stamp-merge-result.sh <run> --branch <B> --status merged --decision <accept|reject-edit-manually|mixed> --paths <csv of the files you git-added>`. On an abort instead: `bash skills/apex-merge/scripts/stamp-merge-result.sh <run> --branch <B> --status skipped-conflict-abort` (no resolver stamp -> 4.6 runs no lint pass). Pass ONLY the files you resolved as `--paths`, NOT the trivial-union files merge-loop.sh already staged - those `--paths` become step 4.6's lint scope; a markdown-only set yields an empty lintable filter and 4.6 correctly skips.
+merge-loop.sh left a transient `conflict` entry for this branch; the orchestrator owns the terminal rewrite. Once EVERY conflicted file on the branch is resolved, `GIT_EDITOR=true git merge --continue`, then record the terminal status so step 4.6's lint pass has a scope:
+`bash skills/apex-merge/scripts/stamp-merge-result.sh <run> --branch <B> --status merged --decision autonomous --paths <csv of the files you git-added>`. Pass ONLY the files resolved by the orchestrator, NOT trivial-union files already staged by merge-loop.sh. Those paths become step 4.6's lint scope; a markdown-only set correctly skips lint.

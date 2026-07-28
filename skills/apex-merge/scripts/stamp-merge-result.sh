@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # /apex-merge step 4: stamp a branch's TERMINAL merge-result entry after the
-# orchestrator resolves (or aborts) that branch's conflicts.
+# orchestrator autonomously resolves that branch's conflicts.
 #
 # Producer-side fix for the step-4.6 lint-cleanup gate (plan F22). merge-loop.sh
 # only writes a TRANSIENT `conflict` entry (detail = the conflicted-path CSV);
@@ -16,7 +16,6 @@
 # Rewrites IN PLACE the entry whose .branch == <branch>:
 #   --status merged                -> detail = "resolver=<decision>", paths = [<resolved files>],
 #                                     merged_sha = <HEAD merge-commit SHA>
-#   --status skipped-conflict-abort -> detail = "abort", no paths (4.6 must NOT fire)
 # Any transient `conflict` detail / stale paths on the entry are dropped first.
 # Idempotent: re-stamping the same branch updates in place (never appends a dup).
 # Trivial-union-only merges are recorded directly by merge-loop.sh (detail
@@ -26,9 +25,8 @@
 # Args:
 #   <run>                   required 8-hex run token
 #   --branch <name>         required branch ref (e.g. apex/<session>)
-#   --status <s>            required: merged | skipped-conflict-abort
-#   --decision <d>          resolver decision (accept | reject-edit-manually | mixed);
-#                           REQUIRED when --status merged
+#   --status <s>            required: merged
+#   --decision <d>          required literal: autonomous
 #   --paths <p1,p2,...>     comma-separated orchestrator-resolved file paths (merged only)
 #   --result <path>         optional override (default <run>-merge-result.json)
 #
@@ -62,12 +60,12 @@ if [[ -z "$RUN" || ! "$RUN" =~ ^[0-9a-f]{8}$ ]]; then
   exit 1
 fi
 [[ -n "$BRANCH" ]] || { echo "stamp-merge-result.sh: --branch is required" >&2; exit 1; }
-case "$STATUS" in
-  merged|skipped-conflict-abort) ;;
-  *) echo "stamp-merge-result.sh: --status must be merged|skipped-conflict-abort" >&2; exit 1 ;;
-esac
-if [[ "$STATUS" == "merged" && -z "$DECISION" ]]; then
-  echo "stamp-merge-result.sh: --decision is required when --status merged" >&2
+if [[ "$STATUS" != "merged" ]]; then
+  echo "stamp-merge-result.sh: --status must be merged" >&2
+  exit 1
+fi
+if [[ "$DECISION" != "autonomous" ]]; then
+  echo "stamp-merge-result.sh: --decision must be autonomous" >&2
   exit 1
 fi
 
@@ -82,10 +80,7 @@ fi
 # post-mortem can pin the exact merge commit after the branch is pruned. The
 # orchestrator commits the conflict resolution BEFORE stamping (SKILL.md step 4),
 # so HEAD is the merge commit here.
-MERGED_SHA=""
-if [[ "$STATUS" == "merged" ]]; then
-  MERGED_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
-fi
+MERGED_SHA="$(git rev-parse HEAD 2>/dev/null || true)"
 
 python3 - "$RESULT" "$BRANCH" "$STATUS" "$DECISION" "$PATHS" "$MERGED_SHA" <<'PY'
 import json, sys
@@ -103,14 +98,11 @@ for e in data:
     e.pop("detail", None)
     e.pop("paths", None)
     e.pop("merged_sha", None)
-    if status == "merged":
-        e["detail"] = "resolver=%s" % decision
-        if paths:
-            e["paths"] = paths
-        if merged_sha:
-            e["merged_sha"] = merged_sha
-    else:  # skipped-conflict-abort: no resolver stamp -> 4.6 must not fire
-        e["detail"] = "abort"
+    e["detail"] = "resolver=%s" % decision
+    if paths:
+        e["paths"] = paths
+    if merged_sha:
+        e["merged_sha"] = merged_sha
     break
 if not found:
     sys.stderr.write("stamp-merge-result.sh: no entry for branch %s in %s\n" % (branch, path))

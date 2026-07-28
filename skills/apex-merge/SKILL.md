@@ -1,18 +1,18 @@
 ---
 name: apex-merge
-description: Merge APEX worktree branches into their recorded base branches. Manual only.
+description: Autonomously commit, merge, resolve, validate, clean up, and push APEX worktree branches. Manual only.
 ---
 
 # /apex-merge
 
-Integration phase for the worktree-isolation model. One `apex/<session>` branch per /apex session; this skill folds them back. Manual trigger only.
+Integration phase for the worktree-isolation model. One `apex/<session>` branch per /apex session; this skill folds them back without user decision points.
 
 ## Step 0: queue tasks
 
 ```
 TaskCreate "1. Precheck"
 TaskCreate "2. Discover apex/* branches"
-TaskCreate "3. Update main"
+TaskCreate "3. Update base branches"
 TaskCreate "4. Merge loop"
 TaskCreate "4.5 Replay worktree side-effects"
 TaskCreate "4.6 Lint/build cleanup post-conflict"
@@ -29,6 +29,12 @@ TaskCreate "7. Sweep run artifacts"
 - `--branch <name>` (optional): merge only this branch. Default: every `apex/*` local branch.
 - Each apex/<session> branch's session manifest at `.apex-worktrees/<session>/.claude-tmp/apex-active/<session>.json` (carries `base_branch`, `branch`, `worktree_path`; its `bump_hint` field is vestigial - not read here or by the deploy skill, see Step 6).
 
+## Completion contract
+
+`/apex-merge` is autonomous end-to-end. Do not call AskUserQuestion. Auto-commit dirty main and apex worktrees, merge every discovered branch, choose and apply the best evidence-backed conflict resolution, run required side effects and checks, clean integrated worktrees/refs, and push. Invocation is explicit confirmation for that documented local/remote apex cleanup and scratch removal; it does not authorize unrelated destructive operations.
+
+`conflict`, `checkout-failed`, `merge-refused`, validation failure, and push rejection are transient states to diagnose and retry, never successful terminal outcomes. Cap any identical recovery loop at three attempts. Stop with the branch/worktree and run artifacts preserved only on a hard boundary: unreadable tool output, corrupt Git state, a destructive or credential-requiring command that violated the side-effect log contract, missing remote authorization, or the same hook/check failure after three targeted fixes. Never skip a branch or claim completion after a hard stop.
+
 ## Step contracts
 
 1. **Precheck** - inline. Refuse to run outside the main worktree:
@@ -36,6 +42,11 @@ TaskCreate "7. Sweep run artifacts"
    TOP=$(cd "$(git rev-parse --show-toplevel)" && pwd -P)
    COMMON=$(cd "$(git rev-parse --git-common-dir)/.." && pwd -P)
    [[ "$TOP" == "$COMMON" ]] || { echo "/apex-merge must run from the main worktree" >&2; exit 1; }
+   ```
+   Mint the run token before any audit artifact or commit uses it:
+   ```bash
+   RUN=$(openssl rand -hex 4)
+   mkdir -p "$HOME/.claude/.claude-tmp/apex-merge-active"
    ```
    Then disarm the session-record fence for this repo BEFORE any main-tree write (`mint-worktree.sh` arms `$APEX_FENCE_DIR/<cc_session_id>` records so unanchored apex writes cannot leak into MAIN; integration is the sanctioned main-tree writer, and a same-session /apex -> /apex-merge run would otherwise be denied at the auto-commit below):
    ```bash
@@ -49,7 +60,7 @@ TaskCreate "7. Sweep run artifacts"
      done
    fi
    ```
-   Main worktree may be dirty. `.apex-worktrees/` is untracked-by-design (its mode-160000 gitlinks must never be committed). Per explicit user request, project `.claude/` + `.claude-tmp/` ARE swept into the auto-commit and land on main (operator config + apex artifacts integrate with the merge); everything else is auto-committed unconditionally with NO dirty-count prompt and NO source-path warning ("just commit, don't ask" is the intended contract; recover manually via `git restore` / `git stash` / `git revert` if needed). ONE exception - the fence-leak signature: before committing, intersect the dirty paths with each apex/* branch's changed files (`git diff --name-only $(git merge-base <base> <B>)..<B>` per discovered branch). A non-empty intersection means a worktree session's edits likely leaked into MAIN (subagent fence fail-open) - AskUserQuestion (`commit-anyway` | `abort-merge`) instead of silently laundering the leak into main's history; empty intersection -> auto-commit as documented. The verbatim `git status --porcelain` set lands in `${RUN}-precheck-auto-committed.txt` for audit. The auto-commit MUST NEVER carry `--no-verify` (CLAUDE.md non-negotiable; pre-commit hook failure -> AskUserQuestion `abort-merge | retry-after-fix`, never bypass). First unstage any `.apex-worktrees/*` gitlinks; then a `git ls-files -u` guard aborts on unmerged (UU) index entries left by an orphaned stash-pop, so conflict markers are never staged onto main. The follow-on `git add -A` MUST carry `':!.apex-worktrees'` so it does not re-stage what `git rm --cached` just unstaged:
+   Main worktree may be dirty. `.apex-worktrees/` is untracked-by-design (its mode-160000 gitlinks must never be committed). Project `.claude/` + `.claude-tmp/` and every other dirty path are auto-committed without a prompt. Intersect dirty paths with every apex branch's changed-file set and record any fence-leak overlap in the sidecar; overlap is audit evidence, not a reason to skip the commit. The verbatim `git status --porcelain` set lands in `${RUN}-precheck-auto-committed.txt`. The commit MUST NEVER carry `--no-verify`: diagnose a hook failure, apply the smallest fix, and retry up to three times. A pre-existing unmerged index is corrupt input from outside this run and is a hard stop, so conflict markers are never laundered into the precheck commit. First unstage any `.apex-worktrees/*` gitlinks; the follow-on `git add -A` MUST carry `':!.apex-worktrees'`:
    ```bash
    if [[ -n "$(git ls-files .apex-worktrees 2>/dev/null)" ]]; then
      git rm --cached -r .apex-worktrees 2>/dev/null || true
@@ -72,11 +83,6 @@ TaskCreate "7. Sweep run artifacts"
    fi
    ```
 
-   **Mint run token**:
-   ```bash
-   RUN=$(openssl rand -hex 4)
-   mkdir -p "$HOME/.claude/.claude-tmp/apex-merge-active"
-   ```
    Reuse `RUN` across all subsequent steps. Then append a one-line audit trace: `step-1: precheck ok (auto-committed N dirty files on main; list -> $HOME/.claude/.claude-tmp/apex-merge-active/<run>-precheck-auto-committed.txt)` if `DIRTY_COUNT > 0` else `step-1: precheck ok (main worktree clean)`, written to `$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md`. The embedded absolute path points at the sidecar listing every auto-committed path.
 
 2. **Discover** - inline. Enumerate `git for-each-ref --format='%(refname:short)' 'refs/heads/apex/*'`. For each branch B:
@@ -84,40 +90,50 @@ TaskCreate "7. Sweep run artifacts"
    - WORKTREE = `git worktree list --porcelain | awk -v b="refs/heads/$B" '/^worktree / {wt=$2} $1=="branch" && $2==b {print wt; exit}'` (remember the last-seen worktree, emit on branch match - portable to bash 3.2; avoids the `grep -A2` shifted-map bug).
    - MANIFEST = `$WORKTREE/.claude-tmp/apex-active/$SESSION.json`.
    - BASE = `jq -r .base_branch "$MANIFEST"` (default `main` if absent).
+   - Before computing HAS_COMMITS, auto-commit every non-ignored dirty path in WORKTREE onto B with `apex-merge: auto-commit session worktree before integration [run:<run>]`. Exclude `.apex-worktrees` gitlinks, never use `--no-verify`, and retry a targeted hook fix up to three times. Re-read `git status --porcelain` after the commit; repeat up to three stabilization passes so changes produced by the hook also land. A pre-existing unmerged index is a hard stop. This is the last-write sweep that guarantees session work cannot be lost during cleanup.
    - HAS_COMMITS = `git log "$BASE..$B" --oneline` (non-empty -> queue for merge; empty -> queue for cleanup only).
    Write to `$HOME/.claude/.claude-tmp/apex-merge-active/<run>-discovery.json` (same canonical location as the manifest; merge-loop.sh reads/writes the same path). Schema: `{branches: [{branch, base, subject, status}]}` where `status` is `"needs-merge"` (HAS_COMMITS non-empty) OR `"cleanup-only"` (empty). `merge-loop.sh` filters on `status == "needs-merge"` (string compare, NOT a boolean). `--branch <name>` filters to that single branch. For ALL-clean-merge runs (no conflicts at Step 4, no resolver spawn) omit per-entry `worktree_path` + manifest paths (pure overhead). Append `step-2: discovered N branches (M needs-merge, K cleanup-only)` to `<run>-summary.md`.
 
    **Zero-branch path (N=0)**: NOT a full early-exit. Steps 4/4.5/4.6/5 are natural no-ops - each carries a run-only-when guard, so `merge-loop.sh` / `replay-side-effects.sh` / the step-4.6 lint pass are never invoked; the orchestrator does NOT improvise inline no-ops - it lets each guard self-skip and records the step-N summary lines. Steps 3 (update main) and 6 STILL run, but step 6 push self-gates on local-ahead: Step 1's dirty-main auto-commit is unconditional, so a real local commit reaches origin while a clean zero-branch run skips the gratuitous push round-trip. Also write the sentinel `<run>-merge-result.json` = `[]` when N=0 so the declared artifact set stays complete for audit regardless of branch count.
 
-3. **Update main** - inline. `git fetch origin`. Short-circuit pull via `git merge-base --is-ancestor` so post-auto-commit local-ahead is handled cleanly (plain `LOCAL==ORIGIN` string compare miscomputes):
+3. **Update base branches** - inline. `GIT_TERMINAL_PROMPT=0 git fetch origin`, then apply this reconciliation to the current branch and every distinct BASE in discovery. Fast-forward when remote is ahead; when both sides have commits, merge the remote tip instead of refusing or rewriting local commits:
    ```bash
-   BRANCH="$(git symbolic-ref --short HEAD)"
-   ORIGIN_REF="origin/$BRANCH"
-   if ! git rev-parse "$ORIGIN_REF" >/dev/null 2>&1; then
-     SUMMARY="step-3: main up-to-date (no remote tracking; fetch ran, no pull)"
-   elif git merge-base --is-ancestor "$ORIGIN_REF" HEAD; then
-     SUMMARY="step-3: main up-to-date (local at or ahead of $ORIGIN_REF; fetch ran, no pull)"
-   else
-     OLD=$(git rev-parse HEAD); git pull --ff-only origin "$BRANCH"  # refuse non-FF
-     SUMMARY="step-3: main updated ${OLD}..$(git rev-parse HEAD) (fetch+pull)"
-   fi
-   echo "$SUMMARY" >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md"
+   START_BRANCH="$(git symbolic-ref --short HEAD)"
+   while IFS= read -r BRANCH; do
+     git checkout "$BRANCH"
+     ORIGIN_REF="origin/$BRANCH"
+     if ! git rev-parse "$ORIGIN_REF" >/dev/null 2>&1; then
+       SUMMARY="step-3: $BRANCH up-to-date (no remote tracking; fetch ran)"
+     elif git merge-base --is-ancestor "$ORIGIN_REF" HEAD; then
+       SUMMARY="step-3: $BRANCH up-to-date (local at or ahead of $ORIGIN_REF)"
+     elif git merge-base --is-ancestor HEAD "$ORIGIN_REF"; then
+       OLD=$(git rev-parse HEAD); git merge --ff-only "$ORIGIN_REF"
+       SUMMARY="step-3: $BRANCH updated ${OLD}..$(git rev-parse HEAD) (fetch+ff)"
+     else
+       OLD=$(git rev-parse HEAD)
+       git merge --no-ff "$ORIGIN_REF" -m "Merge $ORIGIN_REF before APEX integration"
+       SUMMARY="step-3: $BRANCH reconciled ${OLD}..$(git rev-parse HEAD) (fetch+merge)"
+     fi
+     echo "$SUMMARY" >> "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-summary.md"
+   done < <({ printf '%s\n' "$START_BRANCH"; jq -r '.branches[].base' \
+     "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-discovery.json"; } | sort -u)
+   git checkout "$START_BRANCH"
    ```
-   Non-FF -> exit 1 with explicit error ("main diverged; resolve before /apex-merge"). The summary line distinguishes `fetch ran, no pull` from `fetch+pull` so the audit trail shows whether fetch actually changed anything. Emit exactly once per step.
+   Resolve a Step 3 merge conflict with the same per-file contract as Step 4, then run the narrowest relevant validation before continuing. A non-conflict merge refusal gets three diagnose/fix/retry attempts and then hard-stops. Emit one step-3 summary line per reconciled branch.
 
 4. **Merge loop** - `bash skills/apex-merge/scripts/merge-loop.sh <run>`. Per branch with commits past base:
    - `git checkout "$BASE"`
    - `git merge --no-ff "$B" -m "Merge $B: <subject from git log -1 --pretty=%s $B>"`
-   - On conflict: merge-loop.sh prints the conflicted paths and, on exit 20, one reload reminder per remaining conflicted file (if trivial-union staged every file but `git commit --no-edit` failed, the reload set falls back to the full content-conflict set - merge-loop.sh:300). **Before resolving EACH conflicted file, Read `skills/apex-merge/resolve-one-conflict.md`** - the per-conflict-file contract (trivial-union skip already applied inline by merge-loop.sh; DU/UD/DD index-state -> `keep-deleted`|`keep-modified`; content-resolver spawn via `agents/apex-merge-resolver.md` + Bash-splice-not-Edit; `accept`|`reject-edit-manually`|`abort-merge` decision). Lazy-loaded per loop iteration - the conflict-file count is unknown at step start, so the contract is read fresh at each conflict.
-   - All conflicts resolved -> `git merge --continue`.
+   - On conflict: merge-loop.sh prints the conflicted paths and exits 20. **Before resolving EACH conflicted file, Read `skills/apex-merge/resolve-one-conflict.md`**. Apply its autonomous DU/UD/DD or content-resolver path, verify the result, and stage it. The file count is unknown at step start, so reload the contract per iteration.
+   - All conflicts resolved -> `GIT_EDITOR=true git merge --continue`.
    - **Exit 2 (two pre-merge guards)**: merge-loop.sh exits 2 from either the wrong-worktree guard (`merge-loop.sh:75`; fires when not invoked from the main worktree) or the dirty-tree gate (`merge-loop.sh:84`; main worktree dirty), both BEFORE any branch is touched - distinct from exit 20 (conflict) / 21 (merge-refused). The two need different recovery: for the dirty-tree case re-run Step 1's filtered auto-commit (unstage `.apex-worktrees` gitlinks -> `git add -A -- ':!.apex-worktrees'` + commit, NEVER `--no-verify`), then re-invoke `merge-loop.sh <run>`; for the wrong-worktree case `cd` to the main worktree and re-invoke (the auto-commit recovery does not apply).
-   Per-branch result recorded in `<run>-merge-result.json`. `merge-loop.sh` writes non-conflict statuses directly: `merged` (clean or trivial-union), `checkout-failed` (base checkout failed; loop continues), or `merge-refused` (git merge non-zero, no conflicts; exit 21); a real conflict writes a transient `conflict` entry then exits 20. The orchestrator owns the conflict path: rewrite that transient entry to its terminal status via `bash skills/apex-merge/scripts/stamp-merge-result.sh <run> --branch <B> --status <merged|skipped-conflict-abort> [--decision <accept|reject-edit-manually|mixed> --paths <csv>]` - `merged` after accept/reject + `git merge --continue` (pass `--decision` + resolver-touched files as `--paths`), or `skipped-conflict-abort` after `git merge --abort` (no decision/paths) - so `conflict` is never final. The merged stamp writes `detail="resolver=<decision>"` + `paths=[...]`; step 4.6 keys its lint gate on exactly those two fields (`resolver=` count + lintable `.paths`), so an un-stamped merged entry silently skips the post-conflict lint pass. Do NOT hand-edit - the stamper is idempotent and drops the stale conflict-path detail. Cleanup-only branches (no commits past base) get no entry; they carry `cleanup-only` in `<run>-discovery.json` (Step 2). `pushed`: `true`|`false`|`not-attempted` (Step 6). Omit `detail` when empty (Step 2's discipline). `merge-loop.sh` itself appends the per-branch `step-4: <branch> <status> (conflicts=N resolver=<accept|reject|abort|none|trivial-union>)` line to `<run>-summary.md` for every NON-CONFLICT outcome, so the run summary is self-contained; the orchestrator MUST NOT re-append those (double entries on every clean run). The ONE exception is a conflict branch (exit 20): the resolver decision is unknown until resolved + stamped, so merge-loop.sh skips its `append_summary` there and the orchestrator appends that branch's `step-4: ...` line itself, right after the `stamp-merge-result.sh` call above.
+   Per-branch result is recorded in `<run>-merge-result.json`. `merged` is the only successful terminal status. `checkout-failed`, `merge-refused`, and `conflict` trigger diagnosis and up to three retries; they never survive a completed run. After conflict resolution, `git merge --continue`, then run `bash skills/apex-merge/scripts/stamp-merge-result.sh <run> --branch <B> --status merged --decision autonomous --paths <csv>`. The stamp writes `detail="resolver=autonomous"` and the resolver-touched paths that gate Step 4.6. Reinvoke merge-loop to continue remaining branches. It skips a recorded branch only when the current branch tip is already an ancestor of BASE, so a later stabilization commit is merged on the next pass. The orchestrator appends the conflict branch's single `step-4: <branch> merged (conflicts=N resolver=autonomous)` line after stamping; merge-loop owns all non-conflict summary lines.
 
 4.5. **Replay worktree side-effects** - inline, runs ONLY when step 4 merged 1+ branches cleanly (status `merged` exists in `<run>-merge-result.json`). Each apex worktree's executor logged its state-mutating commands to `.claude-tmp/apex-active/{session}-side-effects.jsonl` (migrations, seeders, codegen, etc.); main never saw those runs, so they must replay here before step 5 removes the worktrees. Read this step's contract entirely before running it - it executes shell commands on the main worktree.
    ```bash
    bash skills/apex-merge/scripts/replay-side-effects.sh "$RUN"
    ```
-   Script reads every merged branch's side-effects log, dedupes by the whitespace-normalized verbatim `cmd` string (leading `KEY=VALUE` env assignments are part of the string, so `DB=stage pnpm migrate` and `DB=prod pnpm migrate` do NOT collapse), and on non-empty `unique_cmds` writes `<run>-side-effects-dedup.json` + prints cmds to stdout. **Empty `unique_cmds` skips the artifact write AND the summary line entirely** (no zero-payload `dedup.json`, no `artifact skipped` note - silence is the signal); the non-empty case writes the dedup artifact but no summary line - the orchestrator appends `step-4.5: replayed K/N (skipped=M)` itself after the AskUserQuestion below. Non-empty list -> AskUserQuestion (`run-all` | `skip-all`; dismiss = `skip-all`; prompt MUST include the full deduped command list verbatim). On `run-all`: invoke each sequentially from main worktree root, first-failure-stop; record `{cmd, exit_code, stderr_tail}` into `<run>-side-effects-replay.json`. Non-zero exit halts the replay (user resolves + re-runs `/apex-merge`). On `skip-all`: write `{skipped: true}`. Append `step-4.5: replayed K/N (skipped=M)` to `<run>-summary.md`. Per the destructive-operation rule, AskUserQuestion is mandatory - never auto-run.
+   Script reads every merged branch's side-effects log, dedupes by the whitespace-normalized verbatim `cmd` string, writes `<run>-side-effects-dedup.json` for a non-empty set, and prints each command. Logs may contain only non-destructive, credential-free commands by `agents/executor.md` contract, so run all commands sequentially from the main root without prompting and record `{cmd, exit_code, stderr_tail}` in `<run>-side-effects-replay.json`. Diagnose and retry a failure up to three times. A destructive or credential-requiring entry violates the producer contract and hard-stops without running it or cleaning worktrees. Empty command sets stay silent. Append `step-4.5: replayed K/N (skipped=0)` after a non-empty successful replay.
 
 4.6. **Lint/build cleanup post-conflict** - inline, runs ONLY when step 4 resolved 1+ conflicts (clean-merge-only runs skip; union of two clean diffs cannot introduce a lint regression neither side had). Merge resolution stitches code at the file level and can leave unused imports / unreferenced symbols / lint regressions neither side carried alone; run one lint/fix pass on main. Run from the main worktree (precheck Step 1 already enforces cwd):
    ```bash
@@ -135,18 +151,19 @@ TaskCreate "7. Sweep run artifacts"
         | select(test("\\.(ts|tsx|js|jsx|mjs|cjs|json)$"))] | length' \
      "$HOME/.claude/.claude-tmp/apex-merge-active/${RUN}-merge-result.json")
    ```
-   `LINTABLE == 0` (every resolver hop was markdown-only) -> record `step-4.6: skipped (no lintable resolver-touched files)`. Otherwise run the project's own lint + typecheck scoped to the resolver-touched files (the smallest command set that exercises them). Clean exit -> `step-4.6: lint clean (resolved_conflicts=N)`. Failures -> dispatch ONE `agents/executor.md` (Sonnet, standalone mode: pass the main worktree root as `project_root`) briefed with the verbatim error output, edit scope confined to the resolver-touched files; cap 3 fix attempts. Still failing -> AskUserQuestion (`proceed-anyway` | `abort-merge-run`; dismiss = `proceed-anyway`). `abort-merge-run` halts before Step 5 (worktrees + branches preserved; `<run>` artifacts stay for post-mortem). `proceed-anyway` continues with `step-4.6: lint fail (resolved_conflicts=N, cap-reached)` recorded.
+   `LINTABLE == 0` (every resolver hop was markdown-only) -> record `step-4.6: skipped (no lintable resolver-touched files)`. Otherwise run the project's own lint + typecheck scoped to the resolver-touched files. On failure dispatch ONE `agents/executor.md` (Sonnet, standalone mode, main root as `project_root`) with verbatim errors and edits confined to resolver-touched files; cap at three fix attempts. A persistent failure hard-stops before cleanup and preserves run artifacts. Never proceed with a known red conflict resolution.
 
 5. **Cleanup merged branches** - inline. For each branch that integrated - merge-result status `merged`, plus the `cleanup-only` branches from `<run>-discovery.json` (no commits past base, already current) - run in THIS order (worktree removal must precede branch deletion):
-   - `git worktree remove "$WORKTREE"` (refuse if dirty unless `--force-cleanup-dirty`). **Dirty-classification fast-path**: before the AskUserQuestion prompt, classify each `git -C "$WORKTREE" status --porcelain` line. A line is safe when it is a deletion of a path tracked on BASE HEAD (`D ` prefix, `git -C "$WORKTREE" cat-file -e BASE:<path>` confirms it exists on base; stale checkout safe to drop) OR `bash skills/apex-merge/scripts/dirty-classify.sh --is-ignorable <path>` exits 0 (harness state + the auto-generated/regen allowlist - next-env.d.ts, data/model-specs/*.json, .venv, etc.; extend the allowlist IN that script when new patterns show up). When EVERY line is safe -> auto-force without prompting and record `step-5: auto-force <branch> (deletions-only|auto-generated-only)`. Any real source modification / unrecognized untracked file falls through to the standard AskUserQuestion: `force-remove` (discard) | `keep-worktree` (skip cleanup) | `merge-to-main` (apply the worktree diff onto base + commit, then force-remove - for a cleanup-only branch whose worktree holds uncommitted work worth keeping).
-   - `git worktree prune` (mandatory; drains stale admin entries so `git branch -D` succeeds).
-   - `git branch -D "$B"`
-   - Per-branch incremental append `step-5: <branch> cleaned (worktree+local)` to `<run>-summary.md` (mirrors merge-loop.sh step-4 pattern; partial-abort still leaves a legible audit trail). **Append idempotency guard**: before every step-5 line append (auto-force, cleaned, pruned-N-refs), `grep -qF "step-5: <branch>" <run>-summary.md` and skip the append on hit so partial-failure retry of the cleanup loop does not double-write the same per-branch line.
-   Remote-delete is batched AFTER the per-branch loop completes. First detect a configured remote (`git remote get-url origin >/dev/null 2>&1`): when ABSENT, skip the deletes and append `step-5: no-remote-configured (Q branches kept local)` once - do NOT emit a `remote-pruned` line (the prior single line conflated "no origin" with "pruned 0 refs"). When PRESENT, per cleaned branch in one tail pass first probe `git ls-remote --exit-code --heads origin "$B"`: a missing ref (never pushed) is counted as skipped - nothing to delete, NOT a failure. Else `git push origin --delete "$B"`, checking each exit code explicitly (never blanket `2>/dev/null || true` - it swallows the failure AND miscounts); count exit-0 deletes into `step-5: pruned-N-refs R/Q`, appended once, plus one `step-5: remote-delete-failed <branches>` line for any real non-zero delete. Hoisting it out of the per-branch body means a guardrail rejection on one remote-delete cannot orphan local cleanup for sibling branches. Branches with a non-integrated status (`skipped-conflict-abort`, `checkout-failed`, `merge-refused`) keep worktree + branch. Final append `step-5: cleaned Q worktrees, kept P (conflict-abort)` to `<run>-summary.md`.
+   - Recheck worktree status. When every line is a stale tracked deletion or `dirty-classify.sh --is-ignorable` path, auto-force removal and record the classification. Never discard real source or an unrecognized untracked path: commit it onto B, rerun Steps 4 through 4.6 for B, then recheck. Cap this stabilization loop at three; persistent new writes hard-stop with the worktree intact.
+   - `git worktree remove "$WORKTREE"` (use force only for the classified safe set above).
+   - `git worktree prune` (mandatory; drains stale admin entries so branch deletion succeeds).
+   - Verify `git merge-base --is-ancestor "$B" "$BASE"`, then `git branch -d "$B"`. Never force-delete a branch whose tip is not integrated; return it to Step 4.
+   - Per-branch incremental append `step-5: <branch> cleaned (worktree+local)` to `<run>-summary.md` so a hard stop leaves a legible audit trail. Before every step-5 line append, use `grep -qF "step-5: <branch>" <run>-summary.md` to keep retries idempotent.
+   Batch remote deletion after the loop. Probe each ref first; delete only a branch verified integrated into its recorded base, and check every exit code. A missing ref is already clean. A remote failure is retried up to three times, then hard-stops and reports the retained ref. Final append: `step-5: cleaned Q worktrees and local branches, pruned R remote refs`.
 
 6. **Final push + summary** - inline. VERSION bumping is NOT this step's responsibility; the project-side deploy skill (e.g. `.claude/skills/deploy/` in the project repo) derives the bump tier from the merged commits' types (commit-type buckets) and owns the bump + commit. It works from the integration commits, not session `bump_hint`: manifests are removed with their worktrees at Step 5 cleanup, gone by deploy time.
-   - `B=$(git symbolic-ref --short HEAD)`; push ONLY when `git rev-list origin/$B..HEAD` is non-empty - skips the no-op round-trip on a clean zero-branch run. Update `<run>-merge-result.json` per entry: `pushed: true|false|"not-attempted"`.
-   - Print + append to `<run>-summary.md`: `step-6: merged N branches, K conflicts auto-resolved, M conflicts manual, P branches skipped, cleaned Q worktrees, pushed-precheck=<yes|no> pushed-merges=<yes|no|skipped>`. The split keeps zero-branch runs unambiguous: a dirty-autocommit push is not an integration push.
+   - For the starting branch and every distinct BASE in discovery, push with `GIT_TERMINAL_PROMPT=0` only when that local branch is ahead of its remote. On a non-fast-forward rejection, fetch, merge the remote tip through the same autonomous conflict contract, validate, and retry up to three times. Missing authorization is a hard stop. Update each result entry with `pushed: true|"not-attempted"`; `false` is never a completed state.
+   - Print + append: `step-6: merged N branches, resolved K conflicts autonomously, cleaned Q worktrees, pushed-precheck=<yes|no> pushed-merges=<yes|no|skipped>`. A completed run has no skipped branches or manual conflicts.
 
 6.5. **Cleanup project apex scratch** - inline, unconditional, runs before Step 7 (idempotent; no-op when absent). The main worktree's gitignored `.claude-tmp/apex-active/` + `.claude-tmp/apex-discovery-cache/` accumulate stale per-session artifacts (including leftovers from earlier apex generations). Both are local scratch (gitignored - never tracked or pushed); live /apex sessions run under `.apex-worktrees/<session>/.claude-tmp/`, not here, so wiping main's copies drops only stale state. Run from the main worktree (Step 1 enforces cwd):
    ```bash
@@ -165,7 +182,7 @@ TaskCreate "7. Sweep run artifacts"
    ```bash
    rm -rf "$HOME/.claude/.claude-tmp/apex-merge-active"
    ```
-   Removing the whole dir also drains leftovers from any earlier aborted run (an abort before this step intentionally leaves its artifacts in place for post-mortem; the next completed run sweeps them). Step 1's mint recreates the dir.
+   Removing the whole dir also drains leftovers from an earlier hard-stopped run; a hard stop before this step intentionally preserves its artifacts for post-mortem. Step 1 recreates the dir.
 
 ## Scope
 

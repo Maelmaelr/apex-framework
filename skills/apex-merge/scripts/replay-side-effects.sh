@@ -5,7 +5,7 @@
 # Reads each merged session's {session}-side-effects.jsonl from its worktree
 # BEFORE step 5 removes the worktree, aggregates the unique cmd set across all
 # merged sessions, and prints the deduped commands to stdout (one per line) for
-# the orchestrator to surface via AskUserQuestion + run on the main worktree.
+# the orchestrator to run autonomously on the main worktree.
 #
 # Side-effects file shape (one JSON object per line, written by executor):
 #   {"cmd": "<verbatim shell command>", "ts": "<iso8601>"}
@@ -23,7 +23,7 @@
 #   <out> path receives JSON:
 #     {"run":"<run>","unique_cmds":["<cmd>", ...],
 #      "by_session":{"<session>":["<cmd>", ...], ...}}
-#   stdout lists each unique cmd, one per line (for AskUserQuestion preview).
+#   stdout lists each unique cmd, one per line for autonomous replay.
 #
 # Exit codes:
 #   0  - aggregation ran (zero-or-more cmds)

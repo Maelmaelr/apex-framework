@@ -5,9 +5,9 @@
 # Reads <run>-discovery.json (written by SKILL step 2), iterates each entry whose
 # status is "needs-merge", performs `git checkout <base>; git merge --no-ff <branch>`,
 # and records the per-branch outcome in <run>-merge-result.json. Conflict resolution
-# is owned by the orchestrator (spawns agents/apex-merge-resolver.md per file +
-# runs the AskUserQuestion); this script halts on conflict, prints the conflicted
-# path list to stdout, and returns exit 20 so the orchestrator can take over.
+# is owned by the orchestrator (spawns agents/apex-merge-resolver.md per file and
+# automatically applies the verified result); this script halts on conflict,
+# prints the conflicted path list, and returns exit 20 for orchestrator recovery.
 #
 # This script never mutates remote refs - cleanup + push run from SKILL steps 5/6.
 #
@@ -23,7 +23,7 @@
 #   1  - bad args / setup error
 #   2  - precheck failure (cwd not main worktree, dirty tree, etc.)
 #   20 - conflict on current branch; orchestrator must resolve
-#   21 - non-FF or refused merge (operator intervention required)
+#   21 - non-FF or refused merge (orchestrator diagnoses and retries)
 
 set -uo pipefail
 
@@ -86,7 +86,7 @@ fi
 
 mkdir -p "$ACTIVE_DIR"
 # Append-or-init: preserve prior per-branch entries on conflict-interrupted resume
-# (re-invoking the script after a manual conflict resolution must not erase the
+# (re-invoking the script after autonomous conflict resolution must not erase the
 # already-recorded clean-merge results).
 [[ -f "$RESULT" ]] || echo '[]' > "$RESULT"
 
@@ -94,7 +94,7 @@ mkdir -p "$ACTIVE_DIR"
 # trivial-union / merge-refused cases write here directly so the orchestrator
 # does not back-fill. The conflict-exit-20 path stays with
 # the orchestrator - it owns the resolver decision and writes the line after
-# the AskUserQuestion outcome.
+# autonomous resolution.
 append_summary() {
   echo "step-4: $1 $2 (conflicts=$3 resolver=$4)" >> "$ACTIVE_DIR/$RUN-summary.md"
 }
@@ -105,11 +105,9 @@ import json, sys
 path, branch, base, status, detail, merged_sha = sys.argv[1:7]
 with open(path, encoding="utf-8") as f:
     data = json.load(f)
-# Dedup by (branch, status) before the terminal write: a conflict-interrupted
-# resume re-invokes the loop, which must not append a 2nd row for a branch
-# already recorded at this status (append-per-merge produced 2x entries).
-# Sibling branches (different branch or status) are preserved.
-data = [e for e in data if not (e.get("branch") == branch and e.get("status") == status)]
+# Each branch has exactly one current result. This also lets a stabilization
+# re-merge replace an earlier terminal row with a new transient conflict row.
+data = [e for e in data if e.get("branch") != branch]
 entry = {"branch": branch, "base": base, "status": status}
 # Omit empty detail per SKILL.md step 4 contract (mirrors Step 2 omit-empty
 # discipline).
@@ -153,10 +151,9 @@ fi
 
 for ENTRY in "${ENTRIES[@]}"; do
   IFS=$'\t' read -r BRANCH BASE SUBJECT <<<"$ENTRY"
-  # Resume idempotency: a branch already at a terminal status was handled by a
-  # prior invocation (conflict-interrupted resume). Re-merging would re-stamp
-  # "merged" with empty detail, wiping the resolver=/paths[] fields that gate
-  # step 4.6, and re-append its summary line. Skip it.
+  # Resume idempotency: skip a recorded merge only while BASE still contains the
+  # current branch tip. A stabilization commit created after the first merge is
+  # therefore merged on the next invocation instead of being silently skipped.
   if python3 - "$RESULT" "$BRANCH" <<'PY'
 import json, sys
 path, branch = sys.argv[1], sys.argv[2]
@@ -165,12 +162,13 @@ try:
         data = json.load(f)
 except Exception:
     sys.exit(1)
-terminal = {"merged", "skipped-conflict-abort"}
-sys.exit(0 if any(e.get("branch") == branch and e.get("status") in terminal for e in data) else 1)
+sys.exit(0 if any(e.get("branch") == branch and e.get("status") == "merged" for e in data) else 1)
 PY
   then
-    echo "merge-loop.sh: $BRANCH already terminal in merge-result; skipping (resume)"
-    continue
+    if git merge-base --is-ancestor "$BRANCH" "$BASE" 2>/dev/null; then
+      echo "merge-loop.sh: $BRANCH already terminal in merge-result; skipping (resume)"
+      continue
+    fi
   fi
   if ! git checkout "$BASE" >/dev/null 2>&1; then
     append_result "$BRANCH" "$BASE" "checkout-failed" "could not check out base $BASE"
